@@ -1184,14 +1184,41 @@ struct TriLight {
 // ---------------------------------------------------------------------------
 // Edge break.
 
-/// One crease of a mesh: a segment, and the geometric normals of the two
-/// triangles that fold across it.
+/// One crease of a mesh: a segment, the geometric normals of the two
+/// triangles that fold across it, each side's shading normals at the two
+/// ends, and the share of the radius the break has at each end.
 #[derive(Clone, Copy)]
 struct Crease {
     a: [f32; 3],
     b: [f32; 3],
     n1: [f32; 3],
     n2: [f32; 3],
+    /// Side 1's and side 2's shading normals at `a` and at `b`.
+    s1: [[f32; 3]; 2],
+    s2: [[f32; 3]; 2],
+    /// The break's width at `a` and at `b`, as a share of the radius.
+    w: [f32; 2],
+}
+
+/// One triangle along a welded edge: its geometric normal and its shading
+/// normals at the edge's two ends, in the edge's key order.
+#[derive(Clone, Copy)]
+struct EdgeSide {
+    n: [f32; 3],
+    s: [[f32; 3]; 2],
+}
+
+/// Folds within this many degrees past the crease angle get a break that
+/// grows from nothing at the crease angle to the full radius here.
+const BREAK_RAMP_DEGREES: f32 = 15.0;
+
+/// How a fold of `cos_fold` (the cosine of the angle between the two
+/// faces' normals) shares in the break: 0 at or under the crease angle,
+/// 1 from `BREAK_RAMP_DEGREES` past it, smooth between.
+fn break_share(cos_fold: f32, crease_degrees: f32) -> f32 {
+    let fold = cos_fold.clamp(-1.0, 1.0).acos().to_degrees();
+    let x = ((fold - crease_degrees) / BREAK_RAMP_DEGREES).clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
 }
 
 /// The bevel shader's index over one body's crease edges
@@ -1214,6 +1241,18 @@ struct Crease {
 /// as an edge is what is bevelled as one. Positions are welded at the
 /// tolerance `smooth_seams` uses, because the faces of a B-rep body are
 /// tessellated separately and agree along a shared edge only to that.
+///
+/// The break is continuous along an edge as well as across it. Its target
+/// is the neighbouring face's *shading* normal at the closest point of the
+/// crease, interpolated between the segment's ends, not that triangle's
+/// plane: on a curved edge (a thread's crest, a blade's rim) the planes
+/// step from chord to chord and the highlight stepped with them. And its
+/// width follows the fold: a fold at the crease angle gets none, growing
+/// to the full radius `BREAK_RAMP_DEGREES` past it, and a crease that runs
+/// on in a straight line into an edge that is no crease (a ridge fading
+/// into a chamfer, a rim whose fold drops under the angle) tapers to
+/// nothing at the vertex where it stops. A hard cut there left each
+/// highlight ending in a bright round cap the radius wide.
 ///
 /// The segments sit in a uniform grid of cells `2r` wide, each filed under
 /// every cell within `r` of it, so the query for a shading point is one
@@ -1275,11 +1314,12 @@ impl EdgeBreak {
         // it. A BTreeMap, so the creases come out in one order however the
         // hashes fall: the query below breaks a tie by index, and an image
         // must not depend on which run built the tree.
-        let mut edges: std::collections::BTreeMap<(u32, u32), Vec<[f32; 3]>> = std::collections::BTreeMap::new();
+        let mut edges: std::collections::BTreeMap<(u32, u32), Vec<EdgeSide>> = std::collections::BTreeMap::new();
         // A triangle thinner than the weld tolerance (the ring round a
         // sphere's pole, where every vertex is within rounding of the pole)
         // has a normal that is rounding error, and no edge to fold on.
         let min_area2 = (eps * eps) * (eps * eps);
+        let has_normals = mesh.normals.len() >= mesh.positions.len();
         for t in mesh.indices.chunks_exact(3) {
             let idx = [t[0] as usize, t[1] as usize, t[2] as usize];
             let n = cross(sub(pos(idx[1]), pos(idx[0])), sub(pos(idx[2]), pos(idx[0])));
@@ -1287,39 +1327,107 @@ impl EdgeBreak {
                 continue;
             }
             let n = normalize(n);
+            // The vertex's shading normal, turned to this triangle's side;
+            // the plane's own where the mesh has none (or a zero one).
+            let shading = |i: usize| {
+                if !has_normals {
+                    return n;
+                }
+                let s = [mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2]];
+                if !(dot(s, s) > 1e-12) {
+                    return n;
+                }
+                let s = normalize(s);
+                if dot(s, n) < 0.0 { scale(s, -1.0) } else { s }
+            };
             for k in 0..3 {
-                let (ca, cb) = (class[idx[k]], class[idx[(k + 1) % 3]]);
+                let (ia, ib) = (idx[k], idx[(k + 1) % 3]);
+                let (ca, cb) = (class[ia], class[ib]);
                 if ca == cb {
                     continue;
                 }
-                let key = if ca < cb { (ca, cb) } else { (cb, ca) };
-                edges.entry(key).or_default().push(n);
+                let (key, s) = if ca < cb { ((ca, cb), [shading(ia), shading(ib)]) } else { ((cb, ca), [shading(ib), shading(ia)]) };
+                edges.entry(key).or_default().push(EdgeSide { n, s });
             }
         }
-        let cos_max = crease_degrees.clamp(0.0, 180.0).to_radians().cos();
-        let mut creases = Vec::new();
-        for ((ca, cb), normals) in &edges {
-            if normals.len() < 2 {
-                continue;
-            }
-            // The pair that folds the most: on a doubled wall the coplanar
-            // twin must not hide the real corner behind it.
-            let mut best: Option<([f32; 3], [f32; 3], f32)> = None;
-            for i in 0..normals.len() {
-                for j in i + 1..normals.len() {
-                    let c = dot(normals[i], normals[j]);
-                    if best.is_none_or(|b| c < b.2) {
-                        best = Some((normals[i], normals[j], c));
+        let crease_degrees = crease_degrees.clamp(0.0, 180.0);
+        // Each edge's most folded pair and the share of the break it gets:
+        // on a doubled wall the coplanar twin must not hide the real corner
+        // behind it.
+        let folds: Vec<((u32, u32), EdgeSide, EdgeSide, f32)> = edges
+            .iter()
+            .filter(|(_, sides)| sides.len() >= 2)
+            .map(|(&key, sides)| {
+                let mut best = (0, 1, f32::INFINITY);
+                for i in 0..sides.len() {
+                    for j in i + 1..sides.len() {
+                        let c = dot(sides[i].n, sides[j].n);
+                        if c < best.2 {
+                            best = (i, j, c);
+                        }
                     }
                 }
+                (key, sides[best.0], sides[best.1], break_share(best.2, crease_degrees))
+            })
+            .collect();
+        // Every folded edge at each welded vertex, with its share: what a
+        // crease that stops there runs on into.
+        let mut at: HashMap<u32, Vec<(u32, f32, [f32; 3], [f32; 3])>> = HashMap::new();
+        for &((ca, cb), s1, s2, share) in &folds {
+            at.entry(ca).or_default().push((cb, share, s1.n, s2.n));
+            at.entry(cb).or_default().push((ca, share, s1.n, s2.n));
+        }
+        // The share at end `v` of the crease from `v` to `o` (whose faces
+        // have normals `n1` and `n2`). A crease that runs on, within 35° of
+        // straight, into another crease meets it at the smaller of their
+        // shares. One that runs on only into an edge that is no crease
+        // between faces turned like its own two (the same edge, folding
+        // less) stops there, at nothing. One that turns a corner, or ends
+        // where only a face's own tessellation runs on, keeps its own.
+        // Another crease is preferred to a straighter plain edge, so a
+        // short wall's diagonals cannot end a curved rim at every vertex.
+        let end_share = |v: u32, o: u32, own: f32, n1: [f32; 3], n2: [f32; 3]| {
+            let pv = pos(v as usize);
+            let along = normalize(sub(pv, pos(o as usize)));
+            let (mut crease_next, mut plain_next) = (None::<(f32, f32)>, false);
+            for &(u, share, m1, m2) in at.get(&v).map(|e| e.as_slice()).unwrap_or(&[]) {
+                if u == o {
+                    continue;
+                }
+                let c = dot(along, normalize(sub(pos(u as usize), pv)));
+                if c <= 0.819 {
+                    continue;
+                }
+                if share > 0.0 {
+                    if crease_next.is_none_or(|n| c > n.0) {
+                        crease_next = Some((c, share));
+                    }
+                } else if dot(n1, m1).min(dot(n2, m2)).max(dot(n1, m2).min(dot(n2, m1))) > 0.9 {
+                    plain_next = true;
+                }
             }
-            let (n1, n2, c) = best.unwrap();
-            // A fold of less than the crease angle is a seam that shades
+            match crease_next {
+                Some((_, share)) => own.min(share),
+                None if plain_next => 0.0,
+                None => own,
+            }
+        };
+        let mut creases = Vec::new();
+        for &((ca, cb), side1, side2, share) in &folds {
+            // A fold at or under the crease angle is a seam that shades
             // smooth already; it gets no break.
-            if c > cos_max {
+            if !(share > 0.0) {
                 continue;
             }
-            creases.push(Crease { a: pos(*ca as usize), b: pos(*cb as usize), n1, n2 });
+            creases.push(Crease {
+                a: pos(ca as usize),
+                b: pos(cb as usize),
+                n1: side1.n,
+                n2: side2.n,
+                s1: side1.s,
+                s2: side2.s,
+                w: [end_share(ca, cb, share, side1.n, side2.n), end_share(cb, ca, share, side1.n, side2.n)],
+            });
         }
         if creases.is_empty() {
             return None;
@@ -1347,16 +1455,18 @@ impl EdgeBreak {
         Some(EdgeBreak { radius, inv_cell, creases, cells, refs })
     }
 
-    /// The nearest crease within the radius of `p` whose two faces include
-    /// the one `ng` is the normal of: `(distance, the normal of the other
-    /// face)`. Being near a crease is not enough — a point across a thin
-    /// wall from an edge is within the radius and not on the edge — so a
-    /// crease counts only when one of its normals is this face's.
-    fn nearest(&self, p: [f32; 3], ng: [f32; 3]) -> Option<(f32, [f32; 3])> {
+    /// The crease that bends the normal at `p` most, among those whose
+    /// two faces include the one `ng` is the normal of: `(distance, the
+    /// other face's shading normal at the closest point, the break's width
+    /// there)`, `p` being within that width. Being near a crease is not
+    /// enough — a point across a thin wall from an edge is within the
+    /// radius and not on the edge — so a crease counts only when one of
+    /// its normals is this face's.
+    fn nearest(&self, p: [f32; 3], ng: [f32; 3]) -> Option<(f32, [f32; 3], f32)> {
         let key = [0, 1, 2].map(|k| (p[k] * self.inv_cell).floor() as i32);
         let &(start, end) = self.cells.get(&key)?;
-        let r2 = self.radius * self.radius;
-        let mut best: Option<(f32, [f32; 3])> = None;
+        // (distance over width, distance, other normal, width)
+        let mut best: Option<(f32, f32, [f32; 3], f32)> = None;
         for &i in &self.refs[start as usize..end as usize] {
             let c = &self.creases[i as usize];
             let (d1, d2) = (dot(ng, c.n1), dot(ng, c.n2));
@@ -1365,18 +1475,27 @@ impl EdgeBreak {
             }
             let ab = sub(c.b, c.a);
             let t = (dot(sub(p, c.a), ab) / dot(ab, ab).max(1e-12)).clamp(0.0, 1.0);
+            let width = self.radius * (c.w[0] + (c.w[1] - c.w[0]) * t);
+            if !(width > 0.0) {
+                continue;
+            }
             let dq = sub(p, add(c.a, scale(ab, t)));
-            let dist2 = dot(dq, dq);
-            if dist2 < r2 && best.is_none_or(|b| dist2 < b.0) {
-                best = Some((dist2, if d1 >= d2 { c.n2 } else { c.n1 }));
+            let dist = dot(dq, dq).sqrt();
+            let rel = dist / width;
+            if rel < 1.0 && best.is_none_or(|b| rel < b.0) {
+                let s = if d1 >= d2 { c.s2 } else { c.s1 };
+                let o = add(scale(s[0], 1.0 - t), scale(s[1], t));
+                let o = if dot(o, o) > 1e-12 { normalize(o) } else if d1 >= d2 { c.n2 } else { c.n1 };
+                best = Some((rel, dist, o, width));
             }
         }
-        best.map(|(d2, n)| (d2.sqrt(), n))
+        best.map(|(_, dist, o, width)| (dist, o, width))
     }
 
     /// The shading normal at `p` with the break applied: `ns` turned toward
-    /// the neighbouring face along the profile of a round of the radius,
-    /// so it is `ns` at the radius and the bisector on the edge. `ns` has
+    /// the neighbouring face along the profile of a round as wide as the
+    /// break is there, so it is `ns` at that width and the bisector on the
+    /// edge. `ns` has
     /// already been flipped toward the ray; `entering` says which side of
     /// the surface that is, so the neighbour's normal is flipped alike. A
     /// bisector seen from a grazing angle can turn past the viewer, which
@@ -1396,7 +1515,7 @@ impl EdgeBreak {
     /// read as an outline drawn on the part, where a round catches the
     /// light on a thin line near the edge and fades into the face.
     fn bevel(&self, p: [f32; 3], ns: [f32; 3], ng: [f32; 3], dir: [f32; 3], entering: bool) -> [f32; 3] {
-        let Some((d, other)) = self.nearest(p, ng) else { return ns };
+        let Some((d, other, width)) = self.nearest(p, ng) else { return ns };
         let other = if entering { other } else { scale(other, -1.0) };
         // Half the fold between the two faces, in radians: the turn this
         // face's side of the round makes before the bisector. The turn at
@@ -1405,7 +1524,7 @@ impl EdgeBreak {
         // normals are opposite, has no such plane and keeps `ns`).
         let c = dot(ns, other).clamp(-1.0, 1.0);
         let half = 0.5 * c.acos();
-        let turn = (1.0 - d / self.radius).clamp(0.0, 1.0).asin().min(half);
+        let turn = (1.0 - d / width).clamp(0.0, 1.0).asin().min(half);
         let perp = sub(other, scale(ns, c));
         let n = if turn > 1e-5 && dot(perp, perp) > 1e-10 {
             normalize(add(scale(ns, turn.cos()), scale(normalize(perp), turn.sin())))
@@ -4176,7 +4295,7 @@ mod tests {
             if far.nearest(s.p, s.ng).is_none() {
                 n_far += 1;
                 assert_eq!(c, b, "pixel ({x},{y}) is far from every crease and changed");
-            } else if near.nearest(s.p, s.ng).is_some_and(|(dist, _)| dist < 0.5 * radius) {
+            } else if near.nearest(s.p, s.ng).is_some_and(|(dist, _, _)| dist < 0.5 * radius) {
                 n_near += 1;
                 n_changed += usize::from(c != b);
                 peak_plain = peak_plain.max(lum(c));
@@ -4461,11 +4580,11 @@ mod tests {
         }
         // The query finds the nearest crease of the face the point is on,
         // and reports the other face's normal.
-        let (d, other) = eb.nearest([0.2, 10.0, 5.0], [0.0, 0.0, 1.0]).expect("near the top-left edge");
+        let (d, other, _) = eb.nearest([0.2, 10.0, 5.0], [0.0, 0.0, 1.0]).expect("near the top-left edge");
         assert!((d - 0.2).abs() < 1e-5, "distance {d}");
         assert!((other[0] + 1.0).abs() < 1e-5, "the neighbour across that edge faces -x: {other:?}");
         // A point 0.2 in from the edge on the *side* face sees the top face.
-        let (_, other) = eb.nearest([0.0, 10.0, 4.8], [-1.0, 0.0, 0.0]).unwrap();
+        let (_, other, _) = eb.nearest([0.0, 10.0, 4.8], [-1.0, 0.0, 0.0]).unwrap();
         assert!((other[2] - 1.0).abs() < 1e-5, "{other:?}");
         // Out of range, and on a face the crease does not bound: nothing.
         assert!(eb.nearest([2.0, 10.0, 5.0], [0.0, 0.0, 1.0]).is_none());
@@ -4474,6 +4593,118 @@ mod tests {
         // set past a box corner.
         assert!(EdgeBreak::build(&block, 0.0, 30.0).is_none());
         assert!(EdgeBreak::build(&block, 0.5, 95.0).is_none());
+    }
+
+    /// The angle in degrees between two unit vectors.
+    fn degrees_between(a: [f32; 3], b: [f32; 3]) -> f32 {
+        dot(a, b).clamp(-1.0, 1.0).acos().to_degrees()
+    }
+
+    /// A ridge whose fold fades along it, the way a knurl's ridge runs out
+    /// into a chamfer: two wings meeting on the x axis, folded by 60° at
+    /// x = 0 and by nothing at x = 10, so the edge is a crease (past 30°)
+    /// only on its first half. The break must fade out with the fold. When
+    /// it stopped at full strength where the fold crossed the crease angle,
+    /// every such ridge ended in a bright round cap: here a jump of 15° in
+    /// the shading normal between two points a hundredth of a mm apart.
+    #[test]
+    fn the_edge_break_fades_out_where_a_crease_does() {
+        let (n, len, wing) = (40usize, 10.0f32, 2.0f32);
+        let half_fold = |x: f32| (30.0 * (1.0 - x / len)).to_radians();
+        let mut mesh = crate::tessellate::Mesh::default();
+        let mut vert = |m: &mut crate::tessellate::Mesh, p: [f32; 3], nrm: [f32; 3]| {
+            m.positions.extend_from_slice(&p);
+            m.normals.extend_from_slice(&nrm);
+            (m.positions.len() / 3 - 1) as u32
+        };
+        // Per station: the ridge for each wing (split normals) and the two
+        // wings' outer edges.
+        let mut st = Vec::new();
+        for i in 0..=n {
+            let x = len * i as f32 / n as f32;
+            let (s, c) = half_fold(x).sin_cos();
+            let (nl, nr) = ([0.0, -s, c], [0.0, s, c]);
+            st.push([
+                vert(&mut mesh, [x, 0.0, 0.0], nl),
+                vert(&mut mesh, [x, -wing * c, -wing * s], nl),
+                vert(&mut mesh, [x, 0.0, 0.0], nr),
+                vert(&mut mesh, [x, wing * c, -wing * s], nr),
+            ]);
+        }
+        for i in 0..n {
+            let (a, b) = (st[i], st[i + 1]);
+            mesh.indices.extend_from_slice(&[a[0], a[1], b[1], a[0], b[1], b[0]]);
+            mesh.indices.extend_from_slice(&[a[2], b[3], a[3], a[2], b[2], b[3]]);
+        }
+        mesh.face_ids = vec![0; mesh.indices.len() / 3];
+        let radius = 0.5;
+        let eb = EdgeBreak::build(&mesh, radius, 30.0).expect("the first half is a crease");
+        // The bend on the left wing 0.2 mm from the ridge, along it.
+        let d = 0.2;
+        let bend = |x: f32| {
+            let (s, c) = half_fold(x).sin_cos();
+            let nrm = [0.0, -s, c];
+            let p = [x, -d * c, -d * s];
+            degrees_between(eb.bevel(p, nrm, nrm, scale(nrm, -1.0), true), nrm)
+        };
+        let xs: Vec<f32> = (30..=970).map(|i| i as f32 * 0.01).collect();
+        let bends: Vec<f32> = xs.iter().map(|&x| bend(x)).collect();
+        assert!(bends[0] > 20.0, "a 58° fold is bent hard near its edge: {}", bends[0]);
+        let past = bends.iter().zip(&xs).find(|&(&b, &x)| x >= 5.0 && b >= 0.1);
+        assert!(past.is_none(), "past the crease angle nothing is bent: {past:?}");
+        let (worst, at) = bends.windows(2).zip(&xs).map(|(w, &x)| ((w[1] - w[0]).abs(), x)).fold((0.0f32, 0.0f32), |a, b| if b.0 > a.0 { b } else { a });
+        assert!(worst < 2.0, "the bend jumps by {worst:.2}° at x = {at:.2}");
+    }
+
+    /// Along a curved edge the break follows the curve, not its chords: a
+    /// 24-sided cylinder's top rim, read on the cap just inside it, bends
+    /// the normal toward the wall's *shading* normal there, which points
+    /// out through that very point. Bending toward the wall triangle's
+    /// plane instead turned it toward the chord's middle, up to half a
+    /// segment (7.5°) off and stepping at every vertex: on a thread's crest
+    /// or a blade's rim, a highlight broken into short straight dashes.
+    #[test]
+    fn the_edge_break_follows_a_curved_edge_smoothly() {
+        let (segs, r, h) = (24usize, 10.0f32, 3.0f32);
+        let mut mesh = crate::tessellate::Mesh::default();
+        let mut vert = |m: &mut crate::tessellate::Mesh, p: [f32; 3], nrm: [f32; 3]| {
+            m.positions.extend_from_slice(&p);
+            m.normals.extend_from_slice(&nrm);
+            (m.positions.len() / 3 - 1) as u32
+        };
+        let up = [0.0, 0.0, 1.0];
+        let centre = vert(&mut mesh, [0.0, 0.0, h], up);
+        let rim: Vec<[f32; 3]> = (0..segs)
+            .map(|k| {
+                let (s, c) = (std::f32::consts::TAU * k as f32 / segs as f32).sin_cos();
+                [r * c, r * s, h]
+            })
+            .collect();
+        let cap: Vec<u32> = rim.iter().map(|&p| vert(&mut mesh, p, up)).collect();
+        let top: Vec<u32> = rim.iter().map(|&p| vert(&mut mesh, p, normalize([p[0], p[1], 0.0]))).collect();
+        let bottom: Vec<u32> = rim.iter().map(|&p| vert(&mut mesh, [p[0], p[1], 0.0], normalize([p[0], p[1], 0.0]))).collect();
+        for k in 0..segs {
+            let j = (k + 1) % segs;
+            mesh.indices.extend_from_slice(&[centre, cap[k], cap[j]]);
+            mesh.indices.extend_from_slice(&[bottom[k], bottom[j], top[j], bottom[k], top[j], top[k]]);
+        }
+        mesh.face_ids = vec![0; mesh.indices.len() / 3];
+        let eb = EdgeBreak::build(&mesh, 0.5, 30.0).expect("the rim is a crease");
+        let mut worst = 0.0f32;
+        for k in 0..segs {
+            let (a, b) = (rim[k], rim[(k + 1) % segs]);
+            let inward = scale(normalize(add(a, b)), -1.0);
+            let inward = normalize([inward[0], inward[1], 0.0]);
+            for i in 0..=40 {
+                let q = add(a, scale(sub(b, a), i as f32 / 40.0));
+                let p = add(q, scale(inward, 0.2));
+                let n = eb.bevel(p, up, up, [0.0, 0.0, -1.0], true);
+                assert!(degrees_between(n, up) > 10.0, "the cap is bent near the rim at {p:?}");
+                let off = degrees_between(normalize([n[0], n[1], 0.0]), normalize([q[0], q[1], 0.0]));
+                worst = worst.max(off);
+            }
+        }
+        assert!(worst < 0.5, "the bend points {worst:.2}° away from the rim's own normal");
     }
 
     #[test]
