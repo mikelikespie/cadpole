@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en" data-engine-bytes="30021164" data-engine-mb="8">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cadpole: parametric CAD for bots</title>
+<meta name="description" content="Cadpole is parametric CAD for bots. Your coding agent builds the model, sets its parameters, measures it, renders it and runs its tests; you watch in 3D, drag a parameter and say what you want. Parts and assemblies, buildings and plans.">
+<meta name="theme-color" content="#060a09">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cadpole: parametric CAD for bots">
+<meta property="og:description" content="Cadpole is parametric CAD for bots. Your coding agent builds the model, sets its parameters, measures it, renders it and runs its tests; you watch in 3D, drag a parameter and say what you want. Parts and assemblies, buildings and plans.">
+<meta property="og:image" content="https://mikelikespie.github.io/cadpole/og.png">
+<meta property="og:url" content="https://mikelikespie.github.io/cadpole/">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" as="image" href="seq/tj/d/000.avif" type="image/avif" media="(min-width: 700px) and (min-height: 700px)" fetchpriority="high">
+<link rel="preload" as="image" href="seq/tj/m/000.webp" type="image/webp" media="not ((min-width: 700px) and (min-height: 700px))" fetchpriority="high">
+<link rel="stylesheet" href="site.css">
+<script type="module" src="site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+<a class="brand" href="#top" aria-label="Cadpole, top of page"><svg viewBox="0 0 128 128" aria-hidden="true"><path d="M72 62C90 62 92 88 106 89c9 1 13-9 19-14-2 11-8 24-20 24-17 0-19-19-37-20Z" fill="#2fbf9f"/><circle cx="50" cy="58" r="30" fill="#2fbf9f"/><circle cx="60" cy="49" r="9.5" fill="#fff"/><circle cx="62.5" cy="49" r="4.8" fill="#0B2E2A"/></svg><span>Cadpole</span></a>
+<nav aria-label="Sections"><a href="#agent">Agents</a><a href="#parts">Parts</a><a href="#buildings">Buildings</a><a href="#play">Try it</a><a href="#can">Features</a><a href="#draw">Drawings</a><a href="#gallery">Gallery</a><a href="#start">Get started</a><a href="https://github.com/mikelikespie/cadpole">GitHub</a></nav>
+</header>
+<main id="main">
+<span id="top"></span>
+
+<section class="scene first" id="turbojet" style="--len:5;--ard:16 / 9;--arp:4 / 3" data-seq="tj" data-xl="1" data-n="96" data-nm="48" aria-label="One script, a whole assembly">
+<div class="pin"><a class="brand hero-brand" href="#top" aria-label="Cadpole"><svg viewBox="0 0 128 128" aria-hidden="true"><path d="M72 62C90 62 92 88 106 89c9 1 13-9 19-14-2 11-8 24-20 24-17 0-19-19-37-20Z" fill="#2fbf9f"/><circle cx="50" cy="58" r="30" fill="#2fbf9f"/><circle cx="60" cy="49" r="9.5" fill="#fff"/><circle cx="62.5" cy="49" r="4.8" fill="#0B2E2A"/></svg><span>Cadpole</span></a>
+<div class="vis">
+<picture><source media="(min-width: 700px) and (min-height: 700px)" srcset="seq/tj/d/000.avif" type="image/avif"><img class="poster" src="seq/tj/m/000.webp" width="720" height="405" alt="A turbojet engine model with its casings cut away" fetchpriority="high" decoding="async"></picture>
+<canvas class="seq" aria-hidden="true"></canvas>
+<div class="live"></div>
+<p class="hint3d when-live">Drag to orbit · two fingers or scroll to move · pinch to zoom · double-tap to centre</p>
+</div>
+<div class="caps">
+<div class="steps"><div class="step hero on" data-from="0" data-to="0.07" data-view="-32,16,24,0.67" data-still="0.000" data-alt="A turbojet engine model with its casings cut away"><p class="eyebrow">Bring your own coding agent</p>
+<h1>Parametric CAD <span>for bots.</span></h1>
+<p class="lede">Your agent builds the model and checks its own work: it measures, renders and runs the model's tests. Every dimension is a parameter. The bot sets it, you drag it, the model rebuilds.</p>
+<div class="hero-cta"><a class="btn primary" href="#start">Get started</a><a class="btn" href="https://github.com/mikelikespie/cadpole"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.77-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.19c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>GitHub</a></div>
+<ul class="facts"><li>Parts and assemblies</li><li>Buildings and plans</li><li>MCP server</li><li>STEP, STL, 3MF</li><li>Apache-2.0</li></ul></div><div class="step" data-from="0.07" data-to="0.26" data-view="-32,16,24,0.67" data-still="0.165" data-alt="The assembled turbojet model, casings cut away"><p class="eyebrow">One script, a whole assembly</p><h2>A whole engine, one model.</h2><p>Fan, three compressor stages, combustor, turbine and nozzle: 138 bodies from <code>turbojet.star</code>. Blade counts, radii and clearances are parameters an agent, or you, can change.</p></div><div class="step" data-from="0.26" data-to="0.48" data-view="-29,17,24,0.64" data-still="0.370" data-alt="The turbojet with a wedge cut from every casing"><p class="eyebrow">One script, a whole assembly</p><h2>Cut open by a flag.</h2><p><code>cutaway = True</code> takes a wedge out of every casing, so the rotor, the liner and the bearings show.</p></div><div class="step" data-from="0.48" data-to="0.78" data-view="-22,18,24,0.6" data-still="0.630" data-alt="The turbojet with its stages spreading along the shaft" data-model="models/turbojet_open.cpmesh"><p class="eyebrow">One script, a whole assembly</p><h2>Pull it apart.</h2><p><code>explode</code> is a parameter like any other. Every stage slides out along the shaft, and the bolts go with their flanges.</p></div><div class="step" data-from="0.78" data-to="1.01" data-view="-18,19,24,0.58" data-still="0.890" data-alt="The turbojet fully exploded, casings cut away" data-model="models/turbojet_open.cpmesh"><p class="eyebrow">One script, a whole assembly</p><h2>It checks itself.</h2><p>Fan, compressor, combustor, turbine, nozzle. The model's own tests measure the tip clearance of every blade, so whoever changes it knows at once whether it still fits.</p></div></div>
+<div class="vis-actions"><a class="btn small" href="view/turbojet_cut/" data-full="turbojet_cut" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><button class="btn small when-poster" type="button" data-open3d="models/turbojet_cut.cpmesh">Explore in 3D</button><button class="btn small primary when-live" type="button" data-close3d>Done</button></div>
+<div class="meter" aria-hidden="true"><span class="read">explode <b data-read="{&quot;keys&quot;:[[0,0],[0.06,0],[0.15,0.022],[0.25,0.088],[0.35,0.187],[0.49,0.354],[0.63,0.521],[0.73,0.62],[0.83,0.687],[0.92,0.709],[1,0.709]],&quot;digits&quot;:2,&quot;unit&quot;:&quot; in&quot;}">0.00 in</b></span><span class="track"><i></i></span></div>
+</div>
+</div>
+</section>
+
+<section class="block wrap" id="agent">
+<div class="head"><p class="eyebrow">Work with an agent</p><h2>Ask for a change. Watch the part follow.</h2>
+<p class="lede">Cadpole has an MCP server, so a coding agent can build and edit the model, check the result and see what you have selected in the 3D view. It works with your own Claude Code install. Cadpole ships no agent of its own.</p></div>
+<ul class="agent-can"><li><b>Builds and edits</b><span>It writes the model's script and changes it, one exact edit at a time.</span></li><li><b>Reads what went wrong</b><span>Every error names the line and the feature it came from.</span></li><li><b>Checks its own work</b><span>It measures clearances and volumes, renders pictures and runs the model's tests.</span></li><li><b>Sees what you point at</b><span>Click a face in the 3D view and say "this face".</span></li></ul>
+<div class="agent">
+<div class="agent-main">
+<div class="agent-vid" data-video="agent/agent" data-video-phone="agent/agent-phone" data-v="240dcd740e" data-v-phone="b5f6f0d144">
+<picture><source media="(max-width: 699.9px) and (orientation: portrait)" srcset="agent/agent-phone-poster.webp?v=cd6140ed97" width="390" height="844"><img src="agent/agent-poster.webp?v=c77fe8a30d" width="1920" height="1200" alt="The Cadpole web app with a bracket model and a Messages panel where a request to an agent is typed" loading="lazy" decoding="async"></picture>
+</div>
+<div class="agent-ctl"><button class="btn small primary" type="button" data-vplay aria-pressed="false">Play</button><p class="agent-cap" aria-live="off"></p></div>
+</div>
+<div class="agent-side">
+<ol class="agent-steps wide" aria-label="What happens in the recording"><li data-t="1.2">Type a request in the Messages box.</li><li data-t="9.1">The agent edits the script. The bracket is 1 in wider, with two mounting holes in the base.</li><li data-t="11.7">It replies with what it changed.</li><li data-t="15.2">Click a face to select it, then ask about &quot;this face&quot;.</li><li data-t="23.2">The agent reads the selection and puts two holes through that face.</li><li data-t="28.8">It says what it did.</li></ol>
+<ol class="agent-steps narrow" aria-label="What happens in the recording"><li data-t="1.8">Open Chat and type a request.</li><li data-t="8.8">The agent edits the script. The bracket gets wider.</li><li data-t="11.2">The agent replies. Close the sheet to see the holes.</li><li data-t="20.5">Tap a face to select it.</li><li data-t="23.5">Ask about &quot;this face&quot;.</li><li data-t="29.8">The agent puts holes through the selected face.</li></ol>
+<p class="cmd-note">Real session, sped up. No sound.</p>
+</div>
+</div>
+<h3 class="sub">Set it up</h3>
+<p class="cmd-note how-lead">Let your agent do it: paste this, and it goes through the steps below with you.</p>
+<div class="cmds"><div class="cmd multi prompt"><code>Set up Cadpole&#x27;s assistant integration from github.com/mikelikespie/cadpole (docs/assistant-integration.md): register its MCP server with claude mcp add, start cadpole serve on my script, and tell me when to restart you so you can wait for my messages.</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div></div>
+<p class="cmd-note how-lead">Or step by step:</p>
+<ol class="agent-how"><li><div class="how-t"><p>Have Claude Code installed. Cadpole uses your own install and ships no agent of its own.</p></div><div class="how-c"><div class="cmd multi"><code>claude --version</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div></div></li><li><div class="how-t"><p>Open your script in the web app.</p></div><div class="how-c"><div class="cmd multi"><code>cadpole serve bracket.star</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div></div></li><li><div class="how-t"><p>Register Cadpole&#x27;s MCP server, in your project folder.</p><p class="cmd-note">This adds it for you in this folder (the local scope); <code>--scope project</code> writes it to <code>.mcp.json</code> for everyone on the project. <code>claude mcp list</code> checks the connection and <code>claude mcp remove cadpole</code> takes it out.</p></div><div class="how-c"><div class="cmd multi"><code>claude mcp add cadpole -- cadpole mcp</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div><details class="how-alt"><summary>Another MCP client, or by hand: .mcp.json</summary><div class="cmd multi json"><code>{
+  &quot;mcpServers&quot;: {
+    &quot;cadpole&quot;: {
+      &quot;command&quot;: &quot;cadpole&quot;,
+      &quot;args&quot;: [
+        &quot;mcp&quot;
+      ]
+    }
+  }
+}</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div></details></div></li><li><div class="how-t"><p>Start Claude Code in that folder and ask it to wait for Cadpole. It runs cadpole listen in the background, which costs nothing until you send a message.</p></div><div class="how-c"><div class="cmd multi"><code>claude</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div><p class="how-say">Then ask it:</p><div class="cmd multi prompt"><code>Wait for messages from Cadpole in the background and act on them.</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div></div></li><li><div class="how-t"><p>Turn Listen on in the web app and type in the Messages box.</p></div></li></ol>
+<p class="cmd-note how-foot">Any MCP client can connect the same way; only Claude Code has been tested. The feature is documented as <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/assistant-integration.md">assistant integration</a>.</p>
+<p class="cmd-note how-foot">Cadpole is an independent project, not affiliated with or endorsed by the maker of Claude Code.</p>
+</section>
+
+<section class="block wrap" id="modes">
+<div class="head"><p class="eyebrow">Two kinds of work</p><h2>Parts and buildings, one engine.</h2>
+<p class="lede">Cadpole models mechanical parts and it models buildings. An agent drives both through the same operations, so this page shows them one after the other and then what they share.</p></div>
+<div class="modes"><article class="mode"><a class="mode-pic" href="#parts" aria-label="Parts and assemblies: go to the section"><img src="media/planetary-720.webp" srcset="media/planetary-720.webp 720w, media/planetary-1200.webp 1200w" sizes="(min-width:1000px) 560px, 100vw" width="720" height="720" alt="A herringbone planetary gear set, exploded" loading="lazy" decoding="async"></a>
+<div class="txt"><h3>Parts and assemblies</h3><p>Brackets, enclosures, gears, threads, mechanisms that move and whole assemblies, in millimetres, to print, machine or draw.</p><ul class="tags"><li>Assemblies</li><li>Gears</li><li>Threads</li><li>Print checks</li><li>STEP, 3MF</li></ul>
+<div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p"><a class="pill act" href="#parts">See parts</a></div></div></div></div></article><article class="mode"><a class="mode-pic" href="#buildings" aria-label="Buildings and plans: go to the section"><img src="media/plan-cabin-720.webp" srcset="media/plan-cabin-720.webp 720w, media/plan-cabin-1200.webp 1200w" sizes="(min-width:1000px) 560px, 100vw" width="720" height="720" alt="A small cabin with its roof removed, showing the rooms" loading="lazy" decoding="async"></a>
+<div class="txt"><h3>Buildings and plans</h3><p>Massing, lots and terrain, floor plans, sun and shadow, sightlines and drawing sets, in feet and inches.</p><ul class="tags"><li>Floor plans</li><li>Sites</li><li>Sun and shadow</li><li>Layout solver</li><li>Sheet sets</li></ul>
+<div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p"><a class="pill act" href="#buildings">See buildings</a></div></div></div></div></article></div>
+<p class="cmd-note modes-shared">Shared by both: the operations an agent calls, parameters and sweeps, tests, renders, dimensioned drawings, exports and the viewer. The building side is a set of libraries on top; a part never touches it.</p>
+</section>
+
+<section class="group wrap" id="parts">
+<p class="eyebrow">Part one</p><h2>Parts and assemblies.</h2>
+<p class="lede">The turbojet at the top is this kind of work. Next: a mechanism that prints in place, artwork turned into relief, an engine taken apart, and a part you can change in the browser.</p><p class="cmd-note">On GitHub: <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/parts.md">the guide to parts and assemblies</a>.</p>
+</section>
+
+<section class="scene" id="iris" style="--len:3.5;--ard:1;--arp:1" data-seq="ir" data-n="60" data-nm="30" aria-label="Mechanisms that move">
+<div class="pin">
+<div class="vis">
+<picture><source media="(min-width: 700px) and (min-height: 700px)" srcset="seq/ir/d/000.avif" type="image/avif"><img class="poster" src="seq/ir/m/000.webp" width="720" height="720" alt="A closed eight-blade iris mechanism" loading="lazy" decoding="async"></picture>
+<canvas class="seq" aria-hidden="true"></canvas>
+<div class="live"></div>
+<p class="hint3d when-live">Drag to orbit · two fingers or scroll to move · pinch to zoom · double-tap to centre</p>
+</div>
+<div class="caps">
+<div class="steps"><div class="step on" data-from="0" data-to="0.3" data-view="-24,58,26,1" data-still="0.000" data-alt="A closed eight-blade iris mechanism"><p class="eyebrow">Mechanisms that move</p><h2>An iris that prints in place.</h2><p>Eight blades on pivots under a slotted ring. Blade count, aperture and every clearance are parameters of <code>iris.star</code>.</p></div><div class="step" data-from="0.3" data-to="0.7" data-view="-24,58,26,1" data-still="0.500" data-alt="The iris half open"><p class="eyebrow">Mechanisms that move</p><h2>Turn the ring.</h2><p><code>opening</code> runs from 0 to 1. The script solves each blade's angle from the slot geometry, so the picture is the mechanism.</p></div><div class="step" data-from="0.7" data-to="1.01" data-view="-24,58,26,1" data-still="0.850" data-alt="The iris fully open"><p class="eyebrow">Mechanisms that move</p><h2>Fully open.</h2><p>The blades sit behind the lip. The gaps are whole layers, so it comes off the printer already moving.</p></div></div>
+<div class="vis-actions"><a class="btn small" href="view/iris/" data-full="iris" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><button class="btn small when-poster" type="button" data-open3d="models/iris.cpmesh">Explore in 3D</button><button class="btn small primary when-live" type="button" data-close3d>Done</button></div>
+<div class="meter" aria-hidden="true"><span class="read">opening <b data-read="{&quot;keys&quot;:[[0,0],[1,100]],&quot;digits&quot;:0,&quot;unit&quot;:&quot;%&quot;}">0%</b></span><span class="track"><i></i></span></div>
+</div>
+</div>
+</section>
+<section class="scene" id="mug" style="--len:4;--ard:1;--arp:1" data-seq="mg" data-n="72" data-nm="36" aria-label="Artwork to geometry">
+<div class="pin">
+<div class="vis">
+<picture><source media="(min-width: 700px) and (min-height: 700px)" srcset="seq/mg/d/000.avif" type="image/avif"><img class="poster" src="seq/mg/m/000.webp" width="720" height="720" alt="A mug with flat artwork painted on its wall" loading="lazy" decoding="async"></picture>
+<canvas class="seq" aria-hidden="true"></canvas>
+<div class="live"></div>
+<p class="hint3d when-live">Drag to orbit · two fingers or scroll to move · pinch to zoom · double-tap to centre</p>
+</div>
+<div class="caps">
+<div class="steps"><div class="step on" data-from="0" data-to="0.34" data-view="-58,14,24,1" data-still="0.000" data-alt="A mug with flat artwork painted on its wall"><p class="eyebrow">Artwork to geometry</p><h2>Start with an SVG.</h2><p><code>import_svg</code> reads the drawing. <code>wrap</code> lays it round the wall of the mug without stretching it.</p></div><div class="step" data-from="0.34" data-to="0.73" data-view="-30,16,24,1" data-still="0.535" data-alt="The same mug with the artwork raised from the wall"><p class="eyebrow">Artwork to geometry</p><h2>Raise it.</h2><p><code>emboss(kind=emboss.raised)</code> turns the outline into solid relief. How far it stands out is a parameter.</p></div><div class="step" data-from="0.73" data-to="1.01" data-view="-4,20,24,1" data-still="0.865" data-alt="The same mug with the artwork cut into the wall"><p class="eyebrow">Artwork to geometry</p><h2>Or cut it in.</h2><p>Change one argument and the same artwork is engraved instead. Either way it exports as a printable solid.</p></div></div>
+<div class="vis-actions"><a class="btn small" href="view/mug/" data-full="mug" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><button class="btn small when-poster" type="button" data-open3d="models/mug.cpmesh">Explore in 3D</button><button class="btn small primary when-live" type="button" data-close3d>Done</button></div>
+<div class="meter" aria-hidden="true"><span class="read">relief <b data-read="{&quot;keys&quot;:[[0,0.016],[0.333,0.016],[0.722,0.063],[0.736,0.063],[1,0.039]],&quot;digits&quot;:3,&quot;unit&quot;:&quot; in&quot;}">0.016 in</b></span><span class="track"><i></i></span></div>
+</div>
+</div>
+</section>
+<section class="scene" id="radial" style="--len:4.5;--ard:1;--arp:1" data-seq="ra" data-n="72" data-nm="36" aria-label="Explode, section, animate">
+<div class="pin">
+<div class="vis">
+<picture><source media="(min-width: 700px) and (min-height: 700px)" srcset="seq/ra/d/000.avif" type="image/avif"><img class="poster" src="seq/ra/m/000.webp" width="720" height="720" alt="A seven-cylinder radial engine model" loading="lazy" decoding="async"></picture>
+<canvas class="seq" aria-hidden="true"></canvas>
+<div class="live"></div>
+<p class="hint3d when-live">Drag to orbit · two fingers or scroll to move · pinch to zoom · double-tap to centre</p>
+</div>
+<div class="caps">
+<div class="steps"><div class="step on" data-from="0" data-to="0.15" data-view="-35,16,24,1" data-still="0.000" data-alt="A seven-cylinder radial engine model"><p class="eyebrow">Explode, section, animate</p><h2>Seven cylinders, one crank.</h2><p>A radial engine with a master rod and six link rods. Turn <code>crank</code> and every piston goes where the geometry puts it.</p></div><div class="step" data-from="0.15" data-to="0.58" data-view="-50,20,24,1" data-still="0.365" data-alt="The radial engine exploded along its cylinders" data-model="models/radial_open.cpmesh"><p class="eyebrow">Explode, section, animate</p><h2>Take it apart.</h2><p>Heads, barrels and pistons move out along their own cylinders. The keyframes live in the script, next to the parts.</p></div><div class="step" data-from="0.58" data-to="1.01" data-view="-25,15,24,1" data-still="0.790" data-alt="The radial engine with the front half cut away" data-model="models/radial_open.cpmesh"><p class="eyebrow">Explode, section, animate</p><h2>See inside.</h2><p>The cutaway removes the front half of the crankcase, so the rods and pistons show while it turns.</p></div></div>
+<div class="vis-actions"><a class="btn small" href="view/radial/" data-full="radial" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><button class="btn small when-poster" type="button" data-open3d="models/radial.cpmesh">Explore in 3D</button><button class="btn small primary when-live" type="button" data-close3d>Done</button></div>
+<div class="meter" aria-hidden="true"><span class="read">crank <b data-read="{&quot;keys&quot;:[[0,0],[0.5,180],[0.6,200],[1,360]],&quot;digits&quot;:0,&quot;unit&quot;:&quot;°&quot;}">0°</b></span><span class="track"><i></i></span></div>
+</div>
+</div>
+</section>
+
+<section class="block wrap" id="play">
+<div class="head"><p class="eyebrow">Parts and assemblies · try it here</p><h2>Change the script. The part follows.</h2>
+<p class="lede">This is the real engine, compiled to WebAssembly and running in your browser. Move a slider or edit a line and the model is rebuilt from the script.</p></div>
+<div class="tabs" role="group" aria-label="Example scripts"><button class="tab" type="button" aria-pressed="true" data-src="src-part" data-file="part.star" data-poster="media/part-720.webp" data-full="part" data-view="-32,28,24,1">A plate with a hole</button><button class="tab" type="button" aria-pressed="false" data-src="src-planter" data-file="planter.star" data-poster="media/planter-720.webp" data-full="planter" data-view="-30,24,24,1">Planter</button><button class="tab" type="button" aria-pressed="false" data-src="src-bracket" data-file="bracket.star" data-poster="media/bracket-720.webp" data-full="bracket" data-view="-35,30,24,1">Bracket</button><button class="tab" type="button" aria-pressed="false" data-src="src-knob" data-file="knurled_knob.star" data-poster="media/knob-720.webp" data-full="knob" data-view="-30,26,24,1">Knurled knob</button></div>
+<div class="play">
+<div class="play-right">
+<div class="play-view"><img src="media/part-720.webp" srcset="media/part-720.webp 720w, media/part-1200.webp 1200w" sizes="(min-width:1000px) 600px, 100vw" width="720" height="720" alt="The part the script describes" loading="lazy" decoding="async"><div class="live"></div>
+<div class="play-over"><button class="btn primary" type="button" data-start>Run it live</button><small>Loads the engine once, about <span data-engine-mb>8</span> MB</small></div><div class="load" hidden><i></i></div></div>
+<div class="play-acts acts-p"><button class="pill act" type="button" data-take aria-pressed="false">Zoom and pan</button><a class="pill act" href="view/part/" data-full="part" title="Opens this script with its default values in the Cadpole viewer" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a></div>
+<p class="status" role="status"><i></i><span>Rendered ahead of time. Start the engine to change it.</span></p>
+<div class="sliders"></div>
+</div>
+<div class="play-left">
+<div class="code"><div class="code-head"><span data-file>part.star</span><button class="copy" type="button" data-copy=".editor">Copy</button></div>
+<textarea class="editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="Script source">w = param("width", 40, unit="mm", min=10, max=100)
+
+plate = extrude(sketch(XY).rect(w, 20), 10)
+hole = extrude(sketch(XY.offset(-1)).circle(3), 12)
+
+part = subtract(plate, hole, name="part")
+part.material(color="#6fbfa8", roughness=0.4)
+
+export(part, "part.stl")
+</textarea><button class="code-more" type="button" data-more aria-expanded="false">Show the full script</button></div>
+</div>
+</div>
+<script type="text/plain" id="src-part">w = param("width", 40, unit="mm", min=10, max=100)
+
+plate = extrude(sketch(XY).rect(w, 20), 10)
+hole = extrude(sketch(XY.offset(-1)).circle(3), 12)
+
+part = subtract(plate, hole, name="part")
+part.material(color="#6fbfa8", roughness=0.4)
+
+export(part, "part.stl")
+</script><script type="text/plain" id="src-planter"># A tapered planter with a drainage hole, made from one revolved profile.
+# The wall cross-section is drawn on the XZ plane (x = radius, y = height)
+# and revolved about Z. No booleans needed, which keeps it robust.
+
+h = param("height", 90, unit="mm", min=40, max=200, doc="Overall height")
+r_top = param("top_radius", 55, unit="mm", min=20, max=120)
+r_bottom = param("bottom_radius", 40, unit="mm", min=15, max=100)
+wall = param("wall", 2.4, unit="mm", min=1.2, max=6, doc="Wall thickness (3 perimeters at 0.8)")
+base = param("base", 4, unit="mm", min=2, max=10, doc="Floor thickness")
+drain = param("drain_radius", 4, unit="mm", min=0.5, max=15, doc="Drainage hole radius")
+
+# Outer wall slope in x per unit height.
+slope = (r_top - r_bottom) / h
+
+profile = sketch(XZ, name="profile").polygon([
+    (drain, 0),
+    (r_bottom, 0),
+    (r_top, h),
+    (r_top - wall, h),
+    (r_bottom - wall + slope * base, base),
+    (drain, base),
+])
+
+pot = revolve(profile, axis=(0, 0, 1), name="pot")
+pot.material(color=(0.82, 0.55, 0.42), roughness=0.85)
+export(pot, "planter.stl")
+
+# Tests. They run after the model is built -- `cadpole test examples/planter.star`
+# -- and never in an ordinary evaluation, so the viewer does not pay for them.
+# A `sweep=` rebuilds the model at each value and runs the test there.
+
+def hollow_and_printable():
+    assert_solid(pot)
+    assert_bbox(pot, (-r_top, -r_top, 0), (r_top, r_top, h))
+    # A shell holds less material than the cone it sits in.
+    assert_true(pot.volume() < math.pi * r_top * r_top * h, msg="the pot is hollow")
+    assert_printable(pot)
+
+test("a hollow, printable pot on its footprint", hollow_and_printable)
+
+def material():
+    assert_solid(pot)
+    return pot.volume()
+
+# Thicker walls use more plastic; a pot narrower at the top than the bottom is
+# still a solid. The sweep stops at 100: from 110 up (the slider allows 120)
+# the revolve's tessellation drops faces and refuses to return a mesh, which
+# is a kernel defect, not a modelling one.
+test("thicker walls use more material", material, sweep={"wall": [1.2, 2.4, 4.0]}, monotone=monotone.increasing)
+test("a solid at every top radius", material, sweep={"top_radius": [20, 55, 100]})
+</script><script type="text/plain" id="src-bracket"># A mounting bracket: a plate with two bolt holes and a boss.
+# Units are millimetres.
+
+w = param("width", 60, unit="mm", min=30, max=120, doc="Plate width (x)")
+d = param("depth", 30, unit="mm", min=20, max=80, doc="Plate depth (y)")
+t = param("thickness", 6, unit="mm", min=3, max=12)
+bolt = param("bolt_d", 5.5, unit="mm", min=3, max=10, doc="Bolt hole diameter")
+boss_r = param("boss_r", 8, unit="mm", min=4, max=15)
+
+plate = box(w, d, t, center=True, name="plate")
+# The boss starts 1 mm inside the plate: coplanar faces make booleans fail
+# in the current kernel, so overlap instead of touching.
+boss = cylinder(boss_r, 11, at=(0, 0, t - 1), name="boss")
+body = union(plate, boss, name="body")
+
+# Bolt holes, cut all the way through.
+holes = [
+    cylinder(bolt / 2, t + 2, at=(-w / 2 + 8, 0, -1), name="hole_left"),
+    cylinder(bolt / 2, t + 2, at=(w / 2 - 8, 0, -1), name="hole_right"),
+]
+bracket = subtract(body, holes[0], holes[1], name="bracket")
+bracket.material(color="#7fa6d9", roughness=0.5)
+
+export(bracket, "bracket.stl")
+
+# Tests: `cadpole test examples/bracket.star`. A test runs after the model is
+# built and fails by raising; nothing here runs in an ordinary evaluation.
+
+def a_plate_a_boss_and_two_holes():
+    assert_solid(bracket)
+    assert_bbox(bracket, (-w / 2, -d / 2, 0), (w / 2, d / 2, t + 10))
+    # The boss stands 10 mm proud of the plate; both holes go right through it.
+    hole = math.pi * (bolt / 2) * (bolt / 2) * t
+    assert_volume(bracket, w * d * t + math.pi * boss_r * boss_r * 10 - 2 * hole)
+    # Six plate faces, three boss faces, two halves per hole: the names the
+    # features gave them survive the booleans.
+    assert_eq(len(bracket.faces()), 13)
+    bracket.face("plate/top")
+
+test("a plate, a boss and two through holes", a_plate_a_boss_and_two_holes)
+
+def material():
+    assert_solid(bracket)
+    return bracket.volume()
+
+test("bigger bolts leave less bracket", material, sweep={"bolt_d": [3, 5.5, 10]}, monotone=monotone.decreasing)
+</script><script type="text/plain" id="src-knob"># A knurled control knob with a helical grip and a D-shaft bore, built as one
+# loft -- no kernel boolean anywhere, so it is exact and exports STEP.
+#
+# What this example demonstrates:
+#
+#   * `loft` through *rotated* sections: the grip is a star polygon lofted
+#     through sections that each turn a little further, so every ridge is a
+#     helix and the loft's ruled faces are the flanks. Loft pairs segment to
+#     segment in construction order, so the twist per section is kept under
+#     half a ridge pitch, which is what keeps it pairing ridge to ridge (and
+#     keeps the "the loft is probably twisted" warning quiet, because here it
+#     is twisted on purpose);
+#   * the skirt and the cap as the first and last sections of the *same*
+#     loft: a ring of as many segments as the star, turned to match the star
+#     next to it, so each ridge tapers out into the chamfer as its own face.
+#     A separate cone glued on would need the two touching faces to have the
+#     same outline, and a chamfer cone cannot end on a star;
+#   * a hole loop carried through every section -- the D bore is drawn in each
+#     sketch, unrotated -- so the bore is a straight prism through a twisted
+#     solid, exactly;
+#   * a metal under the path tracer: `aluminum`, with the roughness brought
+#     down so the helical flanks catch the environment (`--environment`).
+#
+#   cadpole render examples/knurled_knob.star --backend path --environment --view az=30,el=18 -o /tmp/knob.png
+#   cadpole export examples/knurled_knob.star --format step -o /tmp/knob.step
+
+radius = param("radius", 14, unit="mm", min=6, max=40, doc="Radius over the ridges")
+height = param("height", 16, unit="mm", min=6, max=60, doc="Height of the knurled grip")
+teeth = param("teeth", 30, min=8, max=90, doc="Ridges round the grip")
+depth = param("depth", 0.9, unit="mm", min=0.3, max=3, doc="Depth of the grooves")
+twist = param("twist", 40, unit="deg", min=0, max=120, doc="How far a ridge turns over the grip's height")
+skirt = param("skirt", 2.5, unit="mm", min=0, max=10, doc="Chamfered skirt under the grip")
+cap = param("cap", 3, unit="mm", min=1, max=10, doc="Chamfered cap over the grip")
+shaft = param("shaft", 6, unit="mm", min=2, max=20, doc="Shaft diameter")
+flat = param("flat", 0.5, unit="mm", min=0, max=5, doc="Depth of the D flat on the shaft; 0 for a round bore")
+
+assert_true(depth < radius / 3, msg="grooves that deep leave no core")
+assert_true(shaft / 2.0 + 2.0 < radius - depth, msg="the bore needs 2 mm of wall around it")
+
+
+def polar(r, angle):
+    return (r * math.cos(angle), r * math.sin(angle))
+
+
+def d_bore():
+    """The bore's outline: a circle with a flat, unrotated, as one loop."""
+    r = shaft / 2.0
+    if flat <= 0:
+        return [polar(r, 360.0 * i / 48) for i in range(48)]
+    a0 = math.acos((r - flat) / r)   # half the angle the flat subtends
+    steps = 40
+    return [polar(r, a0 + (360.0 - 2 * a0) * i / steps) for i in range(steps + 1)]
+
+
+def star(r_out, rot):
+    """The grip's outline: `teeth` ridges, alternating `r_out` and the groove."""
+    n = 2 * teeth
+    return [polar(r_out if i % 2 == 0 else r_out - depth, 360.0 * i / n + rot) for i in range(n)]
+
+
+def ring(r, rot):
+    """A circle drawn with the star's segment count, so the loft can pair it."""
+    n = 2 * teeth
+    return [polar(r, 360.0 * i / n + rot) for i in range(n)]
+
+
+def section(z, loop):
+    return sketch(XY.offset(z)).polygon(loop).polygon(d_bore())
+
+
+# Enough grip sections that each turns by less than 0.45 of a ridge pitch, so
+# construction-order pairing is also the nearest pairing.
+pitch = 180.0 / teeth                            # segment angle of the star
+steps = max(1, int(math.ceil(twist / (0.45 * pitch))))
+# One loft through steps + 3 sections of 2 x teeth segments each: its cost
+# grows faster than the face count, about a minute at 90 ridges and 45
+# sections and six at the sliders' far corner (90 ridges, 120 degrees), which
+# is past the evaluation budget. Refuse that up front rather than spend it.
+assert_true(teeth * steps <= 4500,
+            msg="%d ridges twisted %d degrees need %d grip sections of %d segments, too large a loft to build in the evaluation budget: fewer teeth or less twist" % (teeth, twist, steps + 1, 2 * teeth))
+sections = []
+if skirt > 0:
+    sections.append(section(0, ring(radius - skirt * 0.8, 0)))
+for i in range(steps + 1):
+    sections.append(section(skirt + height * i / steps, star(radius, twist * i / steps)))
+top = skirt + height
+sections.append(section(top + cap, ring(radius - cap * 0.8, twist)))
+
+knob = loft(sections, name="knob")
+assert_eq(knob.kind, "brep", msg="a loft never leaves the exact kernel")
+
+lo, hi = knob.bbox()
+assert_true(math.close(hi[2], skirt + height + cap, tol=0.01), msg="the knob is skirt + grip + cap tall")
+assert_true(math.close(lo[2], 0.0, tol=0.01), msg="the knob sits on z = 0")
+assert_true(math.close(hi[0] - lo[0], 2 * radius, tol=0.05), msg="the ridges set the width")
+core = math.pi * (radius - depth) * (radius - depth) * height
+assert_true(knob.volume() > core, msg="the ridges add material to the core")
+
+knob.material(preset="aluminum", roughness=0.22)
+
+export(knob, "knurled_knob.step")
+export(knob, "knurled_knob.stl")
+
+
+# The twist slider's far end builds. The most ridges (teeth=90) at the
+# default twist also builds, in about a minute, half the evaluation budget:
+# too slow to run as a test.
+def the_knob_is_a_solid():
+    assert_solid(knob)
+
+
+test("the most twist", the_knob_is_a_solid, sweep={"twist": [120]})
+</script>
+</section>
+
+<section class="group wrap" id="buildings">
+<p class="eyebrow">Part two</p><h2>Buildings and plans.</h2>
+<p class="lede">The same engine at the scale of a house. Scripts write feet and inches, and optional libraries add rooms and storeys, lots and terrain, the sun, sightlines and a solver that places rooms. Every building, lot and rule below is invented.</p><p class="cmd-note">On GitHub: <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/buildings.md">the guide to buildings and plans</a>.</p>
+</section>
+
+<section class="block wrap" id="plan">
+<div class="head"><p class="eyebrow">Buildings and plans · floor plans</p><h2>A plan from a list of rooms.</h2>
+<p class="lede">An invented two-bedroom cabin, 30 ft by 26 ft. Rooms are rectangles in feet; the walls, door swings, dimension strings, room areas, section and 3D model are all generated from them. The kitchen, the bath and both bedrooms are furnished by the layout solver, which keeps every clearance and the kitchen's work triangle.</p></div>
+<div class="plan">
+<div class="plan-main">
+<button class="dwg-open" type="button" data-draw="draw/plan-s0.svg" data-title="Cabin floor plan" data-note="Vector drawing"><span class="sr">Enlarge the drawing: Cabin floor plan</span><div class="dwg plan-live" data-svg="draw/plan-s0.svg" style="aspect-ratio:242.20/269.90" aria-hidden="true" aria-label="Floor plan of a furnished two-bedroom cabin with room names, areas and dimension strings" data-states="[&quot;draw/plan-s0.svg&quot;,&quot;draw/plan-s1.svg&quot;,&quot;draw/plan-s2.svg&quot;,&quot;draw/plan-s3.svg&quot;,&quot;draw/plan-s4.svg&quot;]"></div></button>
+<div class="slider plan-slider"><label for="plan-w">living_w</label><output for="plan-w">14 ft</output><input id="plan-w" type="range" min="0" max="4" step="1" value="0" data-vals="[&quot;14 ft&quot;,&quot;14 ft 6 in&quot;,&quot;15 ft&quot;,&quot;15 ft 6 in&quot;,&quot;16 ft&quot;]" aria-label="Living room width"></div>
+<p class="cmd-note">One parameter. Move it and the plan is redrawn: the living room, kitchen and deck widen, their areas and the dimension strings follow. Kitchen, bath and bedrooms placed by the layout solver; the living room by hand, held to the same rules by the script's tests.</p>
+</div>
+<div class="plan-side">
+<figure class="plan-3d"><button class="pic" type="button" data-pic="media/plan-cabin-1200.webp" data-sheet3d="models/plan-cabin.cpmesh" data-view="-35,55,24,1" data-title="Cabin" aria-label="Open the cabin in 3D"><img src="media/plan-cabin-720.webp" srcset="media/plan-cabin-720.webp 720w, media/plan-cabin-1200.webp 1200w" sizes="(min-width:1000px) 420px, 100vw" width="720" height="720" alt="The furnished cabin as a 3D model cut at 4 ft like a plan, roof off: kitchen, bath, two bedrooms and the living room" loading="lazy" decoding="async"></button>
+<figcaption><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/plan-cabin.cpmesh" data-pic="media/plan-cabin-1200.webp" data-title="Cabin" data-view="-35,55,24,1">Open in 3D</button><a class="pill act" href="view/plan-cabin/" data-full="plan-cabin" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/cabin_plan.star" type="text/plain">Script</a></div></div></div></figcaption></figure>
+<div class="plan-two">
+<figure><button class="dwg-open" type="button" data-draw="draw/section.svg" data-title="Section through living room and kitchen" data-note="Vector drawing"><span class="sr">Enlarge the drawing: Section through living room and kitchen</span><div class="dwg " data-svg="draw/section.svg" style="aspect-ratio:237.90/133.10" aria-hidden="true" aria-label="A section through the cabin&#x27;s living room and kitchen with ceiling height"></div></button><figcaption>Section</figcaption></figure>
+<figure><button class="dwg-open" type="button" data-draw="draw/elevation.svg" data-title="South elevation" data-note="Vector drawing"><span class="sr">Enlarge the drawing: South elevation</span><div class="dwg " data-svg="draw/elevation.svg" style="aspect-ratio:245.30/134.10" aria-hidden="true" aria-label="The south elevation of the cabin with overall width and ridge height"></div></button><figcaption>South elevation</figcaption></figure>
+</div>
+</div>
+</div>
+<div class="plan-code"><div class="code"><div class="code-head"><span>cabin_plan.star</span><button class="copy" type="button" data-copy="#code-cabin">Copy</button></div><pre id="code-cabin"><span class="ln">w = <span class="k">param</span>(<span class="s">"living_w"</span>, <span class="n">14</span>, unit=<span class="s">"ft"</span>, min=<span class="n">12</span>, max=<span class="n">20</span>)
+</span><span class="ln">x0 = w + P             <span class="c"># east rooms start here</span>
+</span><span class="ln">x1 = x0 + <span class="n">14</span> + <span class="n">8</span> / <span class="n">12</span>
+</span><span class="ln">xb, n = x0 + <span class="n">5.5</span>, <span class="n">13.5</span> + P
+</span><span class="ln">TOP = <span class="n">25.0</span>             <span class="c"># the north wall's inside face</span>
+</span><span class="ln">ROOMS = [
+</span><span class="ln">    <span class="k">rm</span>(<span class="s">"living"</span>, <span class="s">"Living"</span>, (<span class="n">0</span>, w, <span class="n">0</span>, <span class="n">13.5</span>)),
+</span><span class="ln">    <span class="k">rm</span>(<span class="s">"kitchen"</span>, <span class="s">"Kitchen"</span>, (<span class="n">0</span>, w, n, TOP), furnish = <span class="s">"kitchen_L"</span>),
+</span><span class="ln">    <span class="k">rm</span>(<span class="s">"entry"</span>, <span class="s">"Entry"</span>, (x0, x1, <span class="n">9.5</span> + P, <span class="n">13.5</span>)),
+</span><span class="ln">    <span class="k">rm</span>(<span class="s">"bed1"</span>, <span class="s">"Bedroom 1"</span>, (x0, x1, <span class="n">0</span>, <span class="n">9.5</span>), furnish = <span class="s">"full"</span>),
+</span><span class="ln">    <span class="k">rm</span>(<span class="s">"bath"</span>, <span class="s">"Bath"</span>, (x0, xb, n, TOP), furnish = <span class="s">"tub"</span>),
+</span><span class="ln">    <span class="k">rm</span>(<span class="s">"bed2"</span>, <span class="s">"Bedroom 2"</span>, (xb + P, x1, n, TOP), furnish = <span class="s">"full"</span>),
+</span><span class="ln">]
+</span></pre></div>
+<div class="acts"><div class="acts-g" role="group" aria-label="Download"><p class="acts-h" aria-hidden="true">Download</p><div class="acts-p three short"><a class="pill" href="draw/plan.raw.svg" download><span class="pill-t">SVG</span><span class="pill-s">45 KB</span></a><a class="pill" href="draw/plan.pdf" download><span class="pill-t">PDF</span><span class="pill-s">6.9 KB</span></a><a class="pill" href="draw/plan.dxf" download><span class="pill-t">DXF</span><span class="pill-s">90 KB</span></a></div></div></div></div>
+</section>
+
+<section class="block wrap" id="site">
+<div class="head"><p class="eyebrow">Buildings and plans · sites and terrain</p><h2>A lot, its ground and its rules.</h2>
+<p class="lede">An invented 40 ft by 80 ft parcel on a 25 % slope, modelled from the shapes site data comes in: corner coordinates, a surveyed profile and ground samples. The height rule is a body you can see and test against.</p></div>
+<figure class="vfig bld"><div class="bld-pic" style="aspect-ratio:1600/1200"><button class="pic" type="button" data-pic="media/lot-1200.webp" data-sheet3d="models/lot.cpmesh" data-view="-115,24,24,1" data-title="Hillside lot" aria-label="Open Hillside lot in 3D"><img src="media/lot-720.webp" srcset="media/lot-720.webp 720w, media/lot-1200.webp 1200w" sizes="(min-width:1000px) 640px, 100vw" width="1600" height="1200" alt="A house stepping down a sloping lot, seen from downhill: its three levels inside a translucent blue height envelope, a garden studio on its own pad and two grey neighbours" loading="lazy" decoding="async"></button></div>
+<figcaption><h3>The envelope is geometry</h3><p>The translucent blue volume is the height rule: 30 ft above the ground at every point (its 40 ft cap never bites on this lot). The house steps down the slope in three levels, the walk-out floor a level below the sidewalk on a filled terrace; a test fails when any of it leaves the envelope, and lowering the upper setback paints the part that does in red. The ground is drawn in 5 ft bands, so each edge is a contour.</p><table class="facts-t"><tbody><tr><th scope="row">Parcel</th><td>40 ft × 80 ft</td></tr><tr><th scope="row">Slope</th><td>25 %</td></tr><tr><th scope="row">Height limit above grade</th><td>30 ft</td></tr><tr><th scope="row">Height cap</th><td>40 ft</td></tr><tr><th scope="row">Upper floor setback</th><td>15 ft</td></tr><tr><th scope="row">Tests in the script</th><td>12 pass</td></tr></tbody></table>
+<div class="cmd multi"><code>cadpole test examples/hillside_lot.star</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/lot.cpmesh" data-pic="media/lot-1200.webp" data-title="Hillside lot" data-view="-115,24,24,1">Open in 3D</button><a class="pill act" href="view/lot/" data-full="lot" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/hillside_lot.star" type="text/plain">Script</a></div></div></div></figcaption></figure>
+</section>
+<section class="block wrap" id="sun">
+<div class="head"><p class="eyebrow">Buildings and plans · sun and shadow</p><h2>Where the shadow falls, as a number.</h2>
+<p class="lede"><code>sun()</code> places the sun for a latitude, a date and a time. <code>shadow_study()</code> returns the shadow a house throws on a neighbour's light court as an exact area, so a test can hold it at zero.</p></div>
+<figure class="vfig bld"><div class="bld-pic" style="aspect-ratio:1968/1557"><button class="pic" type="button" data-pic="media/shadow-1200.webp" data-sheet3d="models/shadow.cpmesh" data-view="20,55,24,1" data-title="Shadow study" aria-label="Open Shadow study in 3D"><img src="media/shadow-720.webp" srcset="media/shadow-720.webp 720w, media/shadow-1200.webp 1200w" sizes="(min-width:1000px) 640px, 100vw" width="1968" height="1557" alt="Nine pictures of a proposed house on a lot beside its neighbour&#x27;s light court, seen from above, its shadow at three dates and three times of day" loading="lazy" decoding="async"></button></div>
+<figcaption><h3>Nine tiles from one command</h3><p>Three dates by three times of day: the June solstice, the equinox and the December solstice at 9, 12 and 3, looking down the slot between the house and the neighbour's light court. In 3D the court's footprint for the document's own date and hour is drawn in teal, and the line of sight from the sidewalk to the studio's roof lantern turns red where the house cuts it; widen the passage to 12 ft and it clears.</p><table class="facts-t"><tbody><tr><th scope="row">Lot</th><td>50 ft × 100 ft</td></tr><tr><th scope="row">Proposed house</th><td>30 × 40 × 30 ft</td></tr><tr><th scope="row">Shadow on the court, winter noon</th><td>0 sq ft</td></tr><tr><th scope="row">Lantern from the sidewalk, 8 ft passage</th><td>hidden</td></tr><tr><th scope="row">Lantern from the sidewalk, 12 ft passage</th><td>seen</td></tr><tr><th scope="row">Tests in the script</th><td>8 pass</td></tr></tbody></table>
+<div class="cmd multi"><code>cadpole render examples/shadow_study.star --shadow-study \
+  --sun 38,-140,2026-06-21,12:00,-9 -o study.png</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/shadow.cpmesh" data-pic="media/shadow-1200.webp" data-title="Shadow study" data-view="20,55,24,1">Open in 3D</button><a class="pill act" href="view/shadow/" data-full="shadow" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/shadow_study.star" type="text/plain">Script</a></div></div></div></figcaption></figure>
+</section>
+<section class="block wrap" id="layout">
+<div class="head"><p class="eyebrow">Buildings and plans · layout optimisation</p><h2>State the rules. The solver places the rooms.</h2>
+<p class="lede"><code>opt</code> is a linear and mixed-integer solver in the script language. This script gives four rooms minimum sizes and a limit on how long and narrow two of them may be, forbids overlaps, asks the kitchen to share 4 ft of wall with the living room and caps the floor area. The solver picks every size and position.</p></div>
+<figure class="vfig bld"><div class="bld-pic" style="aspect-ratio:1200/1200"><button class="pic" type="button" data-pic="media/layout-1200.webp" data-sheet3d="models/layout.cpmesh" data-view="-22,58,24,1" data-title="Rooms placed by the solver" aria-label="Open Rooms placed by the solver in 3D"><img src="media/layout-720.webp" srcset="media/layout-720.webp 720w, media/layout-1200.webp 1200w" sizes="(min-width:1000px) 640px, 100vw" width="1200" height="1200" alt="Four rooms the solver placed, seen from above at an angle: coloured floors labelled with their sizes, low walls with a 4 ft opening between kitchen and living room, and the outline of the second floor the cap counts" loading="lazy" decoding="async"></button></div>
+<figcaption><h3>Proven optimal, and it says which rule decided</h3><p>The answer names the rules that bind and what each costs. Here the floor-area cap, which counts two floors, sets the plate's depth; the outline above the rooms is that second floor. Whole floor plans fitted to a template over three storeys are the same kind of problem and run as background jobs.</p><table class="facts-t"><tbody><tr><th scope="row"><i class="sw" style="background:#c9b48f" aria-hidden="true"></i>Living room</th><td>24 ft × 17 ft 1½ in</td></tr><tr><th scope="row"><i class="sw" style="background:#9fb7a0" aria-hidden="true"></i>Kitchen</th><td>9 ft × 11 ft</td></tr><tr><th scope="row"><i class="sw" style="background:#a9b9cf" aria-hidden="true"></i>Bedroom</th><td>10 ft × 11 ft</td></tr><tr><th scope="row"><i class="sw" style="background:#b9c9cc" aria-hidden="true"></i>Bath</th><td>5 ft × 11 ft</td></tr><tr><th scope="row">Floor plate</th><td>24 ft × 28 ft 1½ in</td></tr><tr><th scope="row">Floor-area cap, two floors</th><td>1,350 sq ft, 0 left</td></tr><tr><th scope="row">The problem</th><td>45 variables, 58 rules</td></tr><tr><th scope="row">Result</th><td>optimal</td></tr></tbody></table><div class="code"><div class="code-head"><span>room_layout_opt.star</span></div><pre tabindex="0" aria-label="room_layout_opt.star">p = opt.<span class="k">problem</span>(name=<span class="s">"rooms"</span>)
+depth = p.<span class="k">var</span>(<span class="s">"plate depth"</span>, min=<span class="n">20</span>, max=MAX_DEPTH)
+p.<span class="k">constrain</span>(FLOORS * WIDTH * depth, max=CAP, name=<span class="s">"floor-area cap"</span>)
+<span class="k">apart</span>(<span class="s">"living"</span>, <span class="s">"kitchen"</span>)
+<span class="k">shares_wall</span>(<span class="s">"kitchen"</span>, <span class="s">"living"</span>, DOOR)
+sol = p.<span class="k">solve</span>()</pre></div>
+<div class="cmd multi"><code>cadpole test examples/room_layout_opt.star</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/layout.cpmesh" data-pic="media/layout-1200.webp" data-title="Rooms placed by the solver" data-view="-22,58,24,1">Open in 3D</button><a class="pill act" href="view/layout/" data-full="layout" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/room_layout_opt.star" type="text/plain">Script</a></div></div></div></figcaption></figure>
+</section>
+
+<section class="block wrap" id="set">
+<div class="head"><p class="eyebrow">Buildings and plans · drawing sets</p><h2>A drawing set from one export.</h2>
+<p class="lede">Sheets are part of the script: a cover with a table of the house at three setbacks, a site plan with 1 ft contours, floor plans with their rooms, stair, glazing and door swings dimensioned in feet and inches, a section and an elevation. One <code>export()</code> writes them as one PDF.</p></div>
+<figure class="vfig vsheet"><button class="dwg-open" type="button" data-draw="draw/set-a3.svg" data-title="Section and elevation" data-note="Vector drawing · 67 KB as SVG"><span class="sr">Enlarge the drawing: Section and elevation</span><div class="dwg " data-svg="draw/set-a3.svg" style="aspect-ratio:580.25/581.80" aria-hidden="true" aria-label="A drawing sheet with a section of a small house down a slope and its street elevation"></div></button>
+<figcaption><h3>Sheet A3.0, section and elevation</h3><p>The section runs down the slope through both floors and the roof, with the earth hatched and the 30 ft height line. The street elevation has its hidden lines removed and the buried lower level masked by the grade. Every dimension and level is the model's own length, written in feet and inches.</p><table class="facts-t"><tbody><tr><th scope="row">Sheets</th><td>4</td></tr><tr><th scope="row">Sheet size</th><td>ARCH D, 36 × 24 in</td></tr><tr><th scope="row">Scale of this sheet</th><td>3/16 in = 1 ft</td></tr><tr><th scope="row">Tests in the script</th><td>5 pass</td></tr></tbody></table><div class="cmd multi"><code>cadpole export examples/house_set.star --run-exports --out-dir .</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div>
+<div class="acts"><div class="acts-g" role="group" aria-label="Download"><p class="acts-h" aria-hidden="true">Download</p><div class="acts-p short"><a class="pill" href="draw/set-a3.raw.svg" download><span class="pill-t">Sheet SVG</span><span class="pill-s">67 KB</span></a><a class="pill" href="draw/house_set.pdf" download><span class="pill-t">Set PDF</span><span class="pill-s">31 KB</span></a></div></div><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p"><a class="pill act" href="scripts/house_set.star" type="text/plain">Script</a></div></div></div></figcaption></figure>
+</section>
+
+<section class="group wrap" id="shared">
+<p class="eyebrow">Part three</p><h2>What both share.</h2>
+<p class="lede">One engine underneath. The modelling operations, the drawings, the exports and the tools below work the same for a bracket and for a house.</p>
+</section>
+
+<section class="block wrap" id="can">
+<div class="head"><p class="eyebrow">Shared by both · modelling operations</p><h2>Small scripts, real geometry.</h2>
+<p class="lede">The operations every model is built from, a bracket and a house alike. Each picture was made by a few lines of script: open one to read them, turn the model round or look over the drawing.</p></div>
+<ul class="tiles"><li><button class="tile" type="button" id="f-params" data-card="params" data-kind="model" data-pic="media/feat-params-1200.webp" data-sheet3d="models/feat-params.cpmesh" data-view="-32,28,24,1" data-title="Parameters" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-params-360.webp" srcset="media/feat-params-360.webp 360w, media/feat-params-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal plate with rounded corners and three evenly spaced holes." loading="lazy" decoding="async"></span><span class="tile-name">Parameters</span></button><template data-card-info="params"><p class="card-blurb">Named numbers with limits drive the model; change one and the part rebuilds.</p><div class="code"><div class="code-head"><span>params.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="params.star">w = <span class="k">param</span>(<span class="s">"width"</span>, <span class="n">40</span>, unit=<span class="s">"mm"</span>, min=<span class="n">20</span>, max=<span class="n">80</span>)
+holes = <span class="k">param</span>(<span class="s">"holes"</span>, <span class="n">3</span>, min=<span class="n">1</span>, max=<span class="n">6</span>)
+plate = <span class="k">sketch</span>(XY).<span class="k">rounded_rect</span>(w, <span class="n">20</span>, <span class="n">4</span>)
+<span class="k">for</span> i <span class="k">in</span> <span class="k">range</span>(holes):
+    x = (i + <span class="n">0.5</span>) * w / holes - w / <span class="n">2</span>
+    plate = plate.<span class="k">circle</span>(<span class="n">3</span>, center=(x, <span class="n">0</span>))</pre></div></template></li><li><button class="tile" type="button" id="f-extrude" data-card="extrude" data-kind="model" data-pic="media/feat-extrude-1200.webp" data-sheet3d="models/feat-extrude.cpmesh" data-view="-32,28,24,1" data-title="Extrude" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-extrude-360.webp" srcset="media/feat-extrude-360.webp 360w, media/feat-extrude-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal rounded block with a round hole through its top." loading="lazy" decoding="async"></span><span class="tile-name">Extrude</span></button><template data-card-info="extrude"><p class="card-blurb">A flat sketch, holes included, pushed up into a solid.</p><div class="code"><div class="code-head"><span>extrude.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="extrude.star">outline = <span class="k">sketch</span>(XY).<span class="k">rounded_rect</span>(<span class="n">40</span>, <span class="n">24</span>, <span class="n">5</span>)
+outline = outline.<span class="k">circle</span>(<span class="n">5</span>)
+part = <span class="k">extrude</span>(outline, <span class="n">10</span>, name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-revolve" data-card="revolve" data-kind="model" data-pic="media/feat-revolve-1200.webp" data-sheet3d="models/feat-revolve.cpmesh" data-view="40,30,24,1" data-title="Revolve" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-revolve-360.webp" srcset="media/feat-revolve-360.webp 360w, media/feat-revolve-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal flanged bushing with a quarter cut away to show its profile." loading="lazy" decoding="async"></span><span class="tile-name">Revolve</span></button><template data-card-info="revolve"><p class="card-blurb">A profile turned about an axis, here three quarters of the way round.</p><div class="code"><div class="code-head"><span>revolve.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="revolve.star">profile = <span class="k">sketch</span>(XZ).<span class="k">polygon</span>(
+    [(<span class="n">4</span>, <span class="n">0</span>), (<span class="n">18</span>, <span class="n">0</span>), (<span class="n">18</span>, <span class="n">4</span>),
+     (<span class="n">9</span>, <span class="n">8</span>), (<span class="n">9</span>, <span class="n">16</span>), (<span class="n">4</span>, <span class="n">16</span>)])
+part = <span class="k">revolve</span>(profile, angle=<span class="n">270</span>, name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-sweep" data-card="sweep" data-kind="model" data-pic="media/feat-sweep-1200.webp" data-sheet3d="models/feat-sweep.cpmesh" data-view="30,20,24,1" data-title="Sweep" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-sweep-360.webp" srcset="media/feat-sweep-360.webp 360w, media/feat-sweep-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal tube with a smooth right-angle bend, its open end visible." loading="lazy" decoding="async"></span><span class="tile-name">Sweep</span></button><template data-card-info="sweep"><p class="card-blurb">A section carried along a path of lines and arcs.</p><div class="code"><div class="code-head"><span>sweep.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="sweep.star">route = <span class="k">curve</span>((<span class="n">0</span>, <span class="n">0</span>, <span class="n">0</span>)).<span class="k">line</span>((<span class="n">0</span>, <span class="n">0</span>, <span class="n">20</span>))
+route = route.<span class="k">arc</span>((<span class="n">20</span>, <span class="n">0</span>, <span class="n">40</span>), via=mid)
+route = route.<span class="k">line</span>((<span class="n">40</span>, <span class="n">0</span>, <span class="n">40</span>))
+ring = <span class="k">sketch</span>(XY).<span class="k">circle</span>(<span class="n">6</span>).<span class="k">circle</span>(<span class="n">4.5</span>)
+part = <span class="k">sweep_along</span>(ring, route, name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-loft" data-card="loft" data-kind="model" data-pic="media/feat-loft-1200.webp" data-sheet3d="models/feat-loft.cpmesh" data-view="-32,22,24,1" data-title="Loft" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-loft-360.webp" srcset="media/feat-loft-360.webp 360w, media/feat-loft-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal vase-like solid that narrows in the middle and widens again." loading="lazy" decoding="async"></span><span class="tile-name">Loft</span></button><template data-card-info="loft"><p class="card-blurb">One solid stretched through several cross-sections.</p><div class="code"><div class="code-head"><span>loft.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="loft.star">base = <span class="k">sketch</span>(XY).<span class="k">rounded_rect</span>(<span class="n">36</span>, <span class="n">36</span>, <span class="n">6</span>)
+neck = <span class="k">sketch</span>(XY.<span class="k">offset</span>(<span class="n">14</span>)).<span class="k">rounded_rect</span>(<span class="n">20</span>, <span class="n">20</span>, <span class="n">6</span>)
+top = <span class="k">sketch</span>(XY.<span class="k">offset</span>(<span class="n">28</span>)).<span class="k">rounded_rect</span>(<span class="n">30</span>, <span class="n">30</span>, <span class="n">10</span>)
+part = <span class="k">loft</span>([base, neck, top], name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-boolean" data-card="boolean" data-kind="model" data-pic="media/feat-boolean-1200.webp" data-sheet3d="models/feat-boolean.cpmesh" data-view="-8,42,24,1" data-title="Booleans" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-boolean-360.webp" srcset="media/feat-boolean-360.webp 360w, media/feat-boolean-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A block and cylinder joined, the block with the cylinder cut out, and their overlap in amber." loading="lazy" decoding="async"></span><span class="tile-name">Booleans</span></button><template data-card-info="boolean"><p class="card-blurb">Join two solids, cut one from the other, or keep only the overlap.</p><div class="code"><div class="code-head"><span>boolean.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="boolean.star">joined = <span class="k">union</span>(a1, b1, name=<span class="s">"joined"</span>)
+cut = <span class="k">subtract</span>(a2, b2, name=<span class="s">"cut"</span>)
+overlap = <span class="k">intersect</span>(a3, b3, name=<span class="s">"overlap"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-thread" data-card="thread" data-kind="model" data-pic="media/feat-thread-1200.webp" data-sheet3d="models/feat-thread.cpmesh" data-view="-30,20,24,1" data-title="Threads" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-thread-360.webp" srcset="media/feat-thread-360.webp 360w, media/feat-thread-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal hex bolt with a visible thread and an amber nut part way up it." loading="lazy" decoding="async"></span><span class="tile-name">Threads</span></button><template data-card-info="thread"><p class="card-blurb">Bolts and nuts from the standard library carry real helical threads.</p><div class="code"><div class="code-head"><span>thread.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="thread.star"><span class="k">load</span>(<span class="s">"@cadpole/mechanical.star"</span>, <span class="s">"bolt"</span>, <span class="s">"nut"</span>)
+screw = <span class="k">bolt</span>(<span class="n">12</span>, <span class="n">2</span>, <span class="n">26</span>, <span class="n">19</span>, <span class="n">7</span>, name=<span class="s">"screw"</span>)
+ring = <span class="k">nut</span>(<span class="n">12</span>, <span class="n">2</span>, <span class="n">19</span>, <span class="n">8</span>, start=(<span class="n">0</span>, <span class="n">0</span>, <span class="n">9</span>),
+           name=<span class="s">"ring"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-chamfer" data-card="chamfer" data-kind="model" data-pic="media/feat-chamfer-1200.webp" data-sheet3d="models/feat-chamfer.cpmesh" data-view="-32,32,24,1" data-title="Chamfer" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-chamfer-360.webp" srcset="media/feat-chamfer-360.webp 360w, media/feat-chamfer-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal block whose top edges are bevelled." loading="lazy" decoding="async"></span><span class="tile-name">Chamfer</span></button><template data-card-info="chamfer"><p class="card-blurb">Pick edges by the face they belong to and cut them back to a flat.</p><div class="code"><div class="code-head"><span>chamfer.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="chamfer.star">top = block.<span class="k">faces</span>(normal=(<span class="n">0</span>, <span class="n">0</span>, <span class="n">1</span>)).<span class="k">one</span>()
+part = <span class="k">chamfer</span>(block, <span class="n">3</span>, edges=top.edges,
+               name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-fillet" data-card="fillet" data-kind="model" data-pic="media/feat-fillet-1200.webp" data-sheet3d="models/feat-fillet.cpmesh" data-view="-32,32,24,1" data-title="Fillet" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-fillet-360.webp" srcset="media/feat-fillet-360.webp 360w, media/feat-fillet-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal block with rounded corners and a softly rounded top edge." loading="lazy" decoding="async"></span><span class="tile-name">Fillet</span></button><template data-card-info="fillet"><p class="card-blurb">Round the edges you select, each set with its own radius.</p><div class="code"><div class="code-head"><span>fillet.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="fillet.star">sides = block.<span class="k">edges</span>(direction=(<span class="n">0</span>, <span class="n">0</span>, <span class="n">1</span>))
+part = <span class="k">fillet</span>(block, <span class="n">6</span>, edges=sides, name=<span class="s">"part"</span>)
+top = part.<span class="k">faces</span>(normal=(<span class="n">0</span>, <span class="n">0</span>, <span class="n">1</span>)).<span class="k">one</span>()
+part = <span class="k">fillet</span>(part, <span class="n">2</span>, edges=top.edges, name=<span class="s">"soft"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-mirror" data-card="mirror" data-kind="model" data-pic="media/feat-mirror-1200.webp" data-sheet3d="models/feat-mirror.cpmesh" data-view="-20,40,24,1" data-title="Mirror" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-mirror-360.webp" srcset="media/feat-mirror-360.webp 360w, media/feat-mirror-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal bracket half with a hole and its amber mirror image beside it." loading="lazy" decoding="async"></span><span class="tile-name">Mirror</span></button><template data-card-info="mirror"><p class="card-blurb">Model one half and reflect it across a plane.</p><div class="code"><div class="code-head"><span>mirror.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="mirror.star">both = <span class="k">mirror</span>(half, plane=YZ, merge=<span class="k">False</span>)
+twin = both[<span class="n">1</span>]</pre></div></template></li><li><button class="tile" type="button" id="f-linear-pattern" data-card="linear-pattern" data-kind="model" data-pic="media/feat-linear-pattern-1200.webp" data-sheet3d="models/feat-linear-pattern.cpmesh" data-view="-28,30,24,1" data-title="Linear pattern" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-linear-pattern-360.webp" srcset="media/feat-linear-pattern-360.webp 360w, media/feat-linear-pattern-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="Five amber pegs in a row on a teal strip." loading="lazy" decoding="async"></span><span class="tile-name">Linear pattern</span></button><template data-card-info="linear-pattern"><p class="card-blurb">Copies of a body stepped along a direction.</p><div class="code"><div class="code-head"><span>linear-pattern.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="linear-pattern.star">peg = <span class="k">cylinder</span>(<span class="n">4</span>, <span class="n">10</span>, at=(-<span class="n">24</span>, <span class="n">0</span>, <span class="n">4</span>), name=<span class="s">"peg"</span>)
+pegs = <span class="k">pattern_linear</span>(peg, <span class="n">5</span>, (<span class="n">12</span>, <span class="n">0</span>, <span class="n">0</span>),
+                      name=<span class="s">"pegs"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-circular-pattern" data-card="circular-pattern" data-kind="model" data-pic="media/feat-circular-pattern-1200.webp" data-sheet3d="models/feat-circular-pattern.cpmesh" data-view="-30,40,24,1" data-title="Circular pattern" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-circular-pattern-360.webp" srcset="media/feat-circular-pattern-360.webp 360w, media/feat-circular-pattern-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal disc with eight holes in a circle." loading="lazy" decoding="async"></span><span class="tile-name">Circular pattern</span></button><template data-card-info="circular-pattern"><p class="card-blurb">Copies spaced around an axis, used here to cut a ring of holes.</p><div class="code"><div class="code-head"><span>circular-pattern.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="circular-pattern.star">holes = <span class="k">pattern_circular</span>(hole, <span class="n">8</span>, axis=(<span class="n">0</span>, <span class="n">0</span>, <span class="n">1</span>))
+part = <span class="k">subtract</span>(disc, holes, name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-constraints" data-card="constraints" data-kind="model" data-pic="media/feat-constraints-1200.webp" data-sheet3d="models/feat-constraints.cpmesh" data-view="-30,45,24,1" data-title="Sketch constraints" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-constraints-360.webp" srcset="media/feat-constraints-360.webp 360w, media/feat-constraints-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal L-shaped block with a small hole near one end." loading="lazy" decoding="async"></span><span class="tile-name">Sketch constraints</span></button><template data-card-info="constraints"><p class="card-blurb">Describe a profile by its relationships and sizes; the solver finds the shape.</p><div class="code"><div class="code-head"><span>constraints.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="constraints.star">s.<span class="k">constrain</span>(<span class="s">"horizontal"</span>, foot)
+s.<span class="k">constrain</span>(<span class="s">"vertical"</span>, back)
+s.<span class="k">constrain</span>(<span class="s">"equal"</span>, toe, cap)
+s.<span class="k">constrain</span>(<span class="s">"distance"</span>, a, b, <span class="n">40</span>, name=<span class="s">"length"</span>)
+s.<span class="k">constrain</span>(<span class="s">"distance"</span>, b, c, <span class="n">10</span>, name=<span class="s">"thick"</span>)
+s.<span class="k">constrain</span>(<span class="s">"distance"</span>, <span class="s">"hc"</span>, toe, <span class="n">8</span>, name=<span class="s">"inset"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-offset" data-card="offset" data-kind="model" data-pic="media/feat-offset-1200.webp" data-sheet3d="models/feat-offset.cpmesh" data-view="-30,40,24,1" data-title="Offset" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-offset-360.webp" srcset="media/feat-offset-360.webp 360w, media/feat-offset-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal L-shaped floor with an amber wall of even thickness around it." loading="lazy" decoding="async"></span><span class="tile-name">Offset</span></button><template data-card-info="offset"><p class="card-blurb">Grow or shrink an outline by a set distance to make walls and rims.</p><div class="code"><div class="code-head"><span>offset.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="offset.star">outer = shape.<span class="k">offset</span>(<span class="n">3</span>)
+wall = outer.<span class="k">subtract</span>(shape)
+rim = <span class="k">extrude</span>(wall, <span class="n">10</span>, name=<span class="s">"rim"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-text" data-card="text" data-kind="model" data-pic="media/feat-text-1200.webp" data-sheet3d="models/feat-text.cpmesh" data-view="-18,42,24,1" data-title="Text" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-text-360.webp" srcset="media/feat-text-360.webp 360w, media/feat-text-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal nameplate with the word CADPOLE in raised amber letters." loading="lazy" decoding="async"></span><span class="tile-name">Text</span></button><template data-card-info="text"><p class="card-blurb">Lettering becomes ordinary geometry you can raise, cut or engrave.</p><div class="code"><div class="code-head"><span>text.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="text.star">label = <span class="k">text</span>(<span class="s">"CADPOLE"</span>, size=<span class="n">9</span>, weight=<span class="n">700</span>,
+             align=<span class="s">"center"</span>, baseline=<span class="s">"middle"</span>,
+             plane=XY.<span class="k">offset</span>(<span class="n">4</span>))
+letters = <span class="k">extrude</span>(label, <span class="n">1.2</span>, name=<span class="s">"letters"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-emboss" data-card="emboss" data-kind="model" data-pic="media/feat-emboss-1200.webp" data-sheet3d="models/feat-emboss.cpmesh" data-view="-4,16,24,1" data-title="Emboss" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-emboss-360.webp" srcset="media/feat-emboss-360.webp 360w, media/feat-emboss-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal cylinder with the number 42 raised on its curved side." loading="lazy" decoding="async"></span><span class="tile-name">Emboss</span></button><template data-card-info="emboss"><p class="card-blurb">Artwork wrapped around a curved face and raised from it.</p><div class="code"><div class="code-head"><span>emboss.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="emboss.star">art = <span class="k">text</span>(<span class="s">"42"</span>, size=<span class="n">14</span>, weight=<span class="n">800</span>,
+           align=<span class="s">"center"</span>, baseline=<span class="s">"middle"</span>)
+part = <span class="k">emboss</span>(cup, side, art, <span class="n">1.2</span>, wrap=wrap.unroll,
+              origin=(<span class="n">0</span>, -<span class="n">16</span>, <span class="n">15</span>), up=(<span class="n">0</span>, <span class="n">0</span>, <span class="n">1</span>))</pre></div></template></li><li><button class="tile" type="button" id="f-smooth-blend" data-card="smooth-blend" data-kind="model" data-pic="media/feat-smooth-blend-1200.webp" data-sheet3d="models/feat-smooth-blend.cpmesh" data-view="-35,28,24,1" data-title="Smooth blend" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-smooth-blend-360.webp" srcset="media/feat-smooth-blend-360.webp 360w, media/feat-smooth-blend-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal post flowing smoothly into a rounded base." loading="lazy" decoding="async"></span><span class="tile-name">Smooth blend</span></button><template data-card-info="smooth-blend"><p class="card-blurb">Shapes described as distance fields merge with a soft radius.</p><div class="code"><div class="code-head"><span>smooth-blend.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="smooth-blend.star">f = field.<span class="k">box</span>(<span class="n">34</span>, <span class="n">22</span>, <span class="n">10</span>, round=<span class="n">2</span>)
+post = field.<span class="k">cylinder</span>(<span class="n">7</span>, <span class="n">26</span>, round=<span class="n">2</span>)
+post = post.<span class="k">translate</span>((<span class="n">6</span>, <span class="n">0</span>, <span class="n">10</span>))
+f = f.<span class="k">smooth_union</span>(post, <span class="n">5</span>)
+part = <span class="k">mesh</span>(f, resolution=<span class="n">0.4</span>, simplify=<span class="k">False</span>,
+            name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-twist" data-card="twist" data-kind="model" data-pic="media/feat-twist-1200.webp" data-sheet3d="models/feat-twist.cpmesh" data-view="-32,20,24,1" data-title="Twist" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-twist-360.webp" srcset="media/feat-twist-360.webp 360w, media/feat-twist-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal rounded bar twisted along its height." loading="lazy" decoding="async"></span><span class="tile-name">Twist</span></button><template data-card-info="twist"><p class="card-blurb">A field turned steadily about its axis, then turned into a mesh.</p><div class="code"><div class="code-head"><span>twist.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="twist.star">f = field.<span class="k">box</span>(<span class="n">20</span>, <span class="n">20</span>, <span class="n">44</span>, round=<span class="n">3</span>)
+f = f.<span class="k">twist</span>(<span class="n">2.0</span>)
+part = <span class="k">mesh</span>(f, resolution=<span class="n">0.5</span>, simplify=<span class="k">False</span>,
+            name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-section" data-card="section" data-kind="model" data-pic="media/feat-section-1200.webp" data-sheet3d="models/feat-section.cpmesh" data-view="-25,22,24,1" data-title="Section" aria-haspopup="dialog"><span class="tile-pic"><img src="media/feat-section-360.webp" srcset="media/feat-section-360.webp 360w, media/feat-section-720.webp 720w" sizes="(min-width:1400px) 200px, (min-width:700px) 22vw, 46vw" width="360" height="360" alt="A teal spool cut in half, showing its bore and flanges." loading="lazy" decoding="async"></span><span class="tile-name">Section</span></button><template data-card-info="section"><p class="card-blurb">Cut a part on a plane to see inside it.</p><div class="code"><div class="code-head"><span>section.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="section.star">cut = <span class="k">plane</span>(origin=(<span class="n">0</span>, <span class="n">0</span>, <span class="n">0</span>), normal=(<span class="n">0</span>, -<span class="n">1</span>, <span class="n">0</span>))
+part = <span class="k">split</span>(body, cut, keep=<span class="s">"below"</span>, name=<span class="s">"part"</span>)</pre></div></template></li><li><button class="tile" type="button" id="f-drawing" data-card="drawing" data-kind="drawing" data-draw="draw/sheet-flanged-boss.svg" data-title="Drawing" data-note="Vector drawing · 13 KB as SVG" aria-haspopup="dialog"><span class="tile-pic"><span class="dwg tile-dwg" data-svg="draw/sheet-flanged-boss.svg" data-crop="0.16,0.19,0.75,0.8" style="aspect-ratio:175.23/128.10" aria-hidden="true" data-label="A line drawing with top, front, right and pictorial views of a flanged boss, dimensioned in inches."></span></span><span class="tile-name">Drawing</span></button><template data-card-info="drawing"><p class="card-blurb">Dimensioned three-view sheets, written out as PDF and DXF.</p><div class="code"><div class="code-head"><span>drawing.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="drawing.star">sheet = <span class="k">drawing</span>(part, view=<span class="s">"three-view"</span>, sheet=<span class="s">"A4"</span>,
+                units=<span class="s">"in"</span>, title=<span class="s">"Flanged boss"</span>)
+<span class="k">export_pdf</span>(sheet, <span class="s">"flanged_boss.pdf"</span>)
+<span class="k">export_dxf</span>(sheet, <span class="s">"flanged_boss.dxf"</span>)</pre></div><div class="acts"><div class="acts-g" role="group" aria-label="Download"><p class="acts-h" aria-hidden="true">Download</p><div class="acts-p three short"><a class="pill" href="draw/sheet-flanged-boss.raw.svg" download><span class="pill-t">SVG</span><span class="pill-s">13 KB</span></a><a class="pill" href="draw/sheet-flanged-boss.pdf" download><span class="pill-t">PDF</span><span class="pill-s">10 KB</span></a><a class="pill" href="draw/sheet-flanged-boss.dxf" download><span class="pill-t">DXF</span><span class="pill-s">48 KB</span></a></div></div><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p"><button class="pill act" type="button" data-sheet3d="models/feat-drawing.cpmesh" data-title="Drawing" data-view="-32,28,24,1">View the model in 3D</button></div></div></div></template></li><li><button class="tile" type="button" id="f-hidden-line" data-card="hidden-line" data-kind="drawing" data-draw="draw/pair-pillow-block.svg" data-title="Hidden-line view" data-note="Vector drawing · 33 KB as SVG" aria-haspopup="dialog"><span class="tile-pic"><span class="dwg tile-dwg" data-svg="draw/pair-pillow-block.svg" style="aspect-ratio:1500.00/1500.00" aria-hidden="true" data-label="A line drawing of a pillow block seen from above and to one side, hidden edges dashed."></span></span><span class="tile-name">Hidden-line view</span></button><template data-card-info="hidden-line"><p class="card-blurb">A line drawing from any camera angle, with the edges behind the part dashed.</p><div class="code"><div class="code-head"><span>feat-hidden-line.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="feat-hidden-line.star">view = page.<span class="k">axon_view</span>(block, az=-<span class="n">35</span>, el=<span class="n">28</span>,
+                      hidden=<span class="s">"dashed"</span>)</pre></div><div class="acts"><div class="acts-g" role="group" aria-label="Download"><p class="acts-h" aria-hidden="true">Download</p><div class="acts-p short"><a class="pill" href="draw/pair-pillow-block.raw.svg" download><span class="pill-t">SVG</span><span class="pill-s">33 KB</span></a></div></div></div></template></li><li><button class="tile" type="button" id="f-sheet" data-card="sheet" data-kind="drawing" data-draw="draw/sheet-pillow-block.svg" data-title="Dimensioned sheet" data-note="Vector drawing · 47 KB as SVG" aria-haspopup="dialog"><span class="tile-pic"><span class="dwg tile-dwg" data-svg="draw/sheet-pillow-block.svg" data-crop="0.11,0.18,0.75,0.81" style="aspect-ratio:178.82/136.02" aria-hidden="true" data-label="A drawing sheet with top, front, right and pictorial views of a pillow block and three dimensions."></span></span><span class="tile-name">Dimensioned sheet</span></button><template data-card-info="sheet"><p class="card-blurb">Front, top and right views on one sheet, dimensioned in inches, as SVG, PDF and DXF.</p><div class="code"><div class="code-head"><span>feat-sheet.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="feat-sheet.star">sheet = <span class="k">drawing</span>(block, view=<span class="s">"three-view"</span>,
+                sheet=<span class="s">"ANSI_A"</span>, units=<span class="s">"in"</span>,
+                title=<span class="s">"Pillow block"</span>)
+<span class="k">export_pdf</span>(sheet, <span class="s">"pillow_block.pdf"</span>)
+<span class="k">export_dxf</span>(sheet, <span class="s">"pillow_block.dxf"</span>)</pre></div><div class="acts"><div class="acts-g" role="group" aria-label="Download"><p class="acts-h" aria-hidden="true">Download</p><div class="acts-p short"><a class="pill" href="draw/sheet-pillow-block.raw.svg" download><span class="pill-t">SVG</span><span class="pill-s">47 KB</span></a></div></div></div></template></li><li><button class="tile" type="button" id="f-hatched-section" data-card="hatched-section" data-kind="drawing" data-draw="draw/section-pillow-block.svg" data-title="Hatched section" data-note="Vector drawing · 11 KB as SVG" aria-haspopup="dialog"><span class="tile-pic"><span class="dwg tile-dwg" data-svg="draw/section-pillow-block.svg" data-crop="0.07,0.08,0.61,0.88" style="aspect-ratio:118.80/132.00" aria-hidden="true" data-label="A section through a pillow block along its bore, the cut material hatched, with five dimensions."></span></span><span class="tile-name">Hatched section</span></button><template data-card-info="hatched-section"><p class="card-blurb">Cut the part on a plane; the cut face is hatched and dimensions run between model points.</p><div class="code"><div class="code-head"><span>feat-section.star</span><button class="copy" type="button" data-copy aria-label="Copy the script lines">Copy</button></div><pre aria-label="feat-section.star">cut = page.<span class="k">section_view</span>(block, plane=<span class="s">"x=0"</span>,
+                        beyond=<span class="k">False</span>)
+cut.<span class="k">dimension</span>((-<span class="n">0.75</span> * inch, <span class="n">0</span>), (<span class="n">0.75</span> * inch, <span class="n">0</span>),
+              offset=-<span class="n">10</span>)</pre></div><div class="acts"><div class="acts-g" role="group" aria-label="Download"><p class="acts-h" aria-hidden="true">Download</p><div class="acts-p short"><a class="pill" href="draw/section-pillow-block.raw.svg" download><span class="pill-t">SVG</span><span class="pill-s">11 KB</span></a></div></div></div></template></li></ul>
+</section>
+
+<section class="block wrap" id="draw">
+<div class="head"><p class="eyebrow">Shared by both · vector drawings</p><h2>Lines, not pixels.</h2>
+<p class="lede">The model that renders also draws: hidden-line views, dimensioned sheets and hatched sections, written as SVG, PDF and DXF. A line is stored as its ends, so it stays sharp at any size.</p></div>
+<figure class="vfig vzoom">
+<div class="zf-tags" aria-hidden="true"><span>Picture <small>WebP, 82 KB</small></span><span>Lines <small>SVG, 289 KB</small></span></div>
+<div class="zf" data-zoom data-start="775,875,8" data-picture="draw/pair-thumbscrew-3000.webp" tabindex="0" aria-label="A knurled brass thumbscrew with a steel hex nut, as a rendered picture on one side of a handle and as a line drawing with dashed hidden edges on the other. Zoomed in on the thread where it enters the nut. Pinch or ⌘/Ctrl and scroll to zoom, drag or scroll to move. Plus and minus keys zoom, arrow keys move, zero shows the whole model.">
+<div class="dwg zf-svg" data-svg="draw/pair-thumbscrew.svg"></div>
+<div class="zf-left"><canvas class="zf-png" hidden></canvas></div>
+<div class="zf-split" role="slider" tabindex="0" aria-label="The line between the picture and the drawing" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="50% SVG"><i></i></div>
+<p class="zf-note" aria-live="polite"></p>
+</div>
+<div class="zbar"><div class="zgrp"><button class="btn small zb" type="button" data-z="out" aria-label="Zoom out">−</button><span class="zk" aria-label="Magnification">8×</span><button class="btn small zb" type="button" data-z="in" aria-label="Zoom in">+</button></div><button class="btn small" type="button" data-z="reset">Whole model</button></div>
+<figcaption><h3>One camera, two kinds of output</h3><p>A path-traced picture of a knurled thumbscrew and its nut, and the line drawing of the same model from the same parallel camera: edges in sight solid, edges behind dashed, the thread inside the nut among them. Drag the handle between the two. Zoomed in this far the picture has run out of pixels; the lines are drawn again at every size.</p><div class="cmd multi"><code>cadpole op Drawing --doc pair-thumbscrew.star --view sheet:V1 \
+  --format svg --tolerance 0.02</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div><div class="acts"><div class="acts-g" role="group" aria-label="Download"><p class="acts-h" aria-hidden="true">Download</p><div class="acts-p three short"><a class="pill" href="draw/pair-thumbscrew.raw.svg" download><span class="pill-t">SVG</span><span class="pill-s">289 KB</span></a><a class="pill" href="draw/pair-thumbscrew.pdf" download><span class="pill-t">PDF</span><span class="pill-s">92 KB</span></a><a class="pill" href="draw/pair-thumbscrew.dxf" download><span class="pill-t">DXF</span><span class="pill-s">791 KB</span></a></div></div></div></figcaption></figure>
+</section>
+
+<section class="block wrap" id="out">
+<div class="head"><p class="eyebrow">Shared by both · what comes out</p><h2>Solids, drawings and print files.</h2>
+<p class="lede">The script is the source. Everything else is generated from it, so it never goes stale.</p></div>
+<div class="rail" style="--cols:4"><article class="card"><figure><button class="pic" type="button" data-pic="media/gridfinity-1200.webp" data-sheet3d="models/gridfinity.cpmesh" data-view="-35,35,24,1" data-title="Gridfinity set" aria-label="Open Gridfinity set in 3D"><img src="media/gridfinity-720.webp" srcset="media/gridfinity-720.webp 720w, media/gridfinity-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="A tray of storage bins in three colours" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Files for the printer</h3><p>One <code>export()</code> line per file. 3MF carries plates, colours and names into the slicer.</p><ul class="tags"><li>STL</li><li>3MF</li><li>OBJ</li><li>STEP</li></ul></div></article><article class="card"><figure class="paper"><button class="pic" type="button" data-pic="media/bracket_sheet.svg" data-paper data-title="Dimensioned drawings" aria-label="Enlarge the picture: Dimensioned drawings"><img src="media/bracket_sheet.svg" alt="A dimensioned drawing sheet of a bracket" loading="lazy" decoding="async" width="720" height="720"></button></figure><div class="txt"><h3>Dimensioned drawings</h3><p>Views, sections and dimensions drawn from the model as vectors, ready to print or send to a laser.</p><ul class="tags"><li>SVG</li><li>PDF</li><li>DXF</li></ul></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/imports-1200.webp" data-sheet3d="models/imports.cpmesh" data-view="-35,30,24,1" data-title="Imported files" aria-label="Open Imported files in 3D"><img src="media/imports-720.webp" srcset="media/imports-720.webp 720w, media/imports-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="An imported mesh, an imported STEP part and an imported DXF gear" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Bring your files</h3><p>Read a mesh, a STEP part, a DXF profile or SVG artwork, then keep working on it with the same operations.</p><ul class="tags"><li>STL</li><li>STEP</li><li>DXF</li><li>SVG</li></ul></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/wheel-1200.webp" data-sheet3d="models/wheel.cpmesh" data-view="-30,30,24,1" data-title="Compressor wheel" aria-label="Open Compressor wheel in 3D"><img src="media/wheel-720.webp" srcset="media/wheel-720.webp 720w, media/wheel-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="A path-traced compressor wheel" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Pictures and motion</h3><p>Every image on this page came from <code>cadpole render</code> and <code>cadpole animate</code>. <code>sweep</code> draws a sheet of variants.</p><ul class="tags"><li>PNG</li><li>GIF</li></ul></div></article></div><div class="dots" aria-hidden="true"></div>
+</section>
+
+<section class="block wrap" id="tools">
+<div class="two">
+<div><div class="head"><p class="eyebrow">Shared by both · how it is driven</p><h2>One engine, four ways in.</h2>
+<p class="lede">A model is a short script in Starlark, a small deterministic Python dialect: the same script gives the same model every time, wherever it runs. An agent writes it; you can too.</p></div>
+<div class="code"><div class="code-head"><span>part.star</span><button class="copy" type="button" data-copy="#code-part">Copy</button></div><pre id="code-part"><span class="ln">w = <span class="k">param</span>(<span class="s">"width"</span>, <span class="n">40</span>, unit=<span class="s">"mm"</span>, min=<span class="n">10</span>, max=<span class="n">100</span>)
+</span><span class="ln">
+</span><span class="ln">plate = <span class="k">extrude</span>(<span class="k">sketch</span>(XY).<span class="k">rect</span>(w, <span class="n">20</span>), <span class="n">10</span>)
+</span><span class="ln">hole = <span class="k">extrude</span>(<span class="k">sketch</span>(XY.<span class="k">offset</span>(-<span class="n">1</span>)).<span class="k">circle</span>(<span class="n">3</span>), <span class="n">12</span>)
+</span><span class="ln">
+</span><span class="ln">part = <span class="k">subtract</span>(plate, hole, name=<span class="s">"part"</span>)
+</span><span class="ln">part.<span class="k">material</span>(color=<span class="s">"#6fbfa8"</span>, roughness=<span class="n">0.4</span>)
+</span><span class="ln">
+</span><span class="ln"><span class="k">export</span>(part, <span class="s">"part.stl"</span>)
+</span></pre></div>
+</div>
+<div class="acc"><details open><summary>Coding agents</summary><div class="body"><p>An MCP server gives an agent every operation as a typed tool: evaluate a script, read the diagnostics, look at the render, read the measurements, run the tests, then try again.</p></div></details><details><summary>Command line</summary><div class="body"><p><code>render</code>, <code>sweep</code>, <code>animate</code>, <code>export</code>, <code>test</code> and <code>serve</code> in one binary. It runs the same on Linux and on a Mac.</p></div></details><details><summary>Web editor</summary><div class="body"><p><code>cadpole serve</code> opens an editor and a 3D view in the browser. It is the same engine as the command line, compiled to WebAssembly.</p></div></details><details><summary>Tests</summary><div class="body"><p>A script can measure itself: clearances, volumes, wall thickness. Every example in the repository runs under test.</p></div></details></div>
+</div>
+</section>
+
+<section class="block wrap" id="gallery">
+<div class="head"><p class="eyebrow">Gallery</p><h2>Each of these is one script.</h2>
+<p class="lede">The scripts are published with this site. Open one and turn it round.</p></div>
+<div class="rail" style="--cols:3"><article class="card"><figure><button class="pic" type="button" data-pic="media/mascot-1200.webp" data-sheet3d="models/mascot.cpmesh" data-view="-30,24,24,1" data-title="Desk mascot" aria-label="Open Desk mascot in 3D"><img src="media/mascot-720.webp" srcset="media/mascot-720.webp 720w, media/mascot-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="Desk mascot" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Desk mascot</h3><p>Signed-distance blends: an egg-shaped head and a tapering spline tail with a filleted neck, on a plinth with raised lettering.</p><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/mascot.cpmesh" data-pic="media/mascot-1200.webp" data-title="Desk mascot" data-view="-30,24,24,1">Open in 3D</button><a class="pill act" href="view/mascot/" data-full="mascot" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/desk_mascot.star" type="text/plain">Script</a></div></div></div></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/gridfinity-1200.webp" data-sheet3d="models/gridfinity.cpmesh" data-view="-35,35,24,1" data-title="Gridfinity set" aria-label="Open Gridfinity set in 3D"><img src="media/gridfinity-720.webp" srcset="media/gridfinity-720.webp 720w, media/gridfinity-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="Gridfinity set" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Gridfinity set</h3><p>One script for the baseplate and every bin: sizes, dividers, scoops and label tabs.</p><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/gridfinity.cpmesh" data-pic="media/gridfinity-1200.webp" data-title="Gridfinity set" data-view="-35,35,24,1">Open in 3D</button><a class="pill act" href="view/gridfinity/" data-full="gridfinity" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/gridfinity_showcase.star" type="text/plain">Script</a></div></div></div></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/enclosure-1200.webp" data-sheet3d="models/enclosure.cpmesh" data-view="35,28,24,1" data-title="Enclosure for a Raspberry Pi 5" aria-label="Open Enclosure for a Raspberry Pi 5 in 3D"><img src="media/enclosure-720.webp" srcset="media/enclosure-720.webp 720w, media/enclosure-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="Enclosure for a Raspberry Pi 5" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Enclosure for a Raspberry Pi 5</h3><p>A printable snap-fit case around a model of the board, made from its published drawing. One table places each port and cuts its opening.</p><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/enclosure.cpmesh" data-pic="media/enclosure-1200.webp" data-title="Enclosure for a Raspberry Pi 5" data-view="35,28,24,1">Open in 3D</button><a class="pill act" href="view/enclosure/" data-full="enclosure" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/enclosure.star" type="text/plain">Script</a></div></div></div></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/planetary-1200.webp" data-sheet3d="models/planetary.cpmesh" data-view="-30,32,24,1" data-title="Herringbone planetary" aria-label="Open Herringbone planetary in 3D"><img src="media/planetary-720.webp" srcset="media/planetary-720.webp 720w, media/planetary-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="Herringbone planetary" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Herringbone planetary</h3><p>Sun, planets, ring and carrier that print as one piece and turn when they come off the bed.</p><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/planetary.cpmesh" data-pic="media/planetary-1200.webp" data-title="Herringbone planetary" data-view="-30,32,24,1">Open in 3D</button><a class="pill act" href="view/planetary/" data-full="planetary" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/planetary.star" type="text/plain">Script</a></div></div></div></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/wheel-1200.webp" data-sheet3d="models/wheel.cpmesh" data-view="-30,30,24,1" data-title="Compressor wheel" aria-label="Open Compressor wheel in 3D"><img src="media/wheel-720.webp" srcset="media/wheel-720.webp 720w, media/wheel-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="Compressor wheel" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Compressor wheel</h3><p>Blades lofted between two curves in space, with a splitter in every passage.</p><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/wheel.cpmesh" data-pic="media/wheel-1200.webp" data-title="Compressor wheel" data-view="-30,30,24,1">Open in 3D</button><a class="pill act" href="view/wheel/" data-full="wheel" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/compressor_wheel.star" type="text/plain">Script</a></div></div></div></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/thumbscrew-1200.webp" data-sheet3d="models/thumbscrew.cpmesh" data-view="-30,20,24,1" data-title="Thumbscrew and nut" aria-label="Open Thumbscrew and nut in 3D"><img src="media/thumbscrew-720.webp" srcset="media/thumbscrew-720.webp 720w, media/thumbscrew-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="Thumbscrew and nut" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Thumbscrew and nut</h3><p>Real ISO metric threads swept along a helix, with running clearance as a parameter.</p><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/thumbscrew.cpmesh" data-pic="media/thumbscrew-1200.webp" data-title="Thumbscrew and nut" data-view="-30,20,24,1">Open in 3D</button><a class="pill act" href="view/thumbscrew/" data-full="thumbscrew" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/thumbscrew.star" type="text/plain">Script</a></div></div></div></div></article><article class="card"><figure><button class="pic" type="button" data-pic="media/plan-cabin-1200.webp" data-sheet3d="models/plan-cabin.cpmesh" data-view="-35,55,24,1" data-title="Cabin" aria-label="Open Cabin in 3D"><img src="media/plan-cabin-720.webp" srcset="media/plan-cabin-720.webp 720w, media/plan-cabin-1200.webp 1200w" sizes="(min-width:1000px) 380px, 84vw" width="720" height="720" alt="Cabin" loading="lazy" decoding="async"></button></figure><div class="txt"><h3>Cabin</h3><p>An invented two-bedroom cabin, furnished. Rooms are rectangles in feet; walls, doors, furniture and deck follow, cut at 4 ft like a plan.</p><div class="acts"><div class="acts-g" role="group" aria-label="Open"><p class="acts-h" aria-hidden="true">Open</p><div class="acts-p three"><button class="pill act" type="button" data-sheet3d="models/plan-cabin.cpmesh" data-pic="media/plan-cabin-1200.webp" data-title="Cabin" data-view="-35,55,24,1">Open in 3D</button><a class="pill act" href="view/plan-cabin/" data-full="plan-cabin" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><a class="pill act" href="scripts/cabin_plan.star" type="text/plain">Script</a></div></div></div></div></article></div><div class="dots" aria-hidden="true"></div>
+</section>
+
+<section class="block wrap" id="start">
+<div class="head"><p class="eyebrow">Get started</p><h2>Point your agent at it, or follow the steps.</h2>
+<p class="lede">Cadpole builds on Linux (x86-64 or arm64) and macOS (Apple silicon), from source.</p></div>
+<h3 class="sub"><span class="stepn" aria-hidden="true">A</span>Ask your coding agent</h3>
+<p class="cmd-note">Paste this into the agent you already use. The <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/getting-started.md">getting-started guide</a> is written to be followed end to end: exact commands, what each system needs, and a check after every step.</p>
+<div class="cmds"><div class="cmd multi prompt"><code id="agent-setup">Set up Cadpole from github.com/mikelikespie/cadpole: follow its getting-started guide (docs/getting-started.md), build the CLI, and render examples/bracket.star.</code><button class="copy" type="button" data-copy="#agent-setup" aria-label="Copy the request">Copy</button></div></div>
+<h3 class="sub"><span class="stepn" aria-hidden="true">B</span>Or do it by hand</h3>
+<ol class="start-steps">
+<li><h4>Install Bazelisk as <code>bazel</code></h4>
+<p class="cmd-note">Follow the <a href="https://github.com/bazelbuild/bazelisk#installation">official Bazelisk installation instructions</a> for your system. It fetches the Bazel version the repository pins, and Bazel fetches the Rust, C++ and Node toolchains: you never run <code>cargo</code> or <code>npm</code>. Linux (x86-64 or arm64) also needs <code>g++</code>; macOS (Apple silicon) needs Xcode 27. The next step checks all of this and prints the command for anything missing.</p></li>
+<li><h4>Clone and install</h4>
+<div class="cmds"><div><div class="cmd"><code>git clone https://github.com/mikelikespie/cadpole.git &amp;&amp; cd cadpole</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div></div><div><p class="cmd-note">Checks your machine, builds, and puts <code>cadpole</code> on your <code>PATH</code>. The first build compiles everything and takes a while (about 12 minutes on 8 cores, 25 GB of disk); later ones take seconds. Without installing, <code>./bin/cadpole …</code> works from the checkout.</p><div class="cmd"><code>./bin/install</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div></div></div></li>
+<li><h4>Run a first example</h4>
+<div class="cmds"><div><p class="cmd-note">Render a picture: <code>bracket.png</code> shows a mounting bracket.</p><div class="cmd"><code>cadpole render examples/bracket.star -o bracket.png</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div></div><div><p class="cmd-note">Draw a sheet of variants.</p><div class="cmd"><code>cadpole sweep examples/planter.star --param top_radius=40,55,70 --param wall=1.6,3 -o sheet.png</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div></div><div><p class="cmd-note">Animate a mechanism. This one takes a few minutes.</p><div class="cmd"><code>cadpole animate examples/gear_toy.star -o gear_toy.gif</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div></div><div><p class="cmd-note">Open the web editor. It prints an <code>open:</code> address; open that in a browser.</p><div class="cmd"><code>cadpole serve examples/bracket.star</code><button class="copy" type="button" data-copy aria-label="Copy command">Copy</button></div></div></div>
+<p class="cmd-note">To have your coding agent change the model while you watch, register Cadpole's MCP server: the steps are under <a href="#agent">Work with an agent</a>.</p></li>
+</ol>
+<p class="cmd-note">Apache-2.0. <a href="https://github.com/mikelikespie/cadpole">Source</a>, <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/getting-started.md">getting started</a>, the guides to <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/parts.md">parts and assemblies</a> and to <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/buildings.md">buildings and plans</a>, and the <a href="https://github.com/mikelikespie/cadpole/blob/main/docs/starlark-api.md">scripting reference</a> they share are on GitHub. Windows is not supported.</p>
+</section>
+</main>
+<footer class="wrap"><span>Cadpole is open source under Apache-2.0.</span><a href="https://github.com/mikelikespie/cadpole">github.com/mikelikespie/cadpole</a></footer>
+<nav class="bar" aria-label="Quick actions"><a class="btn primary" href="#start">Get started</a><a class="btn" href="https://github.com/mikelikespie/cadpole"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.93-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.77-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.19c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>GitHub</a><button class="btn icon" type="button" data-share hidden aria-label="Share this page"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 15V3m0 0L7.5 7.5M12 3l4.500 4.500M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button></nav>
+<dialog class="sheet" aria-labelledby="sheet-title"><div class="sheet-in">
+<div class="sheet-head"><h3 id="sheet-title" data-sheet-title>Model</h3><div class="sheet-acts"><a class="btn small" href="view/mascot/" data-full="mascot" target="_blank" rel="noopener">Full viewer<svg class="ext" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9 3.5h3.5V7M12.5 3.5 7.5 8.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="sr"> (opens in a new tab)</span></a><button class="btn small primary" type="button" data-sheet-close>Close</button></div></div>
+<div class="sheet-view"><img class="sheet-pic" alt="" decoding="async"><div class="live"></div><div class="sheet-draw" hidden></div></div>
+<div class="sheet-info" hidden></div>
+<p class="sheet-foot" role="status"></p>
+</div></dialog>
+<p class="sr" role="status" id="live-status"></p>
+<script type="application/json" id="full-viewers">{"bracket":"82c266d46795ba5a","enclosure":"a65a1d2e6a219f35","feat-boolean":"2ba16df9fb41173e","feat-chamfer":"46976975845403a8","feat-circular-pattern":"3a39c6a516388835","feat-constraints":"55262d4a7c3edc4c","feat-drawing":"d1ee6060c749e44f","feat-emboss":"32d0cff294043fe0","feat-extrude":"47dee41358b8fa67","feat-fillet":"514b3a8ee6122499","feat-linear-pattern":"174b3b36f6c82577","feat-loft":"46409e8474b74d6d","feat-mirror":"f07dadb8e31d4817","feat-offset":"72adaee31397f86c","feat-params":"7d7ac69107cfa9d0","feat-revolve":"539415797cfdfaea","feat-section":"432e54eb7cfc7da3","feat-smooth-blend":"5a358d4230c74d4c","feat-sweep":"7c3a34432550e16d","feat-text":"de246d894733cd1d","feat-thread":"b5129c25736d4464","feat-twist":"2253bd7dcf0bf70a","gridfinity":"ac6e3a9f9f509ab3","imports":"77a3cf4d0acde009","iris":"5ecb80a6e4a8c087","knob":"a123acc6f3be0792","layout":"981a7637243aea16","lot":"6b2a1f875a1b9806","mascot":"9f992b51a151ac1d","mug":"b0440fde7e234a6e","part":"171ee87e7c35d7b8","plan-cabin":"68643d854120269c","planetary":"69fe505f85071901","planter":"59d293b668abd5fb","radial":"8fed0946e307dff1","radial_open":"222ba187cc35d39c","shadow":"46a11885250207d1","thumbscrew":"05256873c8eb756b","turbojet_cut":"d2c3861e21c0823a","turbojet_open":"e08fc91f69a8ea1b","wheel":"206789aa9d2249a1"}</script>
+</body>
+</html>
