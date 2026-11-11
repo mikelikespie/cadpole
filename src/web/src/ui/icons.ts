@@ -57,8 +57,8 @@ export function cadpoleMark(size = 22): SVGSVGElement {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("class", "cadpole-mark");
-  svg.setAttribute("viewBox", "14 22 116 84");
-  svg.setAttribute("width", String(Math.round((size * 116) / 84)));
+  svg.setAttribute("viewBox", "15 3 102 122");
+  svg.setAttribute("width", String(Math.round((size * 102) / 122)));
   svg.setAttribute("height", String(size));
   svg.setAttribute("aria-hidden", "true");
   svg.setAttribute("focusable", "false");
@@ -67,9 +67,9 @@ export function cadpoleMark(size = 22): SVGSVGElement {
     for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
     svg.appendChild(el);
   };
-  add("path", { d: "M72 62C90 62 92 88 106 89c9 1 13-9 19-14-2 11-8 24-20 24-17 0-19-19-37-20Z", fill: "#2fbf9f" });
-  add("circle", { cx: "50", cy: "58", r: "30", fill: "#2fbf9f" });
-  add("circle", { cx: "60", cy: "49", r: "9.5", fill: "#fff" });
-  add("circle", { cx: "62.5", cy: "49", r: "4.8", fill: "#0b2e2a" });
+  add("path", { d: "M112.1 24.6A53.7 53.7 0 1 0 66 111.3C69.6 125.9 90.4 126.2 106.3 120.6C102.5 104.8 87.4 87.8 67.5 89.7A23.4 23.4 0 1 1 84.5 46.2A17.5 17.5 0 0 0 112.1 24.6Z", fill: "#8fe3c4" });
+  add("path", { d: "M112.1 24.6A53.7 53.7 0 1 0 66 111.3C73.9 115.1 91 116.2 99 116.9C94.5 110.2 82.4 97.2 67.5 89.7A23.4 23.4 0 1 1 84.5 46.2A17.5 17.5 0 0 0 112.1 24.6Z", fill: "#2fbf9f" });
+  add("path", { d: "M69.6 25.8a10.5 10.5 0 1 0 21 0a10.5 10.5 0 1 0 -21 0Z", fill: "#fff" });
+  add("path", { d: "M77.1 26.5a5.8 5.8 0 1 0 11.7 0a5.8 5.8 0 1 0 -11.7 0Z", fill: "#0b2e2a" });
   return svg;
 }

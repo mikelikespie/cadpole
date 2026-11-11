@@ -15,8 +15,10 @@ from html import escape
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.dirname(HERE)
 PAGE, FG, BRAND, MUTED = "#060a09", "#f1f6f4", "#5ccbaa", "#9bb0aa"
-LOGO = ('<path d="M72 62C90 62 92 88 106 89c9 1 13-9 19-14-2 11-8 24-20 24-17 0-19-19-37-20Z" fill="#2fbf9f"/><circle cx="50" cy="58" r="30" fill="#2fbf9f"/>'
-        '<circle cx="60" cy="49" r="9.5" fill="#fff"/><circle cx="62.500" cy="49" r="4.8" fill="#0B2E2A"/>')
+LOGO = ('<path d="M112.1 24.6A53.7 53.7 0 1 0 66 111.3C69.6 125.9 90.4 126.2 106.3 120.6C102.5 104.8 87.4 87.8 67.5 89.7A23.4 23.4 0 1 1 84.5 46.2A17.5 17.5 0 0 0 112.1 24.6Z" fill="#8fe3c4"/>'
+        '<path d="M112.1 24.6A53.7 53.7 0 1 0 66 111.3C73.9 115.1 91 116.2 99 116.9C94.5 110.2 82.4 97.2 67.5 89.7A23.4 23.4 0 1 1 84.5 46.2A17.5 17.5 0 0 0 112.1 24.6Z" fill="#2fbf9f"/>'
+        '<path d="M69.6 25.8a10.5 10.5 0 1 0 21 0a10.5 10.5 0 1 0 -21 0Z" fill="#fff"/>'
+        '<path d="M77.1 26.5a5.8 5.8 0 1 0 11.7 0a5.8 5.8 0 1 0 -11.7 0Z" fill="#0b2e2a"/>')
 
 
 def main():
