@@ -2,52 +2,48 @@
  "steps": [
   {
    "t": 1.2,
-   "text": "Type a request in the Messages box."
+   "text": "Turn Listen on, then type a request in the Messages box."
   },
   {
-   "t": 9.1,
+   "t": 10.7,
    "text": "The agent edits the script. The bracket is 1 in wider, with two mounting holes in the base."
   },
   {
-   "t": 11.7,
-   "text": "It replies with what it changed."
+   "t": 14.4,
+   "text": "Its reply streams in as it works."
   },
   {
-   "t": 15.2,
+   "t": 17.4,
    "text": "Click a face to select it, then ask about \"this face\"."
   },
   {
-   "t": 23.2,
+   "t": 26.5,
    "text": "The agent reads the selection and puts two holes through that face."
   },
   {
-   "t": 28.8,
+   "t": 32.3,
    "text": "It says what it did."
   }
  ],
  "steps_phone": [
   {
-   "t": 1.8,
-   "text": "Open Chat and type a request."
+   "t": 1.2,
+   "text": "Open Chat, turn Listen on and type a request."
   },
   {
-   "t": 8.8,
-   "text": "The agent edits the script. The bracket gets wider."
+   "t": 9.8,
+   "text": "The bracket gets 1 in wider, with two holes in the base."
   },
   {
-   "t": 11.2,
-   "text": "The agent replies. Close the sheet to see the holes."
+   "t": 12.4,
+   "text": "The reply streams in under it."
   },
   {
-   "t": 20.5,
-   "text": "Tap a face to select it."
+   "t": 16.3,
+   "text": "Tap a face, then ask about \"this face\"."
   },
   {
    "t": 23.5,
-   "text": "Ask about \"this face\"."
-  },
-  {
-   "t": 29.8,
    "text": "The agent puts holes through the selected face."
   }
  ],

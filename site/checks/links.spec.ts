@@ -72,6 +72,10 @@ test("the words the page does not use", () => {
   expect(html).toContain("https://github.com/bazelbuild/bazelisk#installation");
   expect(html).not.toContain("bazelisk-linux-amd64");
   expect(html).toContain("./bin/install");
+  // Link previews: absolute addresses for the page and its picture.
+  expect(html).toContain('<meta property="og:url" content="https://mikelikespie.github.io/cadpole/">');
+  expect(html).toContain('<meta property="og:image" content="https://mikelikespie.github.io/cadpole/og.png">');
+  expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
   expect(html).not.toContain("bazel-opt-bin");
   expect(html).toContain("Apache-2.0");
 });

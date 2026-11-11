@@ -23,6 +23,8 @@ for (let i = 2; i < process.argv.length; i += 2) args[process.argv[i].replace(/^
 for (const k of ["site", "examples", "web-dist", "embed", "pages", "out"]) if (!args[k]) throw new Error(`missing --${k}`);
 const SITE = args.site, EX = args.examples, WEB = args["web-dist"], OUT = args.out;
 const GH = "https://github.com/mikelikespie/cadpole";
+/** Where the site is published: link previews need absolute addresses for the page and its picture. */
+const SITE_URL = "https://mikelikespie.github.io/cadpole/";
 
 const read = (p) => readFileSync(p, "utf8");
 const json = (p) => JSON.parse(read(p));
@@ -501,7 +503,8 @@ function page(full) {
 <meta property="og:type" content="website">
 <meta property="og:title" content="${E(COPY.title)}">
 <meta property="og:description" content="${E(desc)}">
-<meta property="og:image" content="og.png">
+<meta property="og:url" content="${SITE_URL}">
+<meta property="og:image" content="${SITE_URL}og.png">
 <meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preload" as="image" href="seq/tj/d/000.avif" type="image/avif" media="(min-width: 700px) and (min-height: 700px)" fetchpriority="high">

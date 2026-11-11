@@ -53,7 +53,7 @@ raster pictures (1.2 MB), the vector drawings as SVG, PDF and DXF and the one
 picture drawn under them (2.0 MB), the scenes' first frames (0.3 MB), the
 social card, the icons and the recording's poster frames.
 
-Not in the tree, 39 MB: the four scenes' frame sets (846 pictures in AVIF and
+Not in the tree, 44 MB: the four scenes' frame sets (846 pictures in AVIF and
 WebP) and the recording (four video files). They take hours of path tracing
 to make and change rarely, so the tree holds their recipe and
 `media.lock.json` holds their count and digest per directory.
