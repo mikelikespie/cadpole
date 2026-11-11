@@ -617,3 +617,10 @@ input, select, textarea { font-size: 16px; }
 .agent-can span { color: var(--muted); }
 @media (min-width: 700px) { .agent-can { grid-template-columns: 1fr 1fr; } }
 @media (min-width: 1000px) { .agent-can { grid-template-columns: repeat(4, 1fr); } }
+
+/* A model's view takes every touch from its first frame. The canvas inside is added later, and a
+   browser that maps touch-action ahead of time (Safari on a touch-screen Mac) would otherwise give
+   the first drag to the page. The playground's model is part of the scrolling page until it is taken. */
+.live, .sheet-view { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.play-view .live { touch-action: pan-y; }
+.play-view.is-taken .live { touch-action: none; }

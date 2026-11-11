@@ -886,6 +886,7 @@ async function main(): Promise<void> {
       const last = store.get().selected.at(-1);
       picker.show(cands, x, y, last ? refKey(last) : null, { focus: true });
     },
+    onContextDismiss: () => picker.hide(),
     onFrame: (stats) => {
       hud.frame(stats);
       // A readiness marker like `data-evals`: rendering is on demand, so a

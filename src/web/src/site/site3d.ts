@@ -141,8 +141,10 @@ class Stage {
     // Who gets the wheel. These run before the controller's own listeners
     // (same element, added first).
     //  - A view the visitor opened (the lightbox, a scene's "Open in 3D", the
-    //    playground after "Zoom and pan") is `grabbed`: the wheel and a
-    //    two-finger scroll zoom about the pointer.
+    //    playground after "Zoom and pan") is `grabbed` and takes the wheel:
+    //    a two-finger scroll (or a finger on a touch screen in Chrome, which
+    //    arrives the same way) moves the model, a notched mouse wheel zooms
+    //    about the pointer (input/router.ts tells them apart).
     //  - A view that is part of the scrolling page (the playground before it is
     //    taken) leaves the wheel to the page until a mouse click on the model
     //    arms it; it stays armed until the pointer leaves the model. Meanwhile
@@ -171,9 +173,6 @@ class Stage {
       onDoubleClick: (x, y) => this.focusAt(x, y),
       onContext: () => {},
     });
-    // On the page a wheel zooms, whether it is a mouse wheel or a two-finger
-    // scroll; shift + scroll still orbits.
-    this.controls.wheelMode = "zoom";
     c.addEventListener("keydown", (e) => {
       const k = e.key;
       const p = this.controls.pose();
@@ -201,7 +200,7 @@ class Stage {
       this.hintEl = document.createElement("div");
       this.hintEl.className = "cp3d-hint";
       this.hintEl.setAttribute("aria-hidden", "true");
-      this.hintEl.textContent = "Click the model to zoom with the wheel";
+      this.hintEl.textContent = "Click the model to give it the wheel";
     }
     if (this.hintEl.parentElement !== h) h.appendChild(this.hintEl);
     this.hintEl.classList.add("on");
@@ -221,6 +220,7 @@ class Stage {
   /** Fit the model from the section's own direction. */
   private frame(animate: boolean): void {
     const v = this.view;
+    this.controls.setBounds(this.centre, this.radius);
     this.controls.setPose(
       { theta: (v.az - 90) * RAD, phi: (90 - v.el) * RAD, distance: this.fit * (v.zoom ?? 1), target: this.centre.clone() as never },
       animate,

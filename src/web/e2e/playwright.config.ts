@@ -464,6 +464,18 @@ export default defineConfig({
       ];
     }),
     {
+      // One gesture model on every surface: the same scripted wheel, gesture,
+      // pointer and touch input against the viewer, and the same camera
+      // outcome expected (input.spec.ts).
+      name: "input",
+      testMatch: /input\.spec\.ts$/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 800 },
+        launchOptions: { args: chromeArgs },
+      },
+    },
+    {
       // Authentication, against the dev server that requires a token. No
       // screenshots here: this is about headers, storage and the URL.
       name: "token",

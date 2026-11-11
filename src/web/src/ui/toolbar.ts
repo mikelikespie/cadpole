@@ -145,7 +145,7 @@ export function createToolbar(store: AppStore, actions: Actions, home: HomeLink 
     "select",
     { class: "select", id: "wheel-mode", title: "Scroll wheel / trackpad behaviour" },
     h("option", { value: "auto" }, "Auto-detect"),
-    h("option", { value: "orbit" }, "Orbit (trackpad)"),
+    h("option", { value: "orbit" }, "Pan (trackpad)"),
     h("option", { value: "zoom" }, "Zoom (mouse wheel)"),
   );
   wheelSel.value = actions.wheelMode();

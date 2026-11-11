@@ -20,6 +20,7 @@ import "./engine-policy.test.mjs";
 import "./event-stream.test.mjs";
 import "./evaluator.test.mjs";
 import "./failure.test.mjs";
+import "./input.test.mjs";
 import "./insets.test.mjs";
 import "./jobs.test.mjs";
 import "./jobs-coalesce.test.mjs";

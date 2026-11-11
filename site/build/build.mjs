@@ -109,7 +109,7 @@ function scene(s, first) {
 <picture><source media="(min-width: 700px) and (min-height: 700px)" srcset="seq/${s.seq}/d/000.avif" type="image/avif"><img class="poster" src="seq/${s.seq}/m/000.webp" width="${w}" height="${h}" alt="${E(s.steps[0][6])}" ${lazy} decoding="async"></picture>
 <canvas class="seq" aria-hidden="true"></canvas>
 <div class="live"></div>
-<p class="hint3d when-live">Drag to orbit · pinch or scroll to zoom · double-tap to centre</p>
+<p class="hint3d when-live">Drag to orbit · two fingers or scroll to move · pinch to zoom · double-tap to centre</p>
 </div>
 <div class="caps">
 <div class="steps">${steps.join("")}</div>

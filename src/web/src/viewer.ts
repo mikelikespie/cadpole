@@ -100,6 +100,8 @@ export interface ViewerCallbacks {
   onHover(candidate: Candidate | null): void;
   onClick(candidates: Candidate[], additive: boolean, x: number, y: number): void;
   onContext(candidates: Candidate[], x: number, y: number): void;
+  /** A context request turned out to be a press held and then dragged: put the menu away. */
+  onContextDismiss?(): void;
   onFrame?(stats: FrameStats): void;
 }
 
@@ -655,6 +657,7 @@ export class Viewer {
         if (!this.focusAt(x, y)) this.fit();
       },
       onContext: (x, y) => this.callbacks.onContext(this.candidatesAt(x, y), x, y),
+      onContextDismiss: () => this.callbacks.onContextDismiss?.(),
     });
 
     // Faces stand a constant two depth units behind the edges drawn on them
@@ -1265,6 +1268,9 @@ export class Viewer {
     this.frameBox.getBoundingSphere(this.tmpSphere);
     this.sceneRadius = Math.max(1, this.tmpSphere.radius);
     this.sceneCenter.copy(this.tmpSphere.center);
+    // Pan and zoom stay on the whole drawn scene, never only the framed part.
+    this.sceneBox.getBoundingSphere(this.tmpSphere);
+    this.controls.setBounds(this.tmpSphere.center, Math.max(1, this.tmpSphere.radius));
     const extent = Math.max(
       Math.abs(this.sceneBox.min.x),
       Math.abs(this.sceneBox.max.x),

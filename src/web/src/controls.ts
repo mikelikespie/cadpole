@@ -1,25 +1,33 @@
-// Camera controller with macOS Preview / Xcode-style navigation.
+// Camera controller with macOS Preview / Xcode-style navigation, the same
+// on every surface that shows a model.
 //
-//   Trackpad  two-finger scroll PANS; pinch zooms toward the cursor;
-//             shift + two-finger scroll orbits.
+//   Trackpad  two-finger scroll PANS; pinch zooms toward the cursor (ctrl +
+//             wheel in Chromium and Firefox, gesture events in Safari); a
+//             two-finger twist in Safari turns the model; shift + two-finger
+//             scroll orbits.
 //   Mouse     left drag orbits; middle/right drag pans; shift + left drag
-//             selects a box; wheel zooms toward the cursor.
+//             selects a box; a notched wheel zooms toward the cursor.
+//   Touch     one finger orbits; two fingers pinch-zoom, pan and twist at
+//             once; double-tap focuses; a long press asks for context info.
 //
 // Two-finger pans rather than orbits because that is what a Mac trackpad means
 // everywhere else: two fingers scroll the thing you are looking at. Orbiting on
 // it made the model lurch whenever someone meant to scroll, which is the single
 // most disorienting thing a viewport can do. Orbit is the click-drag, which is
 // the deliberate gesture, and shift keeps it reachable from the trackpad alone.
-//   Touch     one finger orbits; two fingers pinch-zoom and pan at once;
-//             double-tap focuses; long-press asks for context info.
+//
+// Which input is which -- a touch screen on a Mac in Safari or in Chrome, a
+// notched wheel or a trackpad -- is decided in one place, input/router.ts;
+// this file is what each intent does to the camera.
 //
 // Every channel (azimuth, polar, log-distance, target) is a critically-damped
 // spring toward a goal, and drags carry inertia after release. With
 // prefers-reduced-motion everything snaps.
 
 import { Vector3, type PerspectiveCamera } from "three/webgpu";
+import { InputRouter, type GestureTarget, type WheelMode } from "./input/router.js";
 
-export type WheelMode = "auto" | "orbit" | "zoom";
+export type { WheelMode } from "./input/router.js";
 
 export interface Pose {
   theta: number;
@@ -44,6 +52,8 @@ export interface ControllerCallbacks {
   onClick(x: number, y: number, button: number, additive: boolean): void;
   onDoubleClick(x: number, y: number): void;
   onContext(x: number, y: number): void;
+  /** A context request was the start of a drag (a press held, then moved): take it back. */
+  onContextDismiss?(): void;
 }
 
 /** Unity-style critically damped smoothing. */
@@ -97,18 +107,13 @@ class Channel {
 }
 
 const EPS_PHI = 0.0005;
-const LONG_PRESS_MS = 500;
-const DOUBLE_TAP_MS = 320;
-/**
- * How far a pointer may travel and still be a click. A fingertip rolls as it
- * lifts, so a touch gets twice the mouse's allowance: an orbit that selects
- * is a nuisance, and so is a tap that orbits instead of selecting.
- */
-const CLICK_SLOP_MOUSE = 5;
-const CLICK_SLOP_TOUCH = 10;
+/** The orbit target stays within this many radii of the framed model's centre. */
+const PAN_LIMIT = 1.5;
+/** The camera stays between these multiples of the framed model's radius. */
+const DIST_MIN = 0.01;
+const DIST_MAX = 60;
 
 export class CameraController {
-  wheelMode: WheelMode = "auto";
   rotateSpeed = 1.0;
   private readonly theta: Channel;
   private readonly phi: Channel;
@@ -120,38 +125,19 @@ export class CameraController {
   private readonly driftTau = 0.32;
   private disposed = false;
   private lastStep = 0;
-  // Pointer state.
-  private readonly pointers = new Map<number, { x: number; y: number; type: string }>();
-  private dragMode: "none" | "orbit" | "pan" = "none";
-  private lastX = 0;
-  private lastY = 0;
-  private downX = 0;
-  private downY = 0;
-  private downAt = 0;
-  private downButton = -1;
-  private moved = false;
-  /** The press landed on a view still coasting: it stops the view, and is not a tap. */
-  private caught = false;
   /** Pointers down, as the viewer reads it to draw lighter while a gesture runs. */
   onGesture: ((active: boolean) => void) | null = null;
+  // Release inertia: the drag's velocity, blended over its last moves.
   private velTheta = 0;
   private velPhi = 0;
   private velTx = 0;
   private velTy = 0;
   private velTz = 0;
   private lastMoveAt = 0;
-  private pinchDist = 0;
-  private pinchMidX = 0;
-  private pinchMidY = 0;
-  private longPressTimer: number | null = null;
-  private lastTapAt = 0;
-  private lastTapX = 0;
-  private lastTapY = 0;
-  private wheelSticky: "mouse" | "trackpad" | null = null;
-  private wheelStickyAt = 0;
-  /** Safari's trackpad pinch: the gesture's scale when it was last applied; 0 when none is running. */
-  private gestureScale = 0;
+  /** The framed model, for keeping the camera on it: centre and radius. */
+  private bounds: { x: number; y: number; z: number; r: number } | null = null;
   private readonly reduced: MediaQueryList;
+  private readonly input: InputRouter;
   /**
    * Where the centre of projection is drawn, in CSS pixels from the middle
    * of the element: off the middle while the camera carries a view offset.
@@ -174,16 +160,17 @@ export class CameraController {
     this.ty = new Channel(0);
     this.tz = new Channel(10);
     this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    element.style.touchAction = "none";
-    element.addEventListener("pointerdown", this.onPointerDown);
-    element.addEventListener("pointermove", this.onPointerMove);
-    element.addEventListener("pointerup", this.onPointerUp);
-    element.addEventListener("pointercancel", this.onPointerUp);
-    element.addEventListener("wheel", this.onWheel, { passive: false });
-    for (const t of ["gesturestart", "gesturechange", "gestureend"]) element.addEventListener(t, this.onSafariGesture, { passive: false });
-    element.addEventListener("dblclick", this.onDblClick);
-    element.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.input = new InputRouter(element, this.gestures(), { twist: true });
     this.applyPose();
+  }
+
+  /** What the wheel does: classified per stream ("auto"), or always one thing. */
+  get wheelMode(): WheelMode {
+    return this.input.wheelMode;
+  }
+
+  set wheelMode(m: WheelMode) {
+    this.input.wheelMode = m;
   }
 
   // ------------------------------------------------------------- pose
@@ -291,6 +278,37 @@ export class CameraController {
     this.callbacks.onChange();
   }
 
+  /**
+   * The framed model's bounding sphere. Panning and zooming keep the camera
+   * on it: the target stays within `PAN_LIMIT` radii of the centre and the
+   * distance within `DIST_MIN`..`DIST_MAX` radii, so no run of gestures can
+   * lose the model. `null` lifts the limits.
+   */
+  setBounds(centre: { x: number; y: number; z: number } | null, radius = 0): void {
+    this.bounds = centre && radius > 0 ? { x: centre.x, y: centre.y, z: centre.z, r: radius } : null;
+  }
+
+  private clampGoal(): void {
+    const b = this.bounds;
+    if (!b) return;
+    const dx = this.tx.goal - b.x;
+    const dy = this.ty.goal - b.y;
+    const dz = this.tz.goal - b.z;
+    const len = Math.hypot(dx, dy, dz);
+    const max = b.r * PAN_LIMIT;
+    if (len > max) {
+      const k = max / len;
+      this.tx.goal = b.x + dx * k;
+      this.ty.goal = b.y + dy * k;
+      this.tz.goal = b.z + dz * k;
+      for (const c of [this.tx, this.ty, this.tz]) c.drift = 0;
+    }
+    const lo = Math.log(b.r * DIST_MIN);
+    const hi = Math.log(b.r * DIST_MAX);
+    if (this.logDist.goal < lo) this.logDist.goal = lo;
+    if (this.logDist.goal > hi) this.logDist.goal = hi;
+  }
+
   /** Re-centre the orbit on a world point, keeping direction and distance. */
   focus(point: Vector3): void {
     this.setPose({ target: point }, true);
@@ -318,6 +336,42 @@ export class CameraController {
     this.ty.goal += (this.right.y * ox + this.up.y * oy) * k;
     this.tz.goal += (this.right.z * ox + this.up.z * oy) * k;
     this.logDist.goal = Math.log(Math.max(1e-3, d * scale));
+    this.clampGoal();
+    this.smoothTime = 0.09;
+    this.callbacks.onChange();
+  }
+
+  /**
+   * A twist of `rad` (clockwise on screen) about the point under (px, py):
+   * the model turns about the vertical through that point, so the camera's
+   * up stays up and the point stays under the fingers. Seen from above this
+   * is exactly turning a map.
+   */
+  twistAt(px: number, py: number, rad: number): void {
+    const rect = this.element.getBoundingClientRect();
+    const w = Math.max(1, rect.width);
+    const hgt = Math.max(1, rect.height);
+    // Where the ray under (px, py) meets the horizontal plane through the target.
+    this.tmp.set(((px - this.centre.x) / w) * 2 - 1, -((py - this.centre.y) / hgt) * 2 + 1, 0.5).unproject(this.camera);
+    const o = this.camera.position;
+    const dir = this.right.copy(this.tmp).sub(o);
+    let pxw = this.tx.goal;
+    let pyw = this.ty.goal;
+    if (Math.abs(dir.z) > 1e-9) {
+      const t = (this.tz.goal - o.z) / dir.z;
+      if (t > 0 && Number.isFinite(t)) {
+        pxw = o.x + dir.x * t;
+        pyw = o.y + dir.y * t;
+      }
+    }
+    const c = Math.cos(rad);
+    const s = Math.sin(rad);
+    const ox = this.tx.goal - pxw;
+    const oy = this.ty.goal - pyw;
+    this.tx.goal = pxw + ox * c - oy * s;
+    this.ty.goal = pyw + ox * s + oy * c;
+    this.theta.goal += rad;
+    this.clampGoal();
     this.smoothTime = 0.09;
     this.callbacks.onChange();
   }
@@ -338,6 +392,7 @@ export class CameraController {
     this.tx.goal += -this.right.x * dx * k + this.up.x * dy * k;
     this.ty.goal += -this.right.y * dx * k + this.up.y * dy * k;
     this.tz.goal += -this.right.z * dx * k + this.up.z * dy * k;
+    this.clampGoal();
     this.smoothTime = 0.09;
     this.callbacks.onChange();
   }
@@ -348,6 +403,7 @@ export class CameraController {
     const dt = this.lastStep ? Math.min(0.05, (now - this.lastStep) / 1000) : 0.016;
     this.lastStep = now;
     const st = this.reduced.matches ? 0 : this.smoothTime;
+    if (this.tx.drift !== 0 || this.ty.drift !== 0 || this.tz.drift !== 0 || this.logDist.drift !== 0) this.clampGoal();
     let moving = false;
     moving = this.theta.step(st, dt, this.driftTau) || moving;
     moving = this.phi.step(st, dt, this.driftTau) || moving;
@@ -375,131 +431,42 @@ export class CameraController {
     this.camera.updateMatrixWorld();
   }
 
-  // ---------------------------------------------------------- pointers
+  // ----------------------------------------------------------- intents
 
-  /** The first two active pointers (only called when there are two). */
-  private pair(): [{ x: number; y: number }, { x: number; y: number }] {
-    const it = this.pointers.values();
-    const a = it.next().value ?? { x: 0, y: 0 };
-    const b = it.next().value ?? a;
-    return [a, b];
-  }
-
-  private local(e: PointerEvent | MouseEvent): { x: number; y: number } {
-    const r = this.element.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  }
-
-  private readonly onPointerDown = (e: PointerEvent): void => {
-    const p = this.local(e);
-    this.pointers.set(e.pointerId, { x: p.x, y: p.y, type: e.pointerType });
-    this.element.setPointerCapture(e.pointerId);
-    if (this.pointers.size === 1) {
-      this.caught = this.drifting();
-      this.onGesture?.(true);
-    }
-    this.stopDrift();
-    this.velTheta = this.velPhi = this.velTx = this.velTy = this.velTz = 0;
-    if (this.pointers.size === 1) {
-      this.downX = this.lastX = p.x;
-      this.downY = this.lastY = p.y;
-      this.downAt = performance.now();
-      this.downButton = e.button;
-      this.moved = false;
-      if (e.pointerType === "touch") {
-        this.dragMode = "orbit";
-        this.longPressTimer = window.setTimeout(() => {
-          this.longPressTimer = null;
-          if (!this.moved && this.pointers.size === 1) {
-            this.dragMode = "none";
-            this.callbacks.onContext(p.x, p.y);
-          }
-        }, LONG_PRESS_MS);
-      } else if (e.button === 0 && !e.shiftKey) this.dragMode = "orbit";
-      else if (e.button === 0 || e.button === 1 || e.button === 2) this.dragMode = "pan";
-    } else if (this.pointers.size === 2) {
-      this.cancelLongPress();
-      this.dragMode = "none";
-      const [a, b] = this.pair();
-      this.pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
-      this.pinchMidX = (a.x + b.x) / 2;
-      this.pinchMidY = (a.y + b.y) / 2;
-    }
-  };
-
-  private readonly onPointerMove = (e: PointerEvent): void => {
-    if (!this.pointers.has(e.pointerId)) return;
-    const p = this.local(e);
-    this.pointers.set(e.pointerId, { x: p.x, y: p.y, type: e.pointerType });
-    if (this.pointers.size === 2) {
-      const [a, b] = this.pair();
-      const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      const midX = (a.x + b.x) / 2;
-      const midY = (a.y + b.y) / 2;
-      if (this.pinchDist > 0 && dist > 0) this.zoomAt(midX, midY, this.pinchDist / dist);
-      this.panBy(midX - this.pinchMidX, midY - this.pinchMidY);
-      this.pinchDist = dist;
-      this.pinchMidX = midX;
-      this.pinchMidY = midY;
-      this.moved = true;
-      return;
-    }
-    let dx = p.x - this.lastX;
-    let dy = p.y - this.lastY;
-    const touch = e.pointerType === "touch";
-    if (!this.moved && Math.hypot(p.x - this.downX, p.y - this.downY) > (touch ? CLICK_SLOP_TOUCH : CLICK_SLOP_MOUSE)) {
-      // A finger's drag starts from here, not from where it came down: its
-      // wider slop is not paid back as a jump.
-      if (touch) dx = dy = 0;
-      this.moved = true;
-      this.cancelLongPress();
-    }
-    if (!this.moved || this.dragMode === "none") return;
-    const now = performance.now();
-    const dt = Math.max(1, now - this.lastMoveAt) / 1000;
-    this.lastMoveAt = now;
-    const beforeTheta = this.theta.goal;
-    const beforePhi = this.phi.goal;
-    const bx = this.tx.goal;
-    const by = this.ty.goal;
-    const bz = this.tz.goal;
-    if (this.dragMode === "orbit") this.orbitBy(dx, dy);
-    else this.panBy(dx, dy);
-    // Velocity estimate (blend) for release inertia.
-    const blend = 0.5;
-    this.velTheta = this.velTheta * (1 - blend) + ((this.theta.goal - beforeTheta) / dt) * blend;
-    this.velPhi = this.velPhi * (1 - blend) + ((this.phi.goal - beforePhi) / dt) * blend;
-    this.velTx = this.velTx * (1 - blend) + ((this.tx.goal - bx) / dt) * blend;
-    this.velTy = this.velTy * (1 - blend) + ((this.ty.goal - by) / dt) * blend;
-    this.velTz = this.velTz * (1 - blend) + ((this.tz.goal - bz) / dt) * blend;
-    this.lastX = p.x;
-    this.lastY = p.y;
-  };
-
-  private readonly onPointerUp = (e: PointerEvent): void => {
-    if (!this.pointers.has(e.pointerId)) return;
-    const p = this.local(e);
-    this.pointers.delete(e.pointerId);
-    this.cancelLongPress();
-    if (this.element.hasPointerCapture(e.pointerId)) this.element.releasePointerCapture(e.pointerId);
-    if (this.pointers.size > 0) {
-      // Went from two fingers to one: restart a single-finger orbit cleanly.
-      const rest = [...this.pointers.values()][0] as { x: number; y: number };
-      this.lastX = rest.x;
-      this.lastY = rest.y;
-      this.dragMode = "orbit";
-      this.moved = true;
-      return;
-    }
-    this.onGesture?.(false);
-    const now = performance.now();
-    const wasDrag = this.moved;
-    const mode = this.dragMode;
-    this.dragMode = "none";
-    if (wasDrag) {
-      // Inertia: only if the pointer was still moving when released.
-      if (!this.reduced.matches && now - this.lastMoveAt < 80) {
-        if (mode === "orbit") {
+  /** The camera's answer to each input intent (input/router.ts). */
+  private gestures(): GestureTarget {
+    // Velocity estimate (blend) for release inertia, from the goals' change per move.
+    const track = (move: () => void): void => {
+      const now = performance.now();
+      const dt = Math.max(1, now - this.lastMoveAt) / 1000;
+      this.lastMoveAt = now;
+      const t0 = this.theta.goal;
+      const p0 = this.phi.goal;
+      const x0 = this.tx.goal;
+      const y0 = this.ty.goal;
+      const z0 = this.tz.goal;
+      move();
+      const blend = 0.5;
+      this.velTheta = this.velTheta * (1 - blend) + ((this.theta.goal - t0) / dt) * blend;
+      this.velPhi = this.velPhi * (1 - blend) + ((this.phi.goal - p0) / dt) * blend;
+      this.velTx = this.velTx * (1 - blend) + ((this.tx.goal - x0) / dt) * blend;
+      this.velTy = this.velTy * (1 - blend) + ((this.ty.goal - y0) / dt) * blend;
+      this.velTz = this.velTz * (1 - blend) + ((this.tz.goal - z0) / dt) * blend;
+    };
+    return {
+      dragStart: () => {
+        this.velTheta = this.velPhi = this.velTx = this.velTy = this.velTz = 0;
+        this.lastMoveAt = performance.now();
+      },
+      primary: (dx, dy) => track(() => this.orbitBy(dx, dy)),
+      pan: (dx, dy) => track(() => this.panBy(dx, dy)),
+      zoomAt: (x, y, scale) => this.zoomAt(x, y, scale),
+      twistAt: (x, y, rad) => this.twistAt(x, y, rad),
+      shiftScroll: (dx, dy) => this.orbitBy(dx, dy),
+      dragEnd: (mode, moving) => {
+        // Inertia: only if the pointer was still moving when released.
+        if (!moving || this.reduced.matches) return;
+        if (mode === "primary") {
           this.theta.drift = this.velTheta * 0.6;
           this.phi.drift = this.velPhi * 0.6;
         } else {
@@ -508,133 +475,21 @@ export class CameraController {
           this.tz.drift = this.velTz * 0.6;
         }
         this.callbacks.onChange();
-      }
-      return;
-    }
-    if (e.type === "pointercancel") return;
-    if (now - this.downAt > 700) return;
-    if (e.pointerType === "touch") {
-      if (this.caught) return;
-      if (now - this.lastTapAt < DOUBLE_TAP_MS && Math.hypot(p.x - this.lastTapX, p.y - this.lastTapY) < 30) {
-        this.lastTapAt = 0;
-        this.callbacks.onDoubleClick(p.x, p.y);
-        return;
-      }
-      this.lastTapAt = now;
-      this.lastTapX = p.x;
-      this.lastTapY = p.y;
-      this.callbacks.onClick(p.x, p.y, 0, false);
-      return;
-    }
-    if (this.downButton === 2) this.callbacks.onContext(p.x, p.y);
-    else if (this.downButton === 0) this.callbacks.onClick(p.x, p.y, 0, e.shiftKey || e.ctrlKey || e.metaKey);
-  };
-
-  private readonly onDblClick = (e: MouseEvent): void => {
-    const p = this.local(e);
-    this.callbacks.onDoubleClick(p.x, p.y);
-  };
-
-  private cancelLongPress(): void {
-    if (this.longPressTimer !== null) {
-      window.clearTimeout(this.longPressTimer);
-      this.longPressTimer = null;
-    }
+      },
+      active: (on) => this.onGesture?.(on),
+      coasting: () => [this.theta, this.phi, this.tx, this.ty, this.tz].some((c) => Math.abs(c.drift) > 1e-3),
+      stop: () => {
+        for (const c of [this.theta, this.phi, this.logDist, this.tx, this.ty, this.tz]) c.drift = 0;
+      },
+      tap: (x, y, additive) => this.callbacks.onClick(x, y, 0, additive),
+      doubleTap: (x, y) => this.callbacks.onDoubleClick(x, y),
+      context: (x, y) => this.callbacks.onContext(x, y),
+      contextDismiss: () => this.callbacks.onContextDismiss?.(),
+    };
   }
-
-  private drifting(): boolean {
-    return [this.theta, this.phi, this.tx, this.ty, this.tz].some((c) => Math.abs(c.drift) > 1e-3);
-  }
-
-  private stopDrift(): void {
-    for (const c of [this.theta, this.phi, this.logDist, this.tx, this.ty, this.tz]) c.drift = 0;
-  }
-
-  // ------------------------------------------------------------- wheel
-
-  private classify(e: WheelEvent): "pinch" | "mouse" | "trackpad" {
-    if (e.ctrlKey) return "pinch";
-    if (this.wheelMode === "orbit") return "trackpad";
-    if (this.wheelMode === "zoom") return "mouse";
-    const now = performance.now();
-    if (this.wheelSticky && now - this.wheelStickyAt < 400) {
-      this.wheelStickyAt = now;
-      return this.wheelSticky;
-    }
-    let kind: "mouse" | "trackpad" = "trackpad";
-    const wdy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
-    if (e.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) kind = "mouse";
-    else if (typeof wdy === "number" && wdy !== 0 && wdy % 120 === 0 && e.deltaX === 0) kind = "mouse";
-    else if (Math.abs(e.deltaY) >= 100 && e.deltaX === 0 && Number.isInteger(e.deltaY)) kind = "mouse";
-    this.wheelSticky = kind;
-    this.wheelStickyAt = now;
-    return kind;
-  }
-
-  /**
-   * A trackpad pinch in Safari arrives as gesture events (scale since the
-   * gesture began) rather than as ctrl + wheel. On a touch screen the same
-   * events accompany a two-finger touch, which the pointer handlers already
-   * turn into a pinch, so they are ignored while a pointer is down.
-   */
-  private readonly onSafariGesture = (e: Event): void => {
-    const g = e as Event & { scale?: number; clientX?: number; clientY?: number };
-    if (this.pointers.size > 0) return;
-    e.preventDefault();
-    if (e.type === "gestureend") {
-      if (this.gestureScale !== 0) this.onGesture?.(false);
-      this.gestureScale = 0;
-      return;
-    }
-    const scale = g.scale && g.scale > 0 ? g.scale : 1;
-    if (e.type === "gesturestart" || this.gestureScale === 0) {
-      this.gestureScale = scale;
-      this.stopDrift();
-      this.onGesture?.(true);
-      return;
-    }
-    const p = this.local(g as unknown as MouseEvent);
-    this.zoomAt(p.x, p.y, this.gestureScale / scale);
-    this.gestureScale = scale;
-  };
-
-  private readonly onWheel = (e: WheelEvent): void => {
-    e.preventDefault();
-    this.stopDrift();
-    const p = this.local(e);
-    const kind = this.classify(e);
-    if (kind === "pinch") {
-      // The same pinch, if this browser also reports it as gesture events.
-      if (this.gestureScale !== 0) return;
-      this.zoomAt(p.x, p.y, Math.exp(Math.max(-40, Math.min(40, e.deltaY)) * 0.01));
-      return;
-    }
-    if (e.shiftKey) {
-      // Shift + two-finger scroll orbits: the deliberate gesture, kept on the
-      // trackpad for anyone without a mouse button to hold.
-      this.orbitBy(-e.deltaX * 0.9, -e.deltaY * 0.9);
-      return;
-    }
-    if (kind === "mouse") {
-      const dy = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * 40;
-      this.zoomAt(p.x, p.y, Math.exp(Math.max(-60, Math.min(60, dy)) * 0.0022));
-      return;
-    }
-    // Plain two-finger scroll pans. Chrome reports a shift-held horizontal
-    // scroll as deltaX, so both axes are passed through and the sign is the
-    // same either way: the content follows the fingers.
-    this.panBy(-e.deltaX, -e.deltaY);
-  };
 
   dispose(): void {
     this.disposed = true;
-    this.cancelLongPress();
-    this.element.removeEventListener("pointerdown", this.onPointerDown);
-    this.element.removeEventListener("pointermove", this.onPointerMove);
-    this.element.removeEventListener("pointerup", this.onPointerUp);
-    this.element.removeEventListener("pointercancel", this.onPointerUp);
-    this.element.removeEventListener("wheel", this.onWheel);
-    for (const t of ["gesturestart", "gesturechange", "gestureend"]) this.element.removeEventListener(t, this.onSafariGesture);
-    this.element.removeEventListener("dblclick", this.onDblClick);
+    this.input.dispose();
   }
 }

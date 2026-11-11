@@ -714,7 +714,7 @@ if (sheet) {
       const r = await m.openModel(host, model, viewOf(b.dataset.view), true);
       if (mine !== turn || !r.shown) { if (mine === turn) m.close(host); return; }
       view.classList.add("is-live");
-      foot.textContent = `${r.triangles.toLocaleString("en-US")} triangles · drag to orbit · pinch or scroll to zoom · double-tap a spot to centre it · arrow keys turn, + and − zoom`;
+      foot.textContent = `${r.triangles.toLocaleString("en-US")} triangles · drag to orbit · two fingers or scroll to move · pinch to zoom · double-tap a spot to centre it · arrow keys turn, + and − zoom`;
       m.focusCanvas();
     } catch (e) {
       if (mine === turn) foot.textContent = "Live 3D could not start here. This is the rendered picture of the same model.";
