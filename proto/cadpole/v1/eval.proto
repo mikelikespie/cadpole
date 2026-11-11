@@ -1,0 +1,571 @@
+// Results of evaluating a document: the feature tree, bodies, tessellated
+// meshes and diagnostics. Nothing here is persisted as the source of truth.
+syntax = "proto3";
+
+package cadpole.v1;
+
+import "cadpole/v1/document.proto";
+import "cadpole/v1/geometry.proto";
+
+message Model {
+  repeated ParamInfo params = 1;
+  repeated Feature features = 2;
+  repeated Body bodies = 3;
+  repeated Diagnostic diagnostics = 4;
+  // Wall-clock time spent evaluating, for the UI.
+  double eval_millis = 5;
+  // What the kernel-op memo did for this evaluation. Present on
+  // every model; all zero when the caller attached no memo.
+  MemoReport memo = 6;
+  // Display assemblies. All three are empty for a document that
+  // declares none, and every body then reads exactly as before.
+  repeated Part parts = 7;
+  repeated Instance instances = 8;
+  repeated Assembly assemblies = 9;
+  // The animations the script declares with `animation(...)`:
+  // data only, in declaration order. Empty for a document without any.
+  repeated AnimationInfo animations = 10;
+  // The print plates of the document's Bambu Studio projects, laid
+  // out exactly as `cadpole export` would lay them out: one entry per plate of
+  // every `export(..., flavor=flavor.bambu)` path, in plate order, computed
+  // from the export calls and the bodies' bounding boxes alone -- no mesh
+  // is made or moved for it. What a UI's plates view draws, by placing the
+  // meshes it already has. Empty for a document without such exports, and
+  // nothing else in the model then changes.
+  repeated Plate plates = 11;
+  // What the script declared with `render_defaults(...)`: the sun,
+  // where north is and the camera a render of this document takes unless
+  // the request says otherwise. Absent for a document that declares none.
+  RenderDefaults render_defaults = 12;
+  // The display layers the script declared with `layer(...)`, in
+  // declaration order: names, docs and each one's own default visibility
+  // and opacity. Metadata only -- no body moves or changes for a layer, and
+  // a viewer applies them without re-evaluating. Empty for a document that
+  // declares none.
+  repeated Layer layers = 20;
+  // The document's display convention, as the script declared it
+  // with `units(...)`: how a front end writes a length. Absent for a script
+  // that declared none, which reads as millimetres. Every number in this
+  // message stays a millimetre whatever it says.
+  DisplayUnits display_units = 21;
+}
+
+// A document's own render defaults, as `render_defaults(sun=,
+// north=, camera=)` recorded them. Every field is optional, and a request's
+// own value wins over each.
+message RenderDefaults {
+  SunInfo sun = 1;
+  // Degrees clockwise from +y to north, seen from above.
+  double north_degrees = 2;
+  // A free camera: the eye and the target in model space, the up vector
+  // (+z unless given) and the vertical field of view in degrees (0 = 35).
+  Vec3 eye = 3;
+  Vec3 target = 4;
+  Vec3 up = 5;
+  double fov_degrees = 6;
+}
+
+// A sun: its compass azimuth (0 north, 90 east, clockwise) and its
+// elevation above the horizon, in degrees, and the label a sheet prints
+// for it (`2026-12-21 12:00`, or `az 210 el 45` for one placed by hand).
+message SunInfo {
+  double azimuth = 1;
+  double elevation = 2;
+  string label = 3;
+}
+
+// One display layer: what `layer(name, doc=, visible=, opacity=,
+// color=)` declared. A body names its layer in `Body.layer`; a body that
+// names none is on the implicit layer, which a UI lists as "Other" only
+// when a named layer exists.
+message Layer {
+  string name = 1;
+  string doc = 2;
+  // The layer's own defaults: drawn or not, and how opaque (0..1), when
+  // nothing overrides them. A viewer's switch and slider, a render's
+  // `--layer` flag and a keyframe's `view(layers=)` write over these.
+  bool visible = 3;
+  double opacity = 4;
+  // A tint for the layer's swatch in a UI, when the script gave one.
+  optional Color color = 5;
+  // Position in declaration order, from 0: the panel's order.
+  uint32 order = 6;
+}
+
+// A display convention: the unit readouts are written in and, for
+// the imperial units, the fraction of an inch a dimension rounds to. Data
+// only; nothing in the engine converts.
+message DisplayUnits {
+  // "mm", "cm", "m", "in", "ft" or "ft-in".
+  string unit = 1;
+  // Round imperial lengths to 1/fraction of an inch: 16 for sixteenths, 8
+  // for eighths, 0 for decimal inches. Ignored by the metric units.
+  uint32 fraction = 2;
+}
+
+// One plate of a Bambu Studio project: its number and name, the bed
+// it is laid out for, where it sits on Bambu's world-space grid, and every
+// body on it with the placement the export gives it.
+message Plate {
+  // 1-based, as the export numbers it: `export(plate=N)`, or the order of
+  // first appearance for a named plate.
+  uint32 index = 1;
+  // `export(plate="...")`'s name; empty for a plate only ever numbered.
+  string name = 2;
+  // The `export()` path this plate belongs to, e.g. `gear_toy.3mf`: a
+  // document with two project paths lists both projects' plates.
+  string path = 3;
+  // The bed the grid is laid out for, in mm (`export(printer=)`; the 256 mm
+  // square of the X1C/P1S/A1 by default).
+  double bed_x = 4;
+  double bed_y = 5;
+  // Where the plate's corner (the bed's origin) sits in the export's world
+  // space: three plates to a row, 1.2 x the bed apart, rows towards -y.
+  Vec3 origin = 6;
+  // The bodies on this plate, in export order.
+  repeated PlateBody bodies = 7;
+}
+
+// One body on a plate: which body, the transform that puts its mesh where
+// the export puts it, and the filament it prints in.
+message PlateBody {
+  // `Body.id`.
+  string body_id = 1;
+  // The print object the body is part of: `export(name=)` when the call
+  // named one, else the body's own name.
+  string object = 2;
+  // The rigid transform that takes the body's mesh -- for an instance body,
+  // the part body's mesh it shares -- to where it stands on the plate: the
+  // instance's pose (never an exploded-view offset, which no export sees)
+  // followed by the plate's placement. A plate's contents move as a group,
+  // so the placement is a translation with z untouched: z = 0 is the bed.
+  Transform transform = 3;
+  // 1-based filament slot, as `export(extruder=)` pinned it or as the
+  // body's colour was assigned one.
+  uint32 slot = 4;
+  // That slot's filament colour, linear RGB.
+  Color color = 5;
+  // The filament's label as the export writes it: the material name of the
+  // first body in the slot, else the colour as `#rrggbb`.
+  string filament = 6;
+}
+
+// One `animation(name, keyframes, ...)` declaration, as a listing: what
+// `cadpole animate --list` prints and what a UI offers to play. The keyframes'
+// values themselves stay in the script; a front-end plays an animation by
+// asking `Animate`, or by sampling the times it lists.
+message AnimationInfo {
+  string name = 1;
+  // Seconds from the first keyframe to the last.
+  double duration_s = 2;
+  // The declared frame rate.
+  double fps = 3;
+  // Frames at the declared rate: one per 1/fps over the duration, the end
+  // included unless the animation loops.
+  uint32 frames = 4;
+  bool loop = 5;
+  // The animation's easing: "linear", "smooth", "ease_in" or "ease_out".
+  string ease = 6;
+  // The parameters the keyframes move, in first-mention order.
+  repeated string params = 7;
+  // The keyframes' times, in seconds.
+  repeated double keyframe_times = 8;
+  // True when some keyframe moves the camera.
+  bool has_camera = 9;
+  // Where the `animation(...)` call is.
+  SourceSpan span = 10;
+}
+
+// The kernel-op memo's account of one evaluation: counts -- facts about
+// what the engine did, never times.
+message MemoReport {
+  // Kernel ops that ran (a miss, or no memo).
+  uint32 ops_run = 1;
+  // Kernel ops served from the memo: geometry, names and diagnostics
+  // replayed, the kernel untouched.
+  uint32 ops_hit = 2;
+  // Fuses and booleans the drag preview skipped.
+  uint32 ops_deferred = 3;
+  // Entries the memo holds after this evaluation, and their size against
+  // its bound.
+  uint32 entries = 4;
+  uint64 bytes = 5;
+  uint64 limit_bytes = 6;
+  // Whether this evaluation was a drag preview: some fuses may be deferred
+  // and the bodies shown are the operands.
+  bool preview = 7;
+}
+
+// A reusable definition (`part(...)`): bodies built once. They are consumed
+// -- `visible` is false on each -- and render only where an instance puts
+// them.
+message Part {
+  string id = 1;
+  string name = 2;
+  string feature_id = 3;
+  // The part's own bodies, `feature#n`, in the part's order.
+  repeated string body_ids = 4;
+}
+
+// A placed copy of a part (`instance(...)`): a pose and nothing else. Its
+// bodies are `Body` entries whose `part_body` names the part body each one
+// shares a mesh with.
+message Instance {
+  string id = 1;
+  string name = 2;
+  string feature_id = 3;
+  // `Part.id` of the part this instance places.
+  string part = 4;
+  // Where the part's origin sits, before any exploded-view offset.
+  Transform pose = 5;
+  // The exploded-view offset a scene adds on top of `pose`: zero unless an
+  // assembly above this instance was exploded.
+  Vec3 explode = 6;
+  // The posed body ids, one per part body, in the part's order.
+  repeated string body_ids = 7;
+  // `Assembly.id` of the assembly this instance belongs to, or empty.
+  string assembly = 8;
+}
+
+// A group of instances and assemblies (`assembly(...)`), the unit an
+// exploded view spreads.
+message Assembly {
+  string id = 1;
+  string name = 2;
+  string feature_id = 3;
+  // Direct members, in declaration order: `Instance.id`s and
+  // `Assembly.id`s.
+  repeated string instances = 4;
+  repeated string assemblies = 5;
+  // `explode(assembly, distance, along=)`: the distance (0 when not
+  // exploded) and the direction, `x`, `y`, `z`, `radial` or a vector.
+  double explode_distance = 6;
+  string explode_along = 7;
+}
+
+// A `param(...)` declared by the script, with its effective value.
+message ParamInfo {
+  string name = 1;
+  ParamValue default_value = 2;
+  ParamValue value = 3;
+  bool overridden = 4;
+  string description = 5;
+  string unit = 6;
+  optional double min = 7;
+  optional double max = 8;
+  optional double step = 9;
+  // Source location of the `param(...)` call.
+  SourceSpan span = 10;
+  // For text params: the allowed values, if restricted.
+  repeated string choices = 11;
+}
+
+message SourceSpan {
+  string path = 1;
+  uint32 start_line = 2;
+  uint32 start_col = 3;
+  uint32 end_line = 4;
+  uint32 end_col = 5;
+}
+
+// One node of the feature tree. Features are produced by script calls such as
+// `extrude(...)`. They are never created from the UI, only selected.
+message Feature {
+  string id = 1;
+  // e.g. "sketch", "extrude", "revolve", "union", "fillet".
+  string kind = 2;
+  // User-provided name, or empty.
+  string name = 3;
+  // Ids of features this one consumes.
+  repeated string inputs = 4;
+  // Ids of bodies this feature produces.
+  repeated string outputs = 5;
+  // The call's arguments, for inspection in the UI.
+  map<string, string> args = 6;
+  SourceSpan span = 7;
+  bool suppressed = 8;
+  // Diagnostics scoped to this feature.
+  repeated Diagnostic diagnostics = 9;
+  // Every kernel op of this feature was served from the memo: its
+  // geometry, names and diagnostics are those of an earlier evaluation
+  // with the same inputs.
+  bool cached = 10;
+}
+
+message Body {
+  string id = 1;
+  // Feature that last produced this body.
+  string feature_id = 2;
+  string name = 3;
+  BBox bbox = 4;
+  Topology topology = 5;
+  Mesh mesh = 6;
+  bool visible = 7;
+  Material material = 8;
+  // Set on an instance's posed copy of a part body: the id of the
+  // part body whose mesh this one shares. That body is in `Model.bodies`
+  // too, invisible, carrying the mesh once; this one carries no `mesh`, and
+  // its `bbox` and `topology` are already where `transform` puts it.
+  string part_body = 9;
+  // How the shared mesh is displayed: the instance's pose followed by its
+  // exploded-view offset. Absent on an ordinary body.
+  Transform transform = 10;
+  // `Instance.id` of the instance this body belongs to, or empty.
+  string instance = 11;
+  // The display layer this body is on: a `Layer.name` from
+  // `Model.layers`, or empty for the implicit layer. Follows the body
+  // through transforms, copies, patterns, booleans (the first operand's)
+  // and instances, exactly as `material` does. Field 20, for the reason
+  // `Model.layers` gives.
+  string layer = 20;
+}
+
+// Linear RGB in 0..1.
+message Color {
+  double r = 1;
+  double g = 2;
+  double b = 3;
+}
+
+// Surface appearance. Kept simple and PBR-shaped so the software rasterizer,
+// the web renderer (three.js) and a future path tracer agree.
+message Material {
+  string name = 1;
+  Color base_color = 2;
+  double roughness = 3;
+  double metallic = 4;
+  // Procedural texture name ("checker", "stripes", "noise", "wood", "dots")
+  // or an asset id; empty for none.
+  string texture = 5;
+  // Texture repeat length in mm; 0 or absent means the 10 mm default.
+  double texture_scale = 6;
+  // 0..1; absent means 1 (opaque). Below 0.999 the body renders translucent.
+  optional double opacity = 7;
+  // Index of refraction 1.0..2.5; absent means 1.5 (F0 = 0.04). Fresnel only.
+  optional double ior = 8;
+  // Linear radiance added after lighting; absent means black. May exceed 1.
+  Color emissive = 9;
+
+  // Print-material terms. The rasterizer ignores all five; the path tracer
+  // is what turns them into an image. Every one of them
+  // is 0 by default, and 0 means "off", so an old Material still decodes to
+  // the same appearance it always had.
+
+  // Fraction of the surface that refracts rather than diffuses, 0..1. 0 with
+  // opacity < 1 means "derive from opacity": the tracer uses 1 - opacity, so
+  // a script that only knows about opacity still gets refraction.
+  double transmission = 10;
+  // Distance in mm over which the interior attenuates to base_color
+  // (Beer-Lambert). 0 = no absorption, so thickness does not tint.
+  double attenuation_distance = 11;
+  // Mean free path in mm between scattering events inside the solid.
+  // 0 = clear; short values give milky filaments.
+  double scatter_distance = 12;
+  // Henyey-Greenstein asymmetry of that scattering, -1 (back) .. 1 (forward).
+  double scatter_g = 13;
+  // Layer-line anisotropic roughness, 0..1: roughness across the layer
+  // stacking direction is raised and along the extrusion lowered, so an FDM
+  // part reads as printed rather than moulded.
+  double anisotropy = 14;
+  // Edge-break radius in mm (path tracer): within it of a crease edge the
+  // shading normal is blended toward the neighbouring face, so the edge
+  // catches the light like a deburred machined edge instead of reading
+  // razor-sharp. No geometry changes. 0 = the render's `edge_break_mm`.
+  double edge_break = 15;
+  // Groove depth in mm of the machined textures ("turned", "milled"); 0 =
+  // the kind's default fraction of the pitch, which is `texture_scale`.
+  double texture_depth = 16;
+
+  // Whether the body casts a shadow. Absent means true. False makes
+  // it guide geometry -- a zoning envelope, a setback plane, a lot line, a
+  // section marker -- that the camera sees but light does not: the path
+  // tracer's shadow rays, sun visibility, indirect bounces and occlusion
+  // queries all skip it, the rasterizer leaves it out of its sun-shadow BVH
+  // and its contact shadow, and both draw it in the colour pass as before.
+  // Its own surface is still lit and shadowed by the real bodies. Written
+  // only when false, so a document that never set it serialises as it did.
+  optional bool shadow = 20;
+}
+
+// Boundary representation summary with stable names for selection. Geometry
+// itself stays inside the kernel; this is enough for the UI to pick and for
+// scripts to query.
+message Topology {
+  repeated TopoFace faces = 1;
+  repeated TopoEdge edges = 2;
+  repeated TopoVertex vertices = 3;
+}
+
+message TopoFace {
+  // Generated name (docs/design.md, "The naming grammar"), e.g. "extrude_1/side[0.2]".
+  string name = 1;
+  // "plane", "cylinder", "cone", "sphere", "torus", "nurbs".
+  string surface_kind = 2;
+  Vec3 centroid = 3;
+  Vec3 normal = 4;
+  double area = 5;
+  repeated string edges = 6;
+  // Index range of this face's triangles in the body's mesh.
+  uint32 tri_start = 7;
+  uint32 tri_count = 8;
+  // Position in Topology.faces: this face is also addressable as
+  // "face:<index>". That form is kernel output order, so it moves whenever the
+  // model does; it is carried for the clients that still use it.
+  uint32 index = 9;
+  // Other names that resolve to this face: the generic form of a primitive's
+  // face ("box_1/end" beside "box_1/top"), the group name of a split piece
+  // ("lid/end" beside "lid/end#0"), or the other sources of a face a boolean
+  // merged. A name that matches several faces resolves to the set, flagged.
+  repeated string aliases = 10;
+}
+
+message TopoEdge {
+  // Generated name: the canonically ordered pair of faces this edge bounds,
+  // e.g. "lid/end|side[0.2]", with "@k" when a pair bounds several edges.
+  string name = 1;
+  // "line", "circle", "arc", "nurbs".
+  string curve_kind = 2;
+  Vec3 start = 3;
+  Vec3 end = 4;
+  double length = 5;
+  repeated string faces = 6;
+  // Polyline for display / picking.
+  repeated Vec3 polyline = 7;
+  // Angle between the surfaces meeting at this edge, in degrees: 0 is a
+  // tangent (smooth) seam, 90 a box corner, 180 a fold. -1 when the edge has
+  // no two adjacent triangles. Renderers use this to draw only real creases.
+  double dihedral_degrees = 8;
+  // True when the edge is convex (material on the inside of the fold).
+  bool convex = 9;
+  // Position in Topology.edges; also addressable as "edge:<index>".
+  uint32 index = 10;
+}
+
+message TopoVertex {
+  // Generated name: the faces that meet here, e.g. "b/end|side[0.0]|side[0.3]".
+  string name = 1;
+  Vec3 position = 2;
+  // Position in Topology.vertices; also addressable as "vertex:<index>".
+  uint32 index = 3;
+  // Names of the faces meeting at this vertex.
+  repeated string faces = 4;
+}
+
+// Triangle mesh for rendering. Flat arrays keep it cheap to hand to WebGL.
+message Mesh {
+  // xyz triples.
+  repeated float positions = 1 [packed = true];
+  // xyz triples, one per position.
+  repeated float normals = 2 [packed = true];
+  // Triangle vertex indices.
+  repeated uint32 indices = 3 [packed = true];
+  // One face index (into Topology.faces) per triangle, for picking.
+  repeated uint32 face_ids = 4 [packed = true];
+  // One colour per position, as sRGB-encoded 8-bit RGB triples (three bytes
+  // per vertex): the per-vertex colour an imported scan carries -- glTF
+  // `COLOR_0`, an OBJ's `v x y z r g b`. Empty on every mesh Cadpole
+  // builds itself. A viewer multiplies the body's material base colour by
+  // it; a length other than three bytes per position means "none".
+  bytes colors = 5;
+}
+
+message Diagnostic {
+  Severity severity = 1;
+  string message = 2;
+  SourceSpan span = 3;
+  string feature_id = 4;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO = 1;
+  SEVERITY_WARNING = 2;
+  SEVERITY_ERROR = 3;
+}
+
+// A document evaluated ahead of time: what `cadpole bake` writes and
+// `cadpole publish` puts beside a static copy of the web app, which opens it
+// read-only without running Starlark. A derived artifact like the rest of
+// this file -- the `.star` sources (or a packed document) stay the source of truth,
+// and a bake is made again, never edited.
+//
+// On disk and on the wire it is this message, encoded, then zlib-deflated
+// (RFC 1950), so a browser reads it with `DecompressionStream("deflate")`
+// and nothing else; its extension is set in build_support/file_types.bzl.
+message BakedModel {
+  // 1. A reader refuses a version newer than it knows rather than drawing
+  // half of it.
+  uint32 schema_version = 1;
+  // What the viewer calls the document: the script's stem, or what
+  // `cadpole publish --title` said.
+  string name = 2;
+  // The evaluated model exactly as `Evaluate` returns it, every body's mesh
+  // included, with `eval_millis` and `memo` zeroed so the same sources bake
+  // to the same bytes, and every length in millimetres (a script drawn in
+  // feet is scaled once, at the bake). Unless the sources are included, no
+  // text the author wrote survives but names: no diagnostics (`print()`
+  // output, checks, warnings), source spans, parameter or layer
+  // descriptions, feature arguments or animations.
+  Model model = 3;
+  // The tessellation tolerance the meshes were made at, mm.
+  double tolerance = 4;
+  // The build that baked it, e.g. "cadpole 0.1.0".
+  string generator = 5;
+  // sha256 over the sources the model was evaluated from -- every script's
+  // path and text, every asset's name and hash, and the overrides -- so a
+  // bake says which sources it came from without carrying them.
+  string source_sha256 = 6;
+  // The parameter overrides the bake was evaluated with (`--param`); the
+  // value every parameter ended up with is in `model.params`.
+  map<string, ParamValue> param_overrides = 7;
+  // The document itself -- its scripts, and its assets' names and hashes
+  // but never their bytes -- only when the publisher asked for it
+  // (`--include-sources`). Absent by default: a published house is its
+  // geometry, not its script.
+  Document document = 8;
+  // How the page opens: the publisher's camera, grid, section and
+  // display mode.
+  // Absent in an older bake, or in one made with none of those flags, and
+  // the page then opens as any other: framed on the visible bodies.
+  PublishedView view = 9;
+}
+
+// What `cadpole publish` (or `cadpole bake`) asked the page to open with.
+// Every field is optional; every length is in millimetres, like the model.
+message PublishedView {
+  // A view preset the page opens on, framed on the visible bodies: "home"
+  // (the default), "iso", "top", "bottom", "front", "back", "left" or
+  // "right". Ignored when `eye` is set.
+  string camera = 1;
+  // A free camera: the eye and what it looks at. When the publisher gave
+  // neither this nor `camera`, the script's `render_defaults(camera=)` is
+  // used if it declares one.
+  Vec3 eye = 2;
+  Vec3 target = 3;
+  // The viewer's own ground grid: "" or "on" (drawn as usual), "dim"
+  // (drawn faint) or "off" (hidden until the viewer turns it on).
+  string grid = 4;
+  // A section the page opens with, as `cadpole render --section` spells one
+  // and the web viewer's Section panel writes it: "z=2400" removes
+  // everything above z = 2400 mm; "x=", "y=" likewise, "-x=" the other
+  // side; up to one horizontal and one vertical plane, comma-separated.
+  string section = 5;
+  // The layers the camera frames (`--frame-layer`): the opening view, Home,
+  // Iso and Fit fit these layers' drawn bodies only, so a house opens on
+  // the house while its visible neighbours stay in the picture. Empty
+  // frames every drawn body.
+  repeated string frame_layers = 6;
+  // The display mode the page opens in (`--mode`), as the viewer's Display
+  // mode control names them: "shaded", "shaded_edges" (the viewer's own
+  // default), "wireframe", "xray" (every body see-through, so the parts
+  // inside a casing read through it) or "faces". "" is the viewer's default.
+  // The viewer can change it; `?mode=` in the page's address overrides it.
+  string mode = 7;
+  // Where the page's "back" link goes (`--home-url`): the site a published
+  // model belongs to. An http(s) address, or one relative to the page. ""
+  // draws no link.
+  string home_url = 8;
+  // What that link is called (`--home-label`), for its tooltip and for a
+  // screen reader. "" reads "Back".
+  string home_label = 9;
+}

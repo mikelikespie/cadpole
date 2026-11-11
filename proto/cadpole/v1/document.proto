@@ -1,0 +1,184 @@
+// The persisted Cadpole document.
+//
+// A document is *script first*: the Starlark source is the single source of
+// truth for geometry. Everything else here is either an input to evaluation
+// (parameter overrides) or UI state that must survive a reload (selection,
+// camera). Evaluated geometry is never persisted in the document; it is
+// recomputed (see eval.proto) and may be cached separately.
+syntax = "proto3";
+
+package cadpole.v1;
+
+import "cadpole/v1/geometry.proto";
+import "google/protobuf/timestamp.proto";
+
+message Document {
+  // Stable identifier (UUID string). Assigned on creation, never changes.
+  string id = 1;
+  string name = 2;
+  // Schema version of this message, for forward-compatible migrations.
+  uint32 schema_version = 3;
+  LengthUnit display_unit = 4;
+
+  // The Starlark program. `main.star` is the entry point; other files are
+  // importable with `load("//lib.star", "helper")`.
+  repeated ScriptFile scripts = 5;
+
+  // User overrides of `param(...)` values declared by the script, keyed by
+  // parameter name. Absent entries use the script's default.
+  map<string, ParamValue> param_overrides = 6;
+
+  // UI state.
+  Selection selection = 7;
+  ViewState view = 8;
+
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp modified_at = 10;
+
+  // External files the scripts refer to by name (`asset("plan.dxf")`).
+  // Scripts never see paths: the name is resolved in this table and the
+  // bytes are identified by `sha256`.
+  repeated Asset assets = 11;
+}
+
+// Bytes that did not come from the script: an SVG to import, a floor-plan
+// DXF, a font. Identified by content hash, named by the user.
+//
+// A document on disk is *packed*: `data` carries the bytes so the file is
+// self-contained. In transport (the session API, a render host, wasm) the
+// table may carry only the name and hash, with the bytes supplied once
+// through `EvaluateRequest.asset_data` or a prior `set_asset`. Evaluating a
+// document whose bytes are nowhere to be found is an error diagnostic at the
+// `asset()` call, never a panic.
+message Asset {
+  // Unique within the document; this is the string `asset("...")` names.
+  // Defaults to the dropped file's name ("logo.svg", "plan.dxf").
+  string name = 1;
+  // Lowercase hex SHA-256 of `data`. The identity: two drops of identical
+  // bytes share one blob.
+  string sha256 = 2;
+  // Advisory MIME type ("image/svg+xml", "font/ttf"); `kind` is what the
+  // importers switch on, and it is sniffed from the bytes, not trusted.
+  string mime = 3;
+  uint64 size = 4;
+  AssetKind kind = 5;
+  // The bytes, when the document is packed. Empty when a store or the
+  // request carries them.
+  bytes data = 6;
+  // Where the file came from when it was added. Informational only: nothing
+  // ever reads it back off disk.
+  string source_path = 7;
+  google.protobuf.Timestamp added_at = 8;
+}
+
+// What an asset's bytes are, sniffed at add time. The client's declared MIME
+// type is never trusted.
+enum AssetKind {
+  ASSET_KIND_UNSPECIFIED = 0;
+  ASSET_KIND_SVG = 1;
+  ASSET_KIND_DXF = 2;
+  ASSET_KIND_STL = 3;
+  ASSET_KIND_OBJ = 4;
+  ASSET_KIND_THREEMF = 5;
+  ASSET_KIND_STEP = 6;
+  ASSET_KIND_IMAGE = 7;
+  ASSET_KIND_FONT = 8;
+  // glTF 2.0, binary (GLB) or JSON (`.gltf`): read by import_mesh.
+  ASSET_KIND_GLTF = 9;
+}
+
+message ScriptFile {
+  // Path relative to the document root, e.g. "main.star".
+  string path = 1;
+  string source = 2;
+}
+
+message ParamValue {
+  oneof value {
+    double number = 1;
+    bool boolean = 2;
+    string text = 3;
+    Vec3 vector = 4;
+  }
+}
+
+// A reference to something in the evaluated model. References are *stable
+// names*, not indices, so that a selection survives re-evaluation when the
+// script changes elsewhere.
+message EntityRef {
+  // Feature id as assigned by the script (`name=` argument) or generated
+  // deterministically from call order, e.g. "extrude_3".
+  string feature_id = 1;
+  // Body produced by that feature, when it produces several. Empty means the
+  // feature itself (e.g. selecting a whole sketch or extrude).
+  string body_id = 2;
+  EntityKind kind = 3;
+  // Topological name within the body: a generated name such as "lid/end",
+  // "extrude_1/side[0.2]" or the edge "lid/end|side[0.2]". The grammar is
+  // docs/design.md, "The naming grammar", and is defined there and nowhere else.
+  //
+  // The kernel-order forms "face:N" / "edge:N" / "vertex:N" are accepted as an
+  // addressing form for compatibility, but they are not names: they change
+  // whenever the sketch does, so a reference that carries one cannot survive
+  // an edit. Prefer the generated name.
+  string topo_name = 4;
+  // What the entity looked like when the selection was made. When the name no
+  // longer resolves, this is what decides between "moved" (exactly one entity
+  // still matches it) and "stale" (docs/design.md, "Geometric fallback"). Optional:
+  // without it a lost name is simply stale.
+  EntityFingerprint fingerprint = 5;
+}
+
+// The geometric fallback of docs/design.md ("Geometric fallback"), captured when a
+// selection is made. Deliberately loose enough to survive a parameter change
+// and tight enough that a wrong match is unlikely: a reference matches when
+// the kind agrees, the centroid is within max(1 mm, 2 % of the body
+// diagonal), the normal within 5 degrees and the area (or length) within
+// 25 %, and exactly one entity does so.
+message EntityFingerprint {
+  // "plane", "cylinder", ... for a face; "line", "circle", ... for an edge.
+  string surface_kind = 1;
+  Vec3 centroid = 2;
+  // Face normal; unset for an edge or a vertex.
+  Vec3 normal = 3;
+  // Square millimetres, for a face.
+  double area = 4;
+  // Millimetres, for an edge.
+  double length = 5;
+}
+
+enum EntityKind {
+  ENTITY_KIND_UNSPECIFIED = 0;
+  ENTITY_KIND_FEATURE = 1;
+  ENTITY_KIND_BODY = 2;
+  ENTITY_KIND_FACE = 3;
+  ENTITY_KIND_EDGE = 4;
+  ENTITY_KIND_VERTEX = 5;
+  ENTITY_KIND_SKETCH = 6;
+  ENTITY_KIND_SKETCH_ENTITY = 7;
+  ENTITY_KIND_PARAM = 8;
+  // An entry of `Document.assets`, so the tree can show assets and the UI
+  // can select one.
+  ENTITY_KIND_ASSET = 9;
+}
+
+// What the user currently has selected / focused in the UI. This is what an
+// assistant reads to understand "the thing I'm pointing at".
+message Selection {
+  repeated EntityRef selected = 1;
+  // The single entity the cursor is hovering, if any.
+  EntityRef hovered = 2;
+  // Optional free-text note the user attached to the selection ("make this
+  // thicker"). Cleared when the selection changes.
+  string note = 3;
+}
+
+message ViewState {
+  Vec3 eye = 1;
+  Vec3 target = 2;
+  Vec3 up = 3;
+  bool orthographic = 4;
+  double fov_degrees = 5;
+  // Feature ids hidden in the viewport.
+  repeated string hidden_features = 6;
+}

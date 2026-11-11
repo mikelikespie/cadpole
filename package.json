@@ -1,0 +1,19 @@
+{
+  "name": "cadpole",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pnpm workspace root. Cadpole's own JavaScript lives in src/web and spec; this file exists only for the two pnpm settings below, which pnpm reads from the workspace root and nowhere else.",
+  "license": "Apache-2.0",
+  "pnpm": {
+    "overrides": {
+      "adm-zip": "0.6.1"
+    },
+    "packageExtensions": {
+      "@informalsystems/quint": {
+        "dependencies": {
+          "protobufjs": "7.6.6"
+        }
+      }
+    }
+  }
+}

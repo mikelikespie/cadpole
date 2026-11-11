@@ -1,0 +1,38 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# `--//build_support:require_network_sandbox=true` -- set by --config=hermetic,
+# which --config=ci includes -- says the host is expected to have a sandbox
+# that can block the network, and switches on the test that proves it. It is
+# off by default so that `bazel test //build_support/...` stays green on a box
+# whose kernel forbids unprivileged user namespaces (Ubuntu 24.04 with
+# kernel.apparmor_restrict_unprivileged_userns=1, for one); there the test is
+# skipped as incompatible, which is visible, rather than passed, which would
+# be a lie.
+bool_flag(
+    name = "require_network_sandbox",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "network_sandbox_required",
+    flag_values = {":require_network_sandbox": "true"},
+)
+
+# Fails when a `block-network` test can reach the network -- that is, when
+# Bazel quietly fell back from linux-sandbox to processwrapper-sandbox, which
+# has no network namespace. The Quint models, the Playwright suite and the
+# listener suite all carry that tag; what it guarantees is only what this test
+# has proved somewhere, and CI is that somewhere.
+sh_test(
+    name = "network_is_blocked_test",
+    size = "small",
+    srcs = ["network_is_blocked_test.sh"],
+    tags = ["block-network"],
+    target_compatible_with = select({
+        ":network_sandbox_required": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+)

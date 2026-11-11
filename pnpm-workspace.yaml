@@ -1,0 +1,18 @@
+# pnpm workspace for the web UI (src/web), the project site (site) and the
+# Quint models (spec). The
+# lockfile (pnpm-lock.yaml, next to this file) is consumed by
+# npm_translate_lock in MODULE.bazel. Regenerate it from the repo root with
+#   pnpm install --lockfile-only
+#
+# The root package.json holds the two settings pnpm reads only from a workspace
+# root: an override that takes `adm-zip` to a version without two open
+# advisories, and a package extension that declares the dependency Quint
+# `require`s without listing.
+packages:
+  - spec
+  - site
+  - src/web
+
+# rules_js requires an explicit list of packages allowed to run lifecycle
+# (postinstall) scripts. None of our deps need them.
+onlyBuiltDependencies: []

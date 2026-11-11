@@ -1,0 +1,8 @@
+# The reference's code blocks are evaluated by
+# //src/rust/cadpole-script:cadpole_script_test (reference_examples_that_say_they_run_do_run).
+# //spec:names_test reads the minimum Claude Code version out of
+# assistant-integration.md, for spec/listener.qnt.
+exports_files([
+    "assistant-integration.md",
+    "starlark-api.md",
+])

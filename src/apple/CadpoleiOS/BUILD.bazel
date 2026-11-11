@@ -1,0 +1,49 @@
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("//build_support:file_types.bzl", "file_types_expand")
+
+package(default_visibility = ["//visibility:public"])
+
+# The phone and iPad app: a thin client against `cadpole serve`.
+#
+#   bazel build --config=apple-remote //src/apple/CadpoleiOS:CadpoleiOS
+#
+# No Rust here: the viewport shows the server's rendered image. A local
+# renderer would be `cadpole-render` + meshes only, never the kernel or
+# Starlark (docs/apple-apps.md).
+swift_library(
+    name = "CadpoleiOSLib",
+    srcs = glob(["*.swift"]),
+    module_name = "CadpoleiOSLib",
+    # SwiftUI and @Observable in the host configuration is never what anyone
+    # meant; this target is only reached through :CadpoleiOS, which transitions to
+    # an iOS platform.
+    target_compatible_with = ["@platforms//os:ios"],
+    deps = [
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleUI",
+    ],
+)
+
+ios_application(
+    name = "CadpoleiOS",
+    bundle_id = "io.github.mikelikespie.cadpole.ios",
+    bundle_name = "Cadpole",
+    families = [
+        "iphone",
+        "ipad",
+    ],
+    infoplists = [":info_plist"],
+    minimum_os_version = "26.0",
+    # Device / TestFlight builds: put the profile in //profiles and set
+    # provisioning_profile here. The Simulator needs none.
+    version = "//src/apple:CadpoleVersion",
+    deps = [":CadpoleiOSLib"],
+)
+
+# The document type's extension and UTType come from build_support/file_types.bzl.
+file_types_expand(
+    name = "info_plist",
+    src = "Info.plist.in",
+    out = "Info.plist",
+)

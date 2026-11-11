@@ -1,0 +1,66 @@
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+load("//build_support:file_types.bzl", "file_types_expand")
+
+package(default_visibility = ["//visibility:public"])
+
+# The Mac app: self-hosted (LocalEngine over cadpole-ffi) and connected
+# (RemoteEngine over the session API).
+#
+#   bazel build --config=apple-remote //src/apple/CadpoleMac:CadpoleMac
+#
+# target_compatible_with on the library: it is only ever built through
+# :CadpoleMac, which transitions to a macOS Apple platform. Without it a plain
+# `bazel build //src/apple/...` on Linux tries to build SwiftUI for Linux.
+swift_library(
+    name = "CadpoleMacLib",
+    srcs = glob(
+        ["*.swift"],
+        exclude = ["InfoPlistTests.swift"],
+    ),
+    copts = [
+        "-target",
+        "arm64-apple-macos26.0",
+    ],
+    module_name = "CadpoleMacLib",
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleLocalEngine",
+        "//src/apple/CadpoleProto",
+        "//src/apple/CadpoleUI",
+    ],
+)
+
+macos_application(
+    name = "CadpoleMac",
+    bundle_id = "io.github.mikelikespie.cadpole.mac",
+    bundle_name = "Cadpole",
+    entitlements = "CadpoleMac.entitlements",
+    infoplists = [":info_plist"],
+    minimum_os_version = "26.0",
+    version = "//src/apple:CadpoleVersion",
+    deps = [":CadpoleMacLib"],
+)
+
+# The document type's extension and UTType come from build_support/file_types.bzl.
+file_types_expand(
+    name = "info_plist",
+    src = "Info.plist.in",
+    out = "Info.plist",
+)
+
+# Both apps' Info.plists as built, checked on any host (Linux included): the
+# types the open panel offers and the transport exceptions are read by the
+# system before any app code runs, so nothing else would catch a regression.
+#
+#   bazel test //src/apple/CadpoleMac:InfoPlistTests
+swift_test(
+    name = "InfoPlistTests",
+    srcs = ["InfoPlistTests.swift"],
+    data = [
+        ":info_plist",
+        "//src/apple/CadpoleiOS:info_plist",
+    ],
+    deps = ["//src/apple/CadpoleKit"],
+)

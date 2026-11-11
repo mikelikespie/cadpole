@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Cadpole</string>
+	<key>CFBundleDisplayName</key>
+	<string>Cadpole</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<!-- `cadpole serve` speaks plain HTTP to loopback or a tailnet.
+	     ATS already exempts IP addresses and unqualified names; a full
+	     MagicDNS name (host.<tailnet>.ts.net) needs this exception or every
+	     request fails with -1022. Local networking covers .local names.
+	     Nothing else may use cleartext. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>ts.net</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<!-- ProMotion above 60 Hz needs this on iPhone; it costs nothing until a
+	     viewport drives its own display link. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<!-- The document type is exported by the Mac app, which owns it; the phone
+	     only imports, because its documents are server-owned. Loose .star
+	     scripts are imported here as on the Mac (CadpoleFileTypes.starlark*). -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>@DOCUMENT_UTTYPE@</string>
+			<key>UTTypeDescription</key>
+			<string>Cadpole Document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>@DOCUMENT_EXT@</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>net.starlark.script</string>
+			<key>UTTypeDescription</key>
+			<string>Starlark Script</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.script</string>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>star</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

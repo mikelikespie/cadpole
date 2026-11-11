@@ -1,0 +1,161 @@
+# Cargo workspace. Bazel (crate_universe) reads this and Cargo.lock to resolve
+# third-party crates; Cargo itself is not required to build Cadpole.
+[workspace]
+resolver = "2"
+members = [
+    "src/rust/cadpole-proto",
+    "src/rust/cadpole-assets",
+    "src/rust/cadpole-core",
+    "src/rust/cadpole-print",
+    "src/rust/cadpole-export-3mf",
+    "src/rust/cadpole-field",
+    "src/rust/cadpole-export-step",
+    "src/rust/cadpole-import-2d",
+    "src/rust/cadpole-import",
+    "src/rust/cadpole-font",
+    "src/rust/cadpole-drawing",
+    "src/rust/cadpole-drawing-out",
+    "src/rust/cadpole-script",
+    "src/rust/cadpole-sketch-solve",
+    "src/rust/cadpole-opt",
+    "src/rust/cadpole-engine",
+    "src/rust/cadpole-render-wgpu",
+    "src/rust/cadpole-ops",
+    "src/rust/cadpole-cli",
+    "src/rust/cadpole-wasm",
+    "src/rust/cadpole-ffi",
+    "src/rust/cadpole-bench",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/mikelikespie/cadpole"
+
+[workspace.dependencies]
+# Persistence / API
+prost = "0.14.4"
+prost-types = "0.14.4"
+# Reflection over the embedded descriptor set: dynamic messages, proto3 JSON
+# and custom options. 0.16 is the release line that tracks prost 0.14.
+prost-reflect = { version = "0.16.5", features = ["serde"] }
+protoc-gen-prost = "0.5.0"
+# Scripting
+starlark = "0.14.2"
+starlark_derive = "0.14.2"
+allocative = "0.3"
+# Geometry kernel (Apache-2.0, pure Rust B-rep)
+truck-base = "0.5"
+truck-geometry = "0.5"
+truck-topology = "0.6"
+truck-modeling = "0.6"
+truck-meshalgo = "0.4"
+truck-shapeops = "0.4"
+truck-polymesh = "0.6"
+# truck's own STEP reader, used only by `cadpole-export-step`'s tests to parse
+# what that crate writes back into truck geometry -- a second implementation
+# checking ours. Its *writer* is not used.
+# Already in the graph (truck-shapeops depends on it), so this adds no crate.
+truck-stepio = "0.3"
+# Pure-Rust transcendentals (MIT; rust-lang/compiler-builtins' libm). Already in
+# the graph three times over (i_float, naga, num-traits) and it is the code
+# compiler-builtins links into every wasm32 build, so this adds no crate --
+# only the edge that lets `cadpole_core::fmath` call the *same* sin/cos/atan2/exp
+# on every target instead of glibc natively and libm in the browser.
+libm = "0.2.16"
+# Mesh kernel (Apache-2.0, pure Rust port of Manifold v3.5.0): topologically
+# robust triangle booleans (Smith-Dodgson) with per-triangle `faceID`
+# provenance, and it builds for wasm32. Pinned exactly: the crate is young and
+# its topology guarantees are the thing we rely on.
+# The optional `parallel` (rayon) feature is deliberately NOT enabled -- wasm32
+# is single-threaded and the boolean chain we care about is sequential anyway.
+manifold-rust = { version = "=0.13.1", default-features = false }
+# truck tessellates and intersects on rayon's global pool. Already in the
+# graph through truck-meshalgo, so this adds no crate -- only the edge that
+# lets `kernel::quietly` tell a pool worker from any other thread.
+rayon-core = "1.13"
+
+# 2D booleans and fill rules: the one
+# thing that turns overlapping loops into loops Cadpole's containment nesting can
+# classify. Used by imported SVG fills and by every glyph.
+i_overlay = "8.1.1"
+# Curve maths: elliptical arcs and ellipses to cubic Béziers within tolerance.
+kurbo = "0.13"
+# --- 2D import
+# usvg's own tokenizer for path data, transforms, lengths and paint, without
+# usvg itself: usvg hands back cubics where the file had circular arcs, and a
+# circle in an SVG must extrude to a cylinder.
+svgtypes = "0.16"
+roxmltree = "0.21"
+# DXF read and write (IxMilia). ASCII and binary, R12-R2018.
+dxf = "0.6"
+# `dxf` stamps a random GUID and the wall clock into every file it writes.
+# Both are header fields we overwrite with fixed values so an export is
+# byte-identical; that is the only reason these two are direct dependencies.
+uuid = { version = "1", default-features = false }
+# --- Fonts
+# Outlines, variable-font instances and metrics (Google's fontations).
+# Pinned to the 0.46 line so it shares one `read-fonts` with harfrust; skrifa
+# 0.47 moved to read-fonts 0.44 and would link a second copy.
+skrifa = "0.46.2"
+# Shaping (the HarfBuzz project's own Rust port): kerning and ligatures.
+harfrust = "0.13"
+# System font discovery, native only. `memmap` is off so the crate still
+# compiles for wasm32, where system fonts are refused with a diagnostic.
+fontdb = { version = "0.24", default-features = false, features = ["std", "fs", "fontconfig"] }
+# GPU renderer (docs/design.md): one wgpu/WGSL renderer on Metal (macOS,
+# iOS), Vulkan (Linux) and WebGPU (the browser). Both MIT OR Apache-2.0.
+# Default features are off so the `gles` and `dx12` backends -- neither of
+# which is a Cadpole target -- never enter the tree; cadpole-render-wgpu selects the
+# backends per platform. `naga` is wgpu's own shader translator, depended on
+# directly so a test can parse and validate every WGSL module with no GPU.
+# 29.0.4, not the newest (30.0.1): wgpu 30 requires js-sys >= 0.3.104, which
+# pins wasm-bindgen to =0.2.127, and this workspace must stay on =0.2.121 --
+# the version of the CLI rules_rust_wasm_bindgen 0.74.0 ships and the one
+# //src/rust/cadpole-wasm is built with. Cargo resolves optional dependencies too,
+# so the conflict bites even with wgpu's `web` features off. Move both to 30
+# when that rules bump lands.
+wgpu = { version = "29.0.4", default-features = false }
+naga = { version = "29.0.4", default-features = false, features = ["wgsl-in"] }
+bytemuck = { version = "1.25", features = ["derive"] }
+# PDF output: low-level and deterministic,
+# which is what a drawing writer wants. MIT OR Apache-2.0; its only normal
+# dependencies are bitflags, itoa, memchr and ryu, all already vendored.
+pdf-writer = "0.15"
+# Images
+png = "0.18"
+# Raw DEFLATE for the 3MF package (a zip/OPC container). Pure Rust, no C, and
+# builds for wasm32; already in the graph behind `png`. The container itself is
+# written in `cadpole-export-3mf/src/zip.rs` -- ~200 lines for stored + deflated
+# entries with pinned timestamps, which is what determinism needs and what the
+# `zip` crate's feature matrix would have cost us in dependencies.
+miniz_oxide = "0.9"
+# Misc
+anyhow = "1.0"
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.6", features = ["derive", "env"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "fs", "sync", "signal"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "compression-gzip", "compression-br"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+rand = "0.9"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+base64 = "0.22"
+# No TLS: Cadpole only talks to a local http:// session server, and ureq's
+# default rustls stack pulls in webpki-roots (MPL-2.0) and ring, which the
+# licence policy forbids.
+ureq = { version = "3", default-features = false, features = ["json"] }
+# Pinned to the wasm-bindgen-cli shipped by rules_rust_wasm_bindgen 0.74.0.
+wasm-bindgen = "=0.2.121"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

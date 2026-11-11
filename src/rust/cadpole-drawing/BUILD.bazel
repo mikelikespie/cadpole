@@ -1,0 +1,29 @@
+load("@rules_rust//rust:defs.bzl", "rust_doc_test", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The 2D drawing IR, views computed from a model, auto-dimensioning and the
+# SVG writer. Depends on nothing third-party of its own: the writers that need
+# a library (PDF, DXF) live in //src/rust/cadpole-drawing-out.
+rust_library(
+    name = "cadpole_drawing",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "//src/rust/cadpole-font:cadpole_font",
+    ],
+)
+
+rust_test(
+    name = "cadpole_drawing_test",
+    size = "small",
+    compile_data = glob(["testdata/*"]),
+    crate = ":cadpole_drawing",
+)
+
+# The examples in units.rs and dim.rs state what a dimension reads; run them.
+rust_doc_test(
+    name = "cadpole_drawing_doc_test",
+    size = "small",  # 2.0 s
+    crate = ":cadpole_drawing",
+)

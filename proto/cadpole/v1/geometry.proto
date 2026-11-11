@@ -1,0 +1,54 @@
+// Cadpole geometry primitives shared by the document model and engine API.
+syntax = "proto3";
+
+package cadpole.v1;
+
+message Vec2 {
+  double x = 1;
+  double y = 2;
+}
+
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+// Unit quaternion (x, y, z, w).
+message Quat {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double w = 4;
+}
+
+// Rigid transform: rotate, then translate. Scale is deliberately absent; use
+// explicit scale features so that units stay honest.
+message Transform {
+  Vec3 translation = 1;
+  Quat rotation = 2;
+}
+
+// A plane given by an origin, a normal and an in-plane x direction. The
+// in-plane y direction is normal x x_dir.
+message Plane {
+  Vec3 origin = 1;
+  Vec3 normal = 2;
+  Vec3 x_dir = 3;
+}
+
+message BBox {
+  Vec3 min = 1;
+  Vec3 max = 2;
+}
+
+// Axis-aligned length units. Internally everything is millimeters; this only
+// affects how scripts and the UI present numbers.
+enum LengthUnit {
+  LENGTH_UNIT_UNSPECIFIED = 0;
+  LENGTH_UNIT_MM = 1;
+  LENGTH_UNIT_CM = 2;
+  LENGTH_UNIT_M = 3;
+  LENGTH_UNIT_IN = 4;
+  LENGTH_UNIT_FT = 5;
+}

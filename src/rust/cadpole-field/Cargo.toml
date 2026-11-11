@@ -1,0 +1,9 @@
+[package]
+name = "cadpole-field"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole SDF field bodies: a tape compiler with interval arithmetic, manifold dual contouring, mesh->SDF import, and fillets/chamfers on real bodies."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }

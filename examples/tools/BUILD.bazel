@@ -1,0 +1,5 @@
+package(default_visibility = ["//visibility:public"])
+
+# The generators of committed example assets, read as data by the tests that
+# check those assets are what the generators write.
+exports_files(["scan_room_glb.py"])

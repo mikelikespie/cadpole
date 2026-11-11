@@ -1,0 +1,14 @@
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "star_files",
+    srcs = glob(["*.star"]),
+)
+
+# The fixture files `asset("...")` resolves in the examples. `cadpole eval
+# examples/x.star` finds them the same way, by looking in `./assets` next to
+# the script.
+filegroup(
+    name = "assets",
+    srcs = glob(["assets/*"]),
+)

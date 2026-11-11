@@ -1,0 +1,61 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The other `EngineClient`: the engine linked in-process over the C ABI.
+#
+# macOS only, and that is the whole reason it is not part of //src/apple/CadpoleKit:
+# keeping the Rust link out of CadpoleKit is what lets the protocol, the wire
+# format and the coalescing rule be tested on Linux (docs/apple-apps.md).
+# iOS is a thin client and never gets this module.
+#
+# `import CadpoleFFI` comes from the swift_interop_hint on
+# //src/rust/cadpole-ffi:cadpole_ffi_cc; there is no hand-written module map.
+swift_library(
+    name = "CadpoleLocalEngine",
+    srcs = glob(["*.swift"]),
+    copts = select({
+        "@platforms//os:macos": [
+            "-target",
+            "arm64-apple-macos26.0",
+        ],
+        "//conditions:default": [],
+    }),
+    module_name = "CadpoleLocalEngine",
+    # Without this a plain `bazel build //src/apple/...` on Linux or a `bazel
+    # test //...` on a Mac builds it in the HOST configuration, where the Rust
+    # slice it links does not exist.
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleProto",
+        "//src/rust/cadpole-ffi:cadpole_ffi_cc",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)
+
+# The macOS test layer (docs/apple-apps.md): the FFI round trip, memory
+# ownership and the cadpole_version match, over remote macOS actions. Cannot run on Linux -- it
+# links the macOS slice of the Rust engine -- so it is `manual` and run with:
+#
+#   bazel test --config=apple-remote --platforms=//build_support/platforms:macos_remote \
+#       //src/apple/CadpoleLocalEngine:LocalEngineTests
+swift_test(
+    name = "LocalEngineTests",
+    srcs = glob(["tests/*.swift"]),
+    copts = select({
+        "@platforms//os:macos": [
+            "-target",
+            "arm64-apple-macos26.0",
+        ],
+        "//conditions:default": [],
+    }),
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":CadpoleLocalEngine",
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleProto",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)

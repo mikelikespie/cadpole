@@ -1,0 +1,26 @@
+# C and C++ code that a Bazel module links into a Cadpole artifact: what no
+# lockfile lists. Today that is HiGHS, in the `cadpole` CLI only (never
+# the wasm engine, never the C FFI library the Apple apps link), and the
+# third-party code inside HiGHS that its build compiles. Each row is one
+# licence and its notice; `module` is the Bazel module it comes from, at the
+# version the module graph resolves.
+#
+# What is compiled is what build_support/patches/highs_build.patch builds:
+# HiGHS's own sources (MIT: highs/, including IPX and BASICLU, and the two
+# extern/HighsExtras* files), the LP-file reader (MIT), pdqsort (Zlib, a
+# header) and cuPDLP-C (MIT). Not in any binary: zlib and zstr (the patch drops
+# the dependency; HConfig.h never defines ZLIB_FOUND), and amd (BSD-3-Clause),
+# metis (Apache-2.0), rcm (MIT) and the BLAS shim, whose headers are read for
+# declarations only because HIPO is undefined. A HiGHS bump re-checks this.
+#
+# Hand-maintained, like fonts.tsv; reviewed when a module that compiles C or
+# C++ is added or bumped. Enforced by:
+#   bazel test //build_support/licenses:license_test
+# (every licence allowed; every module at the version MODULE.bazel.lock
+# resolves; every repository whose C/C++ libraries a shipped artifact links
+# recorded here, and nothing recorded that none links -- native_code.bzl)
+name	version	license	copyright	module	source
+HiGHS	1.15.1	MIT	Copyright (c) 2026 HiGHS | Copyright (C) 2016-2019 ERGO-Code (IPX, BASICLU)	highs@1.15.1	https://github.com/ERGO-Code/HiGHS
+HiGHS LP file reader (highs/io/filereaderlp)	1.15.1	MIT	Copyright (c) 2020 Michael Feldmeier	highs@1.15.1	https://github.com/ERGO-Code/HiGHS/tree/v1.15.1/highs/io/filereaderlp
+pdqsort (extern/pdqsort)	b1ef26a	Zlib	Copyright (c) 2021 Orson Peters <orsonpeters@gmail.com>	highs@1.15.1	https://github.com/orlp/pdqsort
+cuPDLP-C (highs/pdlp/cupdlp)	1.15.1	MIT	Copyright (c) 2023 COPT-Public	highs@1.15.1	https://github.com/COPT-Public/cuPDLP-C

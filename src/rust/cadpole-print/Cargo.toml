@@ -1,0 +1,9 @@
+[package]
+name = "cadpole-print"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole 3D-printing checks: manifoldness, wall thickness, overhangs, bed fit and build orientation."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }

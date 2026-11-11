@@ -1,0 +1,32 @@
+[package]
+name = "cadpole-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole engine: the protobuf request/response API shared by wasm, FFI and the server."
+
+[dependencies]
+cadpole-assets = { path = "../cadpole-assets" }
+cadpole-core = { path = "../cadpole-core" }
+cadpole-print = { path = "../cadpole-print" }
+cadpole-export-3mf = { path = "../cadpole-export-3mf" }
+cadpole-drawing = { path = "../cadpole-drawing" }
+cadpole-drawing-out = { path = "../cadpole-drawing-out" }
+cadpole-export-step = { path = "../cadpole-export-step" }
+cadpole-script = { path = "../cadpole-script" }
+cadpole-proto = { path = "../cadpole-proto" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# Tests only: Cadpole's own STEP importer, so every example's STEP export is
+# read back by Cadpole's reader and compared with the model.
+cadpole-import = { path = "../cadpole-import" }
+# Tests only: parse the STEP this crate writes back with truck's own reader.
+truck-stepio.workspace = true
+truck-meshalgo.workspace = true
+# Tests only: the CLI's solver, installed by tests/memo.rs so the `opt`
+# examples solve there. Never a normal dependency: the wasm engine and
+# the C FFI compile this crate, and HiGHS is native only.
+cadpole-opt = { path = "../cadpole-opt" }

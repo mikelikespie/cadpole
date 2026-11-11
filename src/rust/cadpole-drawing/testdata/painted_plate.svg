@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="431.8mm" height="279.4mm" viewBox="0 0 431.8 279.4">
+  <g id="M-VIEW" fill="none" stroke="#898276" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 115.9 223.15 L 115.9 73.15 L 315.9 73.15 L 315.9 223.15 L 115.9 223.15"/>
+  </g>
+  <g id="A-VIEW-FILL" fill="none" stroke="#e1d7c6" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 115.9 223.15 L 315.9 223.15 L 315.9 73.15 L 115.9 223.15 Z M 115.9 223.15 L 315.9 73.15 L 115.9 73.15 L 115.9 223.15 Z" fill="#e1d7c6" fill-rule="evenodd" stroke="none"/>
+  </g>
+  <g class="M-VIEW" fill="none" stroke="#898276" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 315.9 223.15 L 115.9 223.15"/>
+    <path fill="none" d="M 315.9 73.15 L 315.9 223.15"/>
+    <path fill="none" d="M 115.9 73.15 L 315.9 73.15"/>
+    <path fill="none" d="M 115.9 223.15 L 115.9 73.15"/>
+    <path fill="none" d="M 115.9 223.15 L 115.9 213.15 L 315.9 213.15 L 315.9 223.15 L 115.9 223.15" stroke="#80523c"/>
+    <path fill="none" d="M 115.9 223.15 L 115.9 73.15 L 125.9 73.15 L 125.9 223.15 L 115.9 223.15" stroke="#80523c"/>
+    <path fill="none" d="M 245.9 193.15 L 245.9 163.15 L 290.9 163.15 L 290.9 193.15 L 245.9 193.15" stroke="#6e5b45"/>
+  </g>
+  <g id="A-ANNO-TEXT" fill="none" stroke="#1d2733" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="220.9" y="153.15" font-family="Inter, system-ui, sans-serif" font-size="13.745" text-anchor="middle" fill="#1d2733" stroke="none">Living</text>
+  </g>
+  <g class="A-VIEW-FILL" fill="none" stroke="#b99e7f" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 245.9 193.15 L 290.9 193.15 L 290.9 163.15 L 245.9 193.15 Z M 245.9 193.15 L 290.9 163.15 L 245.9 163.15 L 245.9 193.15 Z" fill="#b99e7f" fill-rule="evenodd" stroke="none"/>
+  </g>
+  <g class="M-VIEW" fill="none" stroke="#6e5b45" stroke-width="0.09" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 290.9 193.15 L 245.9 193.15"/>
+    <path fill="none" d="M 290.9 163.15 L 290.9 193.15"/>
+    <path fill="none" d="M 245.9 163.15 L 290.9 163.15"/>
+    <path fill="none" d="M 245.9 193.15 L 245.9 163.15"/>
+  </g>
+  <g id="M-SECT-PATT" fill="none" stroke="#c9774f" stroke-width="0.13" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 115.9 223.15 L 204.7889 223.15 L 315.9 223.15 L 315.9 218.7056 L 315.9 213.15 L 227.0111 213.15 L 115.9 213.15 L 115.9 217.5944 L 115.9 223.15 Z" fill="#c9774f" fill-rule="evenodd" stroke="none"/>
+  </g>
+  <g id="M-SECT" fill="none" stroke="#653c28" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 115.9 223.15 L 115.9 217.5944 L 115.9 213.15 L 227.0111 213.15 L 315.9 213.15 L 315.9 218.7056 L 315.9 223.15 L 204.7889 223.15 L 115.9 223.15 Z"/>
+  </g>
+  <g class="M-SECT-PATT" fill="none" stroke="#c9774f" stroke-width="0.13" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 115.9 223.15 L 120.3444 223.15 L 125.9 223.15 L 125.9 156.4833 L 125.9 73.15 L 121.4556 73.15 L 115.9 73.15 L 115.9 139.8167 L 115.9 223.15 Z" fill="#c9774f" fill-rule="evenodd" stroke="none"/>
+  </g>
+  <g class="M-SECT" fill="none" stroke="#653c28" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 115.9 223.15 L 115.9 139.8167 L 115.9 73.15 L 121.4556 73.15 L 125.9 73.15 L 125.9 156.4833 L 125.9 223.15 L 120.3444 223.15 L 115.9 223.15 Z"/>
+  </g>
+  <g id="A-ANNO-SYMB" fill="none" stroke="#ffffff" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 263.5552 180.25 L 273.2448 180.25 L 273.2448 176.05 L 263.5552 176.05 L 263.5552 180.25 Z" fill="#ffffff" fill-rule="evenodd" stroke="none"/>
+  </g>
+  <g class="A-ANNO-TEXT" fill="none" stroke="#1d2733" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="268.4" y="179.35" font-family="Inter, system-ui, sans-serif" font-size="3.2988" text-anchor="middle" fill="#1d2733" stroke="none">table</text>
+    <text x="10" y="16" font-family="Inter, system-ui, sans-serif" font-weight="bold" font-size="6.8725" text-anchor="start" fill="#1d2733" stroke="none">LIVING ROOM</text>
+    <text x="10" y="23.1" font-family="Inter, system-ui, sans-serif" font-size="3.8486" text-anchor="start" fill="#4b5563" stroke="none">a test plate</text>
+  </g>
+  <g class="A-ANNO-SYMB" fill="none" stroke="#c9774f" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 10 29.35 L 13.2 29.35 L 13.2 26.15 L 10 26.15 L 10 29.35 Z" fill="#c9774f" fill-rule="evenodd" stroke="none"/>
+    <path fill="none" d="M 10 29.35 L 13.2 29.35 L 13.2 26.15 L 10 26.15 Z" stroke-width="0.12" stroke="#9aa0a6"/>
+  </g>
+  <g class="A-ANNO-TEXT" fill="none" stroke="#4b5563" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="14.4" y="28.9" font-family="Inter, system-ui, sans-serif" font-size="3.1613" text-anchor="start" fill="#4b5563" stroke="none">walls</text>
+    <text x="421.8" y="14" font-family="Inter, system-ui, sans-serif" font-weight="bold" font-size="3.1613" text-anchor="end" fill="#1d2733" stroke="none">SCALE 1:20</text>
+  </g>
+  <g class="A-ANNO-SYMB" fill="none" stroke="#000000" stroke-width="0.35" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 357.8 20 A 6 6 0 0 0 345.8 20 A 6 6 0 0 0 357.8 20 Z"/>
+    <path d="M 351.8 14.3 L 350.48 20 L 351.8 23.6 L 351.8 14.3 Z" fill="#000000" fill-rule="evenodd" stroke="none"/>
+    <path fill="none" d="M 351.8 14.3 L 353.12 20 L 351.8 23.6 Z" stroke-width="0.3"/>
+  </g>
+  <g class="A-ANNO-TEXT" fill="none" stroke="#000000" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="351.8" y="11.7" font-family="Inter, system-ui, sans-serif" font-weight="bold" font-size="4.1235" text-anchor="middle" fill="#000000" stroke="none">N</text>
+  </g>
+  <g class="A-ANNO-SYMB" fill="none" stroke="#1d2733" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 365.8 23 L 378.3 23 L 378.3 21.4 L 365.8 21.4 L 365.8 23 Z" fill="#1d2733" fill-rule="evenodd" stroke="none"/>
+  </g>
+  <g class="A-ANNO-TEXT" fill="none" stroke="#4b5563" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="365.8" y="26" font-family="Inter, system-ui, sans-serif" font-size="2.6115" text-anchor="middle" fill="#4b5563" stroke="none">0</text>
+  </g>
+  <g class="A-ANNO-SYMB" fill="none" stroke="#1d2733" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 378.3 23 L 390.8 23 L 390.8 21.4 L 378.3 21.4 Z"/>
+  </g>
+  <g class="A-ANNO-TEXT" fill="none" stroke="#4b5563" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="378.3" y="26" font-family="Inter, system-ui, sans-serif" font-size="2.6115" text-anchor="middle" fill="#4b5563" stroke="none">250</text>
+  </g>
+  <g class="A-ANNO-SYMB" fill="none" stroke="#1d2733" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 390.8 23 L 403.3 23 L 403.3 21.4 L 390.8 21.4 L 390.8 23 Z" fill="#1d2733" fill-rule="evenodd" stroke="none"/>
+  </g>
+  <g class="A-ANNO-TEXT" fill="none" stroke="#4b5563" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="390.8" y="26" font-family="Inter, system-ui, sans-serif" font-size="2.6115" text-anchor="middle" fill="#4b5563" stroke="none">500</text>
+  </g>
+  <g class="A-ANNO-SYMB" fill="none" stroke="#1d2733" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M 403.3 23 L 415.8 23 L 415.8 21.4 L 403.3 21.4 Z"/>
+  </g>
+  <g class="A-ANNO-TEXT" fill="none" stroke="#4b5563" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round">
+    <text x="403.3" y="26" font-family="Inter, system-ui, sans-serif" font-size="2.6115" text-anchor="middle" fill="#4b5563" stroke="none">750</text>
+    <text x="415.8" y="26" font-family="Inter, system-ui, sans-serif" font-size="2.6115" text-anchor="middle" fill="#4b5563" stroke="none">1000 mm</text>
+    <text x="10" y="268.4" font-family="Inter, system-ui, sans-serif" font-size="3.2988" text-anchor="start" fill="#4b5563" stroke="none">north up</text>
+  </g>
+</svg>

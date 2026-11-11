@@ -1,0 +1,32 @@
+load("//build_support/proto:defs.bzl", "cadpole_proto_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# One line per proto package. Creates :cadpole_v1_proto (proto_library),
+# :cadpole_v1_rust (prost types), :cadpole_v1_descriptor_set (FileDescriptorSet with
+# comments) and :cadpole_v1_descriptor (that set as a Rust crate).
+cadpole_proto_library(
+    name = "cadpole_v1",
+    srcs = [
+        "document.proto",
+        "engine.proto",
+        "eval.proto",
+        "geometry.proto",
+        "options.proto",
+        "ops.proto",
+    ],
+    deps = [
+        "@protobuf//:descriptor_proto",
+        "@protobuf//:struct_proto",
+        "@protobuf//:timestamp_proto",
+    ],
+)
+
+# The schema as text, for tools that read it rather than compile it:
+# //spec:names_test diffs the model of the capability boundary against the
+# `cli_name` and `alias` options declared here, and the engine envelope's
+# request set against `spec/capability.qnt`'s ENGINE_REQUESTS.
+exports_files([
+    "engine.proto",
+    "ops.proto",
+])

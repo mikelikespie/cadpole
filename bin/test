@@ -1,0 +1,28 @@
+#!/bin/sh
+# Run Cadpole's tests: every test a Linux machine can run (the sweep in
+# docs/getting-started.md), or the targets given.
+#
+#   bin/test                      the whole sweep
+#   bin/test //src/web/...        just these; any bazel test flags work too
+#
+# The two Apple app targets need a macOS execution platform and are always
+# left out of the default sweep.
+
+set -eu
+
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+CADPOLE_ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
+
+# shellcheck source=lib/preflight.sh
+. "$CADPOLE_ROOT/bin/lib/preflight.sh"
+
+preflight || exit 1
+cd "$CADPOLE_ROOT"
+if [ $# -eq 0 ]; then
+    set -- -- //... -//src/apple/CadpoleiOS:CadpoleiOS -//src/apple/CadpoleMac:CadpoleMac
+fi
+exec bazel test --build_tests_only "$@"

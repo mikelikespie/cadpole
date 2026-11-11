@@ -1,0 +1,14 @@
+// Hand-written so the header sits *beside* the module map.
+//
+// rules_swift's swift_interop_hint can generate this, and its output works for
+// a local build, but the generated map lives under bazel-bin and names the
+// header with eight levels of `..` back into the source tree -- a path clang
+// cannot resolve inside a remote action's input root, so an Apple build
+// run as a remote action fails with
+// "header '../../../../../../../../src/rust/cadpole-ffi/include/cadpole.h' not found"
+// while the identical target builds locally. A module map next to its header
+// has no traversal to get wrong.
+module CadpoleFFI {
+    header "cadpole.h"
+    export *
+}

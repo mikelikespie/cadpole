@@ -1,0 +1,18 @@
+/bazel-*
+/target
+node_modules/
+*.swp
+.DS_Store
+/MODULE.bazel.lock.bak
+/.claude/worktrees/
+# Playwright / local tooling output (Bazel owns the real builds)
+test-results/
+playwright-report/
+.playwright/
+/MODULE.bazel.lock.*
+# Secrets: the per-run session tokens, if a runtime dir is ever pointed here
+token
+session-token
+listener-token
+*.env
+/.bazelrc.user

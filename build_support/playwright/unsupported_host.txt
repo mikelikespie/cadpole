@@ -1,0 +1,6 @@
+No Playwright browser is pinned for this host platform.
+
+//build_support/playwright:browsers only has Chromium headless shell builds for
+linux-x86_64 and macos-aarch64. Add the archive path and its sha256 to
+CHROMIUM_ARCHIVES in build_support/playwright/browsers.bzl and a matching
+config_setting + select branch in build_support/playwright/BUILD.bazel.

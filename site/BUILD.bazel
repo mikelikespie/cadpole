@@ -1,0 +1,158 @@
+# The Cadpole project site: one static directory, built from the tree.
+#
+#   bazel build //site:dist        the site without the large media (README.md)
+#   bazel run //site:serve         look at it on loopback
+#   bazel test //site:checks_test  the page rules, in a headless browser
+#   bazel run //site:assemble -- --media DIR --out DIR   the site as published
+#   bazel run //site:render -- <set>                     re-render pictures
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_run_binary")
+load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//build_support/playwright:defs.bzl", "playwright_test")
+load(":site.bzl", "viewer_page")
+load(":views.bzl", "VIEWS")
+
+package(default_visibility = ["//visibility:private"])
+
+npm_link_all_packages(name = "node_modules")
+
+# ---- The viewer pages: `cadpole publish`, once per model (views.bzl).
+[
+    viewer_page(
+        name = "view_pages/" + v.name,
+        back = v.back,
+        data = [
+            "//examples:assets",
+            "//examples:star_files",
+        ] + glob(["features/*.star"]),
+        publish_args = v.args,
+        script = v.script,
+        title = v.title,
+        units = v.units,
+    )
+    for v in VIEWS
+]
+
+# The example scripts where rules_js can read them: a target's files must be
+# in its own package or in the output tree.
+copy_to_directory(
+    name = "examples",
+    srcs = ["//examples:star_files"],
+    root_paths = ["examples"],
+)
+
+js_library(
+    name = "build_lib",
+    srcs = glob(["build/*.mjs"]),
+    # slim.mjs reads a published model with the web app's own decoder.
+    deps = ["//src/web:ts"],
+)
+
+js_binary(
+    name = "build",
+    data = [":build_lib"],
+    entry_point = "build/build.mjs",
+)
+
+_SOURCES = glob([
+    "content/*.json",
+    "features/*.star",
+    "src/*",
+    "static/**",
+]) + ["media.lock.json"]
+
+# The whole site but for the frame sets and the recording media.lock.json
+# names: the page, its scripts and styles, the embedded 3D and the engine from
+# //src/web, a viewer page and a packed model per entry of views.bzl, and the
+# pictures and drawings under static/.
+js_run_binary(
+    name = "dist",
+    srcs = _SOURCES + [
+        ":examples",
+        "//src/web:dist",
+        "//src/web:site3d_bundle",
+    ] + [":view_pages/" + v.name for v in VIEWS],
+    args = [
+        "--site",
+        package_name(),
+        "--examples",
+        package_name() + "/examples",
+        "--web-dist",
+        "src/web/dist",
+        "--embed",
+        "src/web/site3d.js",
+        "--pages",
+        package_name() + "/view_pages",
+        "--out",
+        package_name() + "/dist",
+    ],
+    mnemonic = "CadpoleSite",
+    out_dirs = ["dist"],
+    tool = ":build",
+)
+
+# ---- Looking at it, and putting the large media in.
+js_library(
+    name = "tools_lib",
+    srcs = glob(["tools/*.mjs"]),
+)
+
+#   bazel run //site:serve -- [--port 8766] [--root DIR]
+js_binary(
+    name = "serve",
+    args = ["--root", "$(rootpath :dist)"],
+    data = [
+        ":dist",
+        ":tools_lib",
+    ],
+    entry_point = "tools/serve.mjs",
+)
+
+#   bazel run //site:assemble -- --media DIR --out DIR
+js_binary(
+    name = "assemble",
+    args = [
+        "--dist",
+        "$(rootpath :dist)",
+        "--lock",
+        "$(rootpath media.lock.json)",
+    ],
+    data = [
+        "media.lock.json",
+        ":dist",
+        ":tools_lib",
+    ],
+    entry_point = "tools/assemble.mjs",
+)
+
+# ---- Re-rendering. Path tracing takes hours, so nothing here is part of a
+# build: `bazel run //site:render -- help` lists the sets (see
+# README.md). Needs python3 and ffmpeg on PATH.
+sh_binary(
+    name = "render",
+    srcs = ["rendering/render.sh"],
+    args = ["$(rootpath //src/rust/cadpole-cli:cadpole)"],
+    data = ["//src/rust/cadpole-cli:cadpole"] + glob(["rendering/**"]),
+)
+
+# ---- The page rules, in a headless Chromium on loopback: no button over a
+# model, nothing wider than a phone, 44 px targets, no page zoom, a reload
+# lands where the visitor was, every link has its file, the words the page
+# does not use. Run against the build above, which has the scenes' first
+# frames only; `--test_env=CADPOLE_SITE_ROOT=<an assembled site>` runs the
+# same rules over every frame.
+playwright_test(
+    name = "checks_test",
+    timeout = "long",
+    config = "checks/playwright.config.ts",
+    data = [
+        ":dist",
+        ":node_modules/@playwright/test",
+        ":tools_lib",
+        "package.json",
+    ] + glob(["checks/**"]),
+    env = {"CADPOLE_SITE_DIST": "dist"},
+    tags = ["block-network"],
+    update_target = False,
+)

@@ -1,0 +1,10 @@
+[package]
+name = "cadpole-drawing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole 2D drawing IR: layers, hatches, text, dimensions, sheets, views, and the SVG writer."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+cadpole-font = { path = "../cadpole-font" }

@@ -1,0 +1,14 @@
+load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
+
+package(default_visibility = ["//visibility:public"])
+
+# CFBundleShortVersionString / CFBundleVersion for both apps. One target so the
+# Mac and the phone always report the same version, and so a bump is one edit.
+# Keep in step with MODULE.bazel's `version` and the crates' workspace version:
+# LocalEngine asserts the linked engine matches the protos it was built against
+# (ABI rule 4 in src/rust/cadpole-ffi/include/cadpole.h).
+apple_bundle_version(
+    name = "CadpoleVersion",
+    build_version = "0.1.0",
+    short_version_string = "0.1",
+)

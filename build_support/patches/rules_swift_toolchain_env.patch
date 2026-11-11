@@ -1,0 +1,32 @@
+Pass the toolchain's `env` to the modulewrap and autolink-extract tools.
+
+rules_swift 3.6.1 threads `swift_toolchain(env = ...)` into the compile and
+symbol-graph tool configs but not into these two, which are exactly the tools a
+Swift.org Linux toolchain needs it for: the worker invokes `<root>/bin/swift
+-modulewrap`, and that driver locates `swift-frontend` through PATH rather than
+next to itself. With `--incompatible_strict_action_env` PATH is only the system
+directories, so every link of a Swift binary on Linux fails with
+
+    error: unknown or missing subcommand 'swift-frontend'
+
+Upstream 4.x reworked these tool configs; this is the minimal fix for 3.6.1.
+
+--- a/swift/toolchains/swift_toolchain.bzl
++++ b/swift/toolchains/swift_toolchain.bzl
+@@ -158,6 +158,7 @@ def _all_tool_configs(
+             additional_tools = additional_tools,
+             driver_config = _driver_config(mode = "swift-autolink-extract"),
+             worker_mode = "wrap",
++            env = env,
+         )
+ 
+     if use_module_wrap:
+@@ -166,6 +167,7 @@ def _all_tool_configs(
+             # This must come first after the driver name.
+             args = ["-modulewrap"],
+             driver_config = _driver_config(mode = "swift"),
+             worker_mode = "wrap",
++            env = env,
+         )
+ 
+     return tool_configs

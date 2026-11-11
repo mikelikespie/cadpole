@@ -1,0 +1,69 @@
+# Hermetic Playwright: a sha256-pinned Chromium headless shell fetched by
+# Bazel (browsers.bzl / extensions.bzl) plus the `playwright_test` macro
+# (defs.bzl) that wires it into a rules_js `js_test`.
+#
+# Nothing here needs a `pnpm exec playwright install` or a
+# ~/.cache/ms-playwright directory.
+
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# The entry point of every `playwright_test`. rules_js needs data files to live
+# in the package that owns them, hence the library rather than a bare file.
+js_library(
+    name = "runner",
+    srcs = ["runner.mjs"],
+)
+
+# Host platform selection. Only the branch that is chosen is fetched, so a
+# Linux build never downloads the macOS archive.
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "macos_aarch64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+_UNSUPPORTED = "//build_support/playwright:unsupported_host"
+
+# Everything Playwright needs under PLAYWRIGHT_BROWSERS_PATH.
+alias(
+    name = "browsers",
+    # Excluded from `//build_support/...` patterns so that unrelated test runs
+    # do not download a 120 MB browser.
+    tags = ["manual"],
+    actual = select({
+        ":linux_x86_64": "@playwright_chromium_linux_x86_64//:browsers",
+        ":macos_aarch64": "@playwright_chromium_macos_aarch64//:browsers",
+        "//conditions:default": _UNSUPPORTED,
+    }),
+)
+
+# A single file at the root of that directory; `playwright_test` hands its
+# $(rlocationpath) to runner.mjs, which uses its dirname as the browsers path.
+alias(
+    name = "browsers_marker",
+    tags = ["manual"],
+    actual = select({
+        ":linux_x86_64": "@playwright_chromium_linux_x86_64//:marker",
+        ":macos_aarch64": "@playwright_chromium_macos_aarch64//:marker",
+        "//conditions:default": _UNSUPPORTED,
+    }),
+)
+
+# Selected on hosts we have not pinned a browser for; depending on it fails
+# with this file's name rather than an opaque "no matching condition".
+filegroup(
+    name = "unsupported_host",
+    srcs = ["unsupported_host.txt"],
+)

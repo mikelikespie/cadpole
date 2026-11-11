@@ -1,0 +1,20 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_export_3mf",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "@crates//:miniz_oxide",
+        "@crates//:roxmltree",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "cadpole_export_3mf_test",
+    size = "small",  # under 0.1 s
+    crate = ":cadpole_export_3mf",
+)

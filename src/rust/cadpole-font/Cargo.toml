@@ -1,0 +1,16 @@
+[package]
+name = "cadpole-font"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole text: shaped glyph outlines as sketch loops."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+harfrust.workspace = true
+skrifa.workspace = true
+
+# System font discovery is native only: in wasm there is no font set to read,
+# and `font="system:..."` is refused with a diagnostic instead.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fontdb.workspace = true

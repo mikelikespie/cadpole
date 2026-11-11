@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Sandboxed. The engine is statically linked, so no JIT and no
+	     dynamic-library entitlements are needed (docs/apple-apps.md). -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Reaching `cadpole serve` over the network. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Opening and saving packed documents and .star files the user picked. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+</dict>
+</plist>

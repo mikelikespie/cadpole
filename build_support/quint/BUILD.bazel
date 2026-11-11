@@ -1,0 +1,102 @@
+# Hermetic Quint: the CLI from the pnpm workspace (spec/package.json) plus a
+# sha256-pinned Rust evaluator fetched by Bazel (evaluator.bzl /
+# extensions.bzl), wired into a rules_js `js_test` by the `quint_test` macro
+# in defs.bzl.
+#
+# Nothing here needs `pnpm dlx`, a `~/.quint` directory or a network at test
+# time.
+
+load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# The entry point of every `quint_test`. rules_js needs data files to live in
+# the package that owns them, hence the library rather than a bare file.
+js_library(
+    name = "runner",
+    srcs = ["runner.mjs"],
+)
+
+js_library(
+    name = "precedence_lint",
+    srcs = ["precedence_lint.mjs"],
+)
+
+# The precedence lint every quint_test runs first: four hits in the bad
+# fixture, none in the good one.
+js_test(
+    name = "precedence_lint_test",
+    data = [
+        ":precedence_lint",
+        "testdata/precedence_bad.qnt",
+        "testdata/precedence_good.qnt",
+    ],
+    entry_point = "precedence_lint_test.mjs",
+)
+
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+config_setting(
+    name = "macos_aarch64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+config_setting(
+    name = "macos_x86_64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+_UNSUPPORTED = "//build_support/quint:unsupported_host"
+
+# The evaluator, laid out the way `binaryManager.js` expects to find it under
+# QUINT_HOME.
+alias(
+    name = "evaluator",
+    actual = select({
+        ":linux_x86_64": "@quint_evaluator_linux_x86_64//:evaluator",
+        ":linux_aarch64": "@quint_evaluator_linux_aarch64//:evaluator",
+        ":macos_aarch64": "@quint_evaluator_macos_aarch64//:evaluator",
+        ":macos_x86_64": "@quint_evaluator_macos_x86_64//:evaluator",
+        "//conditions:default": _UNSUPPORTED,
+    }),
+)
+
+# A single file at the root of that directory; `quint_test` hands its
+# $(rlocationpath) to runner.mjs, which uses its dirname as QUINT_HOME.
+alias(
+    name = "quint_home_marker",
+    actual = select({
+        ":linux_x86_64": "@quint_evaluator_linux_x86_64//:marker",
+        ":linux_aarch64": "@quint_evaluator_linux_aarch64//:marker",
+        ":macos_aarch64": "@quint_evaluator_macos_aarch64//:marker",
+        ":macos_x86_64": "@quint_evaluator_macos_x86_64//:marker",
+        "//conditions:default": _UNSUPPORTED,
+    }),
+)
+
+# Selected on hosts we have not pinned an evaluator for; depending on it fails
+# with this file's name rather than an opaque "no matching condition".
+filegroup(
+    name = "unsupported_host",
+    srcs = ["unsupported_host.txt"],
+)

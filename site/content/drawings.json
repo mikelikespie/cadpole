@@ -1,0 +1,68 @@
+{
+ "drawings": [
+  {
+   "id": "pair-pillow-block",
+   "kind": "lines",
+   "title": "Hidden-line view",
+   "blurb": "The pillow block from the camera its render uses, the edges behind the part dashed."
+  },
+  {
+   "id": "pair-thumbscrew",
+   "kind": "pair",
+   "title": "One camera, two kinds of output",
+   "blurb": "A path-traced picture of a knurled thumbscrew and its nut, and the line drawing of the same model from the same parallel camera: edges in sight solid, edges behind dashed, the thread inside the nut among them. Drag the handle between the two. Zoomed in this far the picture has run out of pixels; the lines are drawn again at every size.",
+   "command": [
+    "cadpole op Drawing --doc pair-thumbscrew.star --view sheet:V1 \\",
+    "  --format svg --tolerance 0.02"
+   ],
+   "alt": "A knurled brass thumbscrew with a steel hex nut, as a rendered picture on one side of a handle and as a line drawing with dashed hidden edges on the other",
+   "start": [
+    775,
+    875,
+    8
+   ],
+   "px": 3000
+  },
+  {
+   "id": "sheet-pillow-block",
+   "kind": "sheet",
+   "title": "Dimensioned three-view sheet",
+   "blurb": "Front, top, right and a pictorial view on a letter-size sheet, dimensioned in inches."
+  },
+  {
+   "id": "section-pillow-block",
+   "kind": "section",
+   "title": "Hatched section",
+   "blurb": "The part cut along its bore: the cut face outlined heavily, hatched and dimensioned."
+  }
+ ],
+ "cards": [
+  {
+   "id": "hidden-line",
+   "title": "Hidden-line view",
+   "blurb": "A line drawing from any camera angle, with the edges behind the part dashed.",
+   "alt": "A line drawing of a pillow block seen from above and to one side, hidden edges dashed.",
+   "drawing": "pair-pillow-block",
+   "script": "feat-hidden-line.star",
+   "kind": "drawing"
+  },
+  {
+   "id": "sheet",
+   "title": "Dimensioned sheet",
+   "blurb": "Front, top and right views on one sheet, dimensioned in inches, as SVG, PDF and DXF.",
+   "alt": "A drawing sheet with top, front, right and pictorial views of a pillow block and three dimensions.",
+   "drawing": "sheet-pillow-block",
+   "script": "feat-sheet.star",
+   "kind": "drawing"
+  },
+  {
+   "id": "hatched-section",
+   "title": "Hatched section",
+   "blurb": "Cut the part on a plane; the cut face is hatched and dimensions run between model points.",
+   "alt": "A section through a pillow block along its bore, the cut material hatched, with five dimensions.",
+   "drawing": "section-pillow-block",
+   "script": "feat-section.star",
+   "kind": "drawing"
+  }
+ ]
+}

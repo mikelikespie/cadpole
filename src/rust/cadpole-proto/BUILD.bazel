@@ -1,0 +1,20 @@
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("//build_support:file_types.bzl", "FILE_TYPE_ENV")
+
+package(default_visibility = ["//visibility:public"])
+
+# The generated prost types and the descriptor set both come from
+# //proto/cadpole/v1:cadpole_v1 (see build_support/proto/defs.bzl). This crate is a
+# thin wrapper so dependents write `cadpole_proto::v1::Document`.
+rust_library(
+    name = "cadpole_proto",
+    srcs = ["src/lib.rs"],
+    # The file types' extensions (build_support/file_types.bzl), read by env!.
+    rustc_env = FILE_TYPE_ENV,
+    deps = [
+        "//proto/cadpole/v1:cadpole_v1_descriptor",
+        "//proto/cadpole/v1:cadpole_v1_rust",
+        "@crates//:prost",
+        "@crates//:prost-types",
+    ],
+)

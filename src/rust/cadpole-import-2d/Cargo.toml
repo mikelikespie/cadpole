@@ -1,0 +1,13 @@
+[package]
+name = "cadpole-import-2d"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole 2D import: SVG and DXF into sketches, arcs kept as arcs."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+dxf.workspace = true
+kurbo.workspace = true
+roxmltree.workspace = true
+svgtypes.workspace = true

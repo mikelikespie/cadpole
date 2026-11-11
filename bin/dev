@@ -1,0 +1,41 @@
+#!/bin/sh
+# For working on Cadpole itself: `cadpole serve`, rebuilt and restarted by
+# ibazel whenever the Rust or the web UI changes.
+#
+#   bin/dev examples/bracket.star [serve flags]
+#
+# Editing a .star file needs none of this: `cadpole serve` already reloads the
+# script it serves.
+
+set -eu
+
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+CADPOLE_ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
+
+# shellcheck source=lib/preflight.sh
+. "$CADPOLE_ROOT/bin/lib/preflight.sh"
+
+preflight || exit 1
+if ! command -v ibazel >/dev/null 2>&1; then
+    pf_reset
+    pf_check_optional
+    printf '%s' "$PF_REPORT" | grep -A1 ibazel >&2 || true
+    exit 1
+fi
+
+# ibazel runs from the checkout, so a relative path that names an existing
+# file or directory is made absolute first.
+for arg in "$@"; do
+    shift
+    case $arg in
+        /* | -*) ;;
+        *) if [ -e "$arg" ]; then arg=$(pwd -P)/$arg; fi ;;
+    esac
+    set -- "$@" "$arg"
+done
+cd "$CADPOLE_ROOT"
+exec ibazel run --config=opt //:cadpole -- serve "$@"

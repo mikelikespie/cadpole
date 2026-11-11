@@ -1,0 +1,35 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Bench cases that are not examples: shapes chosen to isolate one cost, run at
+# several sizes by `build_support/bench/record.py` so a quadratic shows up as a
+# shape rather than as one number.
+filegroup(
+    name = "cases",
+    srcs = glob(["cases/*.star"]),
+)
+
+# `bazel run --config=opt //src/rust/cadpole-bench -- examples/*.star`
+rust_binary(
+    name = "cadpole-bench",
+    srcs = glob(["src/**/*.rs"]),
+    data = [
+        ":cases",
+        "//examples:assets",
+        "//examples:star_files",
+    ],
+    deps = [
+        "//src/rust/cadpole-engine:cadpole_engine",
+        # HiGHS, so `opt` scripts solve here as in the CLI.
+        "//src/rust/cadpole-opt:cadpole_opt",
+        "@crates//:anyhow",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "cadpole_bench_test",
+    size = "small",
+    crate = ":cadpole-bench",
+)

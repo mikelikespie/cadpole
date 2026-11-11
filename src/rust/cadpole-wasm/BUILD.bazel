@@ -1,0 +1,195 @@
+load("@aspect_rules_js//js:defs.bzl", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_shared_library")
+load("@rules_rust_wasm_bindgen//:defs.bzl", "rust_wasm_bindgen")
+load("//build_support/transitions:defs.bzl", "opt_files")
+
+package(default_visibility = ["//visibility:public"])
+
+# `CARGO_PKG_VERSION` comes from this attribute, not from Cargo.toml: rules_rust
+# defaults it to "0.0.0". `build_id()` is in every crash report, so it
+# has to be the real one.
+CADPOLE_WASM_VERSION = "0.1.0"
+
+WASM_RUSTC_FLAGS = [
+    "-Ctarget-feature=+simd128,+bulk-memory,+mutable-globals,+nontrapping-fptoint,+sign-ext,+reference-types,+multivalue",
+]
+
+WASM_DEPS = [
+    "//src/rust/cadpole-engine:cadpole_engine",
+    "@crates//:console_error_panic_hook",
+    "@crates//:js-sys",
+    "@crates//:serde",
+    "@crates//:serde_json",
+    "@crates//:wasm-bindgen",
+]
+
+# Built for wasm32 via a transition inside rust_wasm_bindgen, so a plain
+# `bazel build //src/rust/cadpole-wasm:cadpole_wasm` works from any host.
+#
+# Everything that ships or tests the engine takes the `_opt` targets below.
+# The targets they wrap are `manual` so a wildcard build does not also compile
+# the whole engine for wasm32 in the outer (debug) configuration: that is a
+# third copy of every crate in the graph, built for nothing.
+rust_shared_library(
+    name = "cadpole_wasm_lib",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "cadpole_wasm",
+    platform = "@rules_rust//rust/platform:wasm32",
+    rustc_flags = WASM_RUSTC_FLAGS,
+    tags = ["manual"],
+    version = CADPOLE_WASM_VERSION,
+    deps = WASM_DEPS,
+)
+
+rust_wasm_bindgen(
+    name = "cadpole_wasm",
+    tags = ["manual"],
+    target = "web",
+    wasm_file = ":cadpole_wasm_lib",
+)
+
+# Always-optimized variant for the web bundle (the debug wasm is ~43 MB).
+opt_files(
+    name = "cadpole_wasm_opt",
+    src = ":cadpole_wasm",
+)
+
+# ---------------------------------------------------------------------------
+# The test-hooks build
+#
+# Identical to the engine above except for the `test_hooks` feature, which adds
+# one thing: `Engine.evaluate` panics when the script contains
+# `__cadpole_test_panic__`. That is how //src/web:crash_e2e_test drives a *real*
+# Rust panic through the real panic hook, the real report path and the real
+# server, instead of a JavaScript `throw` that proves nothing about wasm.
+#
+# It is a separate target, and only //src/web:e2e_dist consumes it, so the
+# engine a user runs has no way to be told to crash. `out_name` keeps the file
+# names `cadpole_wasm.js` / `cadpole_wasm_bg.wasm`, because the page imports
+# `./cadpole_wasm.js` and the point is to exercise the same loader.
+# ---------------------------------------------------------------------------
+
+rust_shared_library(
+    name = "cadpole_wasm_test_hooks_lib",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["test_hooks"],
+    # A distinct crate name only so the `.wasm` lands next to, rather than on
+    # top of, the shipped one; `out_name` above puts the wasm-bindgen output
+    # back under the names the page imports.
+    crate_name = "cadpole_wasm_test_hooks",
+    platform = "@rules_rust//rust/platform:wasm32",
+    rustc_flags = WASM_RUSTC_FLAGS,
+    tags = ["manual"],
+    version = CADPOLE_WASM_VERSION,
+    deps = WASM_DEPS,
+)
+
+rust_wasm_bindgen(
+    name = "cadpole_wasm_test_hooks",
+    out_name = "cadpole_wasm",
+    tags = ["manual"],
+    target = "web",
+    wasm_file = ":cadpole_wasm_test_hooks_lib",
+)
+
+opt_files(
+    name = "cadpole_wasm_test_hooks_opt",
+    src = ":cadpole_wasm_test_hooks",
+)
+
+# ---------------------------------------------------------------------------
+# The standard library is in the wasm
+#
+# `cadpole-script` embeds `//stdlib/*.star` with `include_str!`, and the wasm
+# engine compiles that same crate, so the library's bytes are in the `.wasm`.
+# This looks for them, so a build that stopped embedding them fails here and
+# not in a browser.
+# ---------------------------------------------------------------------------
+
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "stdlib_embedded_test",
+    size = "small",
+    srcs = ["stdlib_embedded_test.sh"],
+    args = ["$(rootpaths :cadpole_wasm_opt)"],
+    data = [":cadpole_wasm_opt"],
+)
+
+# ---------------------------------------------------------------------------
+# Native versus wasm
+#
+# The same engine, compiled for this machine and for wasm32, evaluates every
+# runnable example, and `native_vs_wasm_test.mjs` diffs the answers to the
+# bit: names, counts, volumes, the tessellation, the `Inspect` report.
+# `determinism/expected_divergence.tsv` is the ratchet -- what may still
+# differ -- and the test fails when it grows *or* when it is stale.
+#
+# `native_probe` is the probe as a native binary (stdin JSON in, stdout JSON
+# out); `Engine.probe` is the same function in the wasm engine above. Both
+# sides are the optimized build: the wasm always is (`cadpole_wasm_opt`), and
+# the native side transitions too, so the test compares what ships and runs
+# in seconds rather than the debug build's minutes.
+# ---------------------------------------------------------------------------
+
+rust_binary(
+    name = "native_probe",
+    testonly = True,
+    srcs = ["determinism/probe_main.rs"],
+    deps = ["//src/rust/cadpole-engine:cadpole_engine"],
+)
+
+opt_files(
+    name = "native_probe_opt",
+    testonly = True,
+    src = ":native_probe",
+)
+
+js_test(
+    name = "native_vs_wasm_test",
+    data = [
+        "determinism/expected_divergence.tsv",
+        ":cadpole_wasm_opt",
+        ":native_probe_opt",
+        "//examples:assets",
+        "//examples:star_files",
+        "//stdlib:star_files",
+    ],
+    entry_point = "determinism/native_vs_wasm_test.mjs",
+    # rules_js copies a data file into the output tree unless told not to,
+    # and it can only do that within the test's own package; the examples
+    # stay where they are and are read from their source path.
+    no_copy_to_bin = [
+        "//examples:assets",
+        "//examples:star_files",
+        "//stdlib:star_files",
+    ],
+    # Every example twice over: ~40 s natively plus the wasm side.
+    timeout = "long",
+)
+
+# No `f64` math method on the geometry path outside `cadpole_core::fmath`:
+# `x.sin()` is glibc natively and libm in wasm, and the last bit
+# differs. Reads the four geometry crates' sources and names every call that
+# routes around the pin; `determinism/transcendental_lint_test.mjs` says what
+# is exempt and why.
+js_test(
+    name = "transcendental_lint_test",
+    data = [
+        "//src/rust/cadpole-core:rust_sources",
+        "//src/rust/cadpole-field:rust_sources",
+        "//src/rust/cadpole-import:rust_sources",
+        "//src/rust/cadpole-script:rust_sources",
+        "//src/rust/cadpole-sketch-solve:rust_sources",
+    ],
+    entry_point = "determinism/transcendental_lint_test.mjs",
+    no_copy_to_bin = [
+        "//src/rust/cadpole-core:rust_sources",
+        "//src/rust/cadpole-field:rust_sources",
+        "//src/rust/cadpole-import:rust_sources",
+        "//src/rust/cadpole-script:rust_sources",
+        "//src/rust/cadpole-sketch-solve:rust_sources",
+    ],
+    # Reads ~130 files: well under a second.
+    timeout = "short",
+)

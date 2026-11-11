@@ -1,0 +1,20 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# Pinned Linux Swift toolchain; see toolchain.bzl.
+exports_files(["toolchain.bzl"])
+
+# Keep in sync with the `version` in MODULE.bazel's swift_linux_toolchain().
+PINNED_SWIFT_VERSION = "6.4.2"
+
+sh_test(
+    name = "pinned_version_test",
+    size = "small",
+    srcs = ["pinned_version_test.sh"],
+    args = [
+        "$(location @swift_toolchain_pinned//:swift_version)",
+        PINNED_SWIFT_VERSION,
+    ],
+    data = ["@swift_toolchain_pinned//:swift_version"],
+    # The macOS toolchain repo has no swift_version file (Xcode owns it).
+    target_compatible_with = ["@platforms//os:linux"],
+)

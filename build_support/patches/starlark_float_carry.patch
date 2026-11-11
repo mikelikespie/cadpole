@@ -1,0 +1,83 @@
+starlark 0.14.2 as Cadpole builds it: scientific float output keeps its
+rounding carry.
+
+write_scientific (behind str(), repr(), print, "%s", "%g", "%e" and
+"{}".format() of any float whose exponent is >= 6 or <= -6) wrote the
+leading digit as normal.trunc() and then rounded the six digits after it
+on their own. When the fraction was >= 0.9999995 the tail rounded to
+1000000, the digit loop emitted zeros, and the carry into the leading
+digit (and, for 9.9999997, into the exponent) was dropped: 1999999.7
+printed as 1e+06, 9999999.7 as 9e+06. Volumes in mm^3 of round-number
+parts land there routinely after a rotate or boolean.
+
+The fix formats the magnitude with Rust's `{:.6e}`, which is an exact,
+correctly rounded decimal conversion with the carry, and keeps the
+crate's own conventions: a leading "-" for a negative number, trailing
+zeros stripped when asked, and a signed two-digit exponent. Applied by
+crate.annotation in MODULE.bazel; drop it when an upstream starlark
+release fixes write_scientific.
+
+--- a/src/values/types/float/float.rs
++++ b/src/values/types/float/float.rs
+@@ -83,48 +83,26 @@
+     if !f.is_finite() {
+         write_non_finite(output, f)
+     } else {
+-        let abs = f.abs();
+-        let exponent = if f == 0.0 {
+-            0
++        // Round the whole mantissa at once, with the carry: Rust's `{:e}`
++        // is exact decimal conversion, so 1.9999997e6 at six digits is
++        // `2.000000e6`. Writing the leading digit first and rounding the
++        // tail separately dropped the carry when the tail rounded up to
++        // 10^precision (1999999.7 came out as `1e+06`). Patched by Cadpole;
++        // see build_support/patches/starlark_float_carry.patch.
++        let sci = format!("{:.*e}", WRITE_PRECISION, f.abs());
++        let (mantissa, exponent) = sci.split_once('e').unwrap_or((&sci, "0"));
++        let exponent: i32 = exponent.parse().unwrap_or(0);
++        let mantissa = if strip_trailing_zeros && mantissa.contains('.') {
++            mantissa.trim_end_matches('0').trim_end_matches('.')
+         } else {
+-            abs.log10().floor() as i32
+-        };
+-        let normal = if f == 0.0 {
+-            0.0
+-        } else {
+-            abs / 10f64.powf(exponent as f64)
++            mantissa
+         };
+ 
+         // start with "-" for a negative number
+         if f.is_sign_negative() {
+             output.write_char('-')?
+         }
+-
+-        // use the whole integral part of normal (a single digit)
+-        output.write_fmt(format_args!("{}", normal.trunc()))?;
+-
+-        // calculate the fractional tail for given precision
+-        let mut tail = (normal.fract() * 10f64.powf(WRITE_PRECISION as f64)).round() as u64;
+-        let mut rev_tail = [0u8; WRITE_PRECISION];
+-        let mut rev_tail_len = 0;
+-        let mut removing_trailing_zeros = strip_trailing_zeros;
+-        for _ in 0..WRITE_PRECISION {
+-            let tail_digit = tail % 10;
+-            if tail_digit != 0 || !removing_trailing_zeros {
+-                removing_trailing_zeros = false;
+-                rev_tail[rev_tail_len] = tail_digit as u8;
+-                rev_tail_len += 1;
+-            }
+-            tail /= 10;
+-        }
+-
+-        // write fractional part
+-        if rev_tail_len != 0 {
+-            output.write_char('.')?;
+-        }
+-        for digit in rev_tail[0..rev_tail_len].iter().rev() {
+-            output.write_char((b'0' + digit) as char)?;
+-        }
++        output.write_str(mantissa)?;
+ 
+         // add exponent part
+         output.write_char(exponent_char)?;

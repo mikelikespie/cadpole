@@ -1,0 +1,155 @@
+# The limited-privilege listener
+# (docs/assistant-integration.md).
+#
+#   bazel test //src/tools/listener:listener_test        # hermetic, no network
+#   bazel test //src/tools/listener:driver_test          # the model seam, against a stand-in executable
+#   bazel test //src/tools/listener:restart_test         # a restart resumes the server-held cursor
+#   bazel test //src/tools/listener:cli_test             # --help, a missing binary, the version check
+#   bazel test //src/tools/listener:listener_e2e_test    # real cadpole serve on loopback
+#   bazel test //src/tools/listener:listen_command_e2e_test   # cadpole listen --next/--follow, real server
+#   bazel run  //src/tools/listener -- --server http://127.0.0.1:7331
+#
+# ESM JavaScript rather than TypeScript: `ts_project` here would need
+# `@types/node` for `child_process`, `process` and `node:test`, and that
+# package is not in the pnpm lock. The modules are plain ESM with JSDoc types.
+
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# //spec:names_test reads what the listener treats as worth a turn, its
+# client id and its version floor, for spec/wakeups.qnt and spec/listener.qnt.
+exports_files([
+    "driver.mjs",
+    "listener.mjs",
+    "main.mjs",
+])
+
+js_library(
+    name = "listener_lib",
+    srcs = [
+        "driver.mjs",
+        "listener.mjs",
+        "main.mjs",
+        "mcp_client.mjs",
+        "policy.mjs",
+        "reply_stream.mjs",
+    ],
+)
+
+js_binary(
+    name = "listener",
+    entry_point = "main.mjs",
+    data = [":listener_lib"],
+)
+
+# A live check against a real, signed-in Claude Code: real model turns on the
+# account of whoever runs it. `manual`, a binary and not a test, so no build
+# or test sweep ever starts it. Usage is at the top of live_check.mjs.
+js_binary(
+    name = "live_check",
+    entry_point = "live_check.mjs",
+    data = [":listener_lib"],
+    tags = ["manual"],
+)
+
+# The fake `cadpole mcp --listener` the hermetic test drives. Separate so the
+# test's own runfiles carry it and nothing in the shipped listener does.
+js_library(
+    name = "fake_cadpole_mcp",
+    srcs = ["fake_cadpole_mcp.mjs"],
+)
+
+# Everything up to the model seam, against a fake MCP child: the
+# real stdio client, the real loop, the real policy. No network, no binaries.
+js_test(
+    name = "listener_test",
+    data = [
+        ":fake_cadpole_mcp",
+        ":listener_lib",
+    ],
+    entry_point = "listener_test.mjs",
+    timeout = "short",
+)
+
+# The model seam against a stand-in executable that speaks the headless
+# streaming protocol of the installed Claude Code: the exact argv, the lines
+# written and read, the version check, and the refusal of a session that
+# reports more than the Cadpole tools. The real program is never run here.
+js_library(
+    name = "fake_headless_cli",
+    srcs = ["fake_headless_cli.mjs"],
+)
+
+js_test(
+    name = "driver_test",
+    data = [
+        ":fake_cadpole_mcp",
+        ":fake_headless_cli",
+        ":listener_lib",
+    ],
+    entry_point = "driver_test.mjs",
+    timeout = "short",
+)
+
+# The demonstration: a real `cadpole serve`, a real `cadpole mcp --listener` holding
+# the run's restricted token, a selection made by the owner, and a reply that
+# lands in the session. Also proves the capability boundary from the outside:
+# the same connection that can `edit_script` cannot `set_script`.
+js_test(
+    name = "listener_e2e_test",
+    data = [
+        ":listener_lib",
+        "//src/rust/cadpole-cli:cadpole",
+    ],
+    entry_point = "listener_e2e_test.mjs",
+    tags = [
+        # `cadpole serve` and the MCP child talk over loopback, which a fresh
+        # network namespace still has (linux-sandbox brings `lo` up), so
+        # nothing here needs the host's network -- and with `block-network`
+        # nothing here can quietly acquire a need for it. Enforced wherever
+        # the sandbox is real: --config=hermetic in .bazelrc.
+        "block-network",
+    ],
+    # Runs in about a second; a hang is reported in a minute.
+    timeout = "short",
+)
+
+# `cadpole listen --next` and `--follow` as an assistant's harness sees them:
+# silent while nothing happens, one line per message, a position kept by the
+# server; and silent, like the channel of `cadpole mcp`, while a reply is
+# written a piece at a time. Real `cadpole serve`, `cadpole listen` and
+# `cadpole mcp`.
+js_test(
+    name = "listen_command_e2e_test",
+    data = ["//src/rust/cadpole-cli:cadpole"],
+    entry_point = "listen_command_e2e_test.mjs",
+    tags = ["block-network"],
+    timeout = "short",
+)
+
+# The shipped entry point restarted against a fake whose server-side state
+# (cursors by client id, replies) survives between processes: what was posted
+# while the listener was down is answered when it comes back.
+js_test(
+    name = "restart_test",
+    data = [
+        ":fake_cadpole_mcp",
+        ":listener_lib",
+    ],
+    entry_point = "restart_test.mjs",
+    timeout = "short",
+)
+
+# The entry point's edges: a cadpole binary that cannot be started and a
+# Claude Code that is missing or too old are one-line fatal errors, and
+# --help prints usage without attaching.
+js_test(
+    name = "cli_test",
+    data = [
+        ":fake_headless_cli",
+        ":listener_lib",
+    ],
+    entry_point = "cli_test.mjs",
+    timeout = "short",
+)

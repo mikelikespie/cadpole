@@ -1,0 +1,33 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# `fontdb` reads the machine's font set, which only exists natively; the wasm
+# build refuses `font="system:..."` with a diagnostic instead of shipping a
+# font indexer that can never find anything.
+_SYSTEM_FONTS = select({
+    "@platforms//cpu:wasm32": [],
+    "//conditions:default": ["@crates//:fontdb"],
+})
+
+rust_library(
+    name = "cadpole_font",
+    srcs = glob(["src/**/*.rs"]),
+    compile_data = ["//assets/fonts:builtin"],
+    # `include_bytes!` with a source-relative path resolves inside the sandbox
+    # locally but not in a remote action's input root, so pass the exec-root
+    # path instead: rustc runs with the exec root as its working directory.
+    rustc_env = {"CADPOLE_BUILTIN_FONT": "$(location //assets/fonts:Inter.ttf)"},
+    data = ["//assets/fonts:Inter.ttf"],
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "@crates//:harfrust",
+        "@crates//:skrifa",
+    ] + _SYSTEM_FONTS,
+)
+
+rust_test(
+    name = "cadpole_font_test",
+    size = "small",  # 0.1 s
+    crate = ":cadpole_font",
+)

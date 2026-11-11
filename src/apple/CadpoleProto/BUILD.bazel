@@ -1,0 +1,102 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//build_support/proto:swift.bzl", "swift_proto_srcs")
+
+package(default_visibility = ["//visibility:public"])
+
+# Generated Swift messages for cadpole/v1, COMMITTED rather than produced by
+# swift_proto_library -- see //build_support/proto:swift.bzl and
+# docs/apple-apps.md for why, and :pb_swift_diff_test below for the thing
+# that stops them rotting.
+swift_library(
+    name = "CadpoleProto",
+    srcs = glob(["cadpole/v1/*.pb.swift"]),
+    # rules_swift 3.6.1 under Bazel 9 resolves no Apple deployment version for a
+    # plain swift_library built for the host, emitting `-target arm64-apple-macos`
+    # with no version; swiftc then refuses with "requires a minimum deployment
+    # target of macOS 10.9.0". Neither --macos_minimum_os, --host_macos_minimum_os,
+    # --platforms nor --incompatible_enable_apple_toolchain_resolution changes it,
+    # so supply the triple here. Only affects macOS; Linux and iOS keep theirs.
+    copts = select({
+        "@platforms//os:macos": [
+            "-target",
+            "arm64-apple-macos26.0",
+        ],
+        "//conditions:default": [],
+    }),
+    module_name = "CadpoleProto",
+    deps = ["@com_github_apple_swift_protobuf//:SwiftProtobuf"],
+)
+
+_PB_SWIFT = [
+    "document.pb.swift",
+    "engine.pb.swift",
+    "eval.pb.swift",
+    "geometry.pb.swift",
+    "options.pb.swift",
+    "ops.pb.swift",
+]
+
+# protoc + protoc-gen-swift run again, into bazel-bin.
+#
+# Linux only, for two separate reasons:
+#
+#   target_compatible_with  building SwiftProtobuf's compiler plugin in a Darwin
+#                           configuration is the failure that made us commit
+#                           these files in the first place, and this is also
+#                           what makes `bazel build --config=apple-remote
+#                           //src/apple/...` skip it instead of trying to build
+#                           a host tool for the Mac.
+#   exec_compatible_with    the plugin is a Swift host tool; on Linux that means
+#                           the pinned swift.org toolchain, whose `root` is an
+#                           absolute host path and so cannot execute on a remote
+#                           worker (see build_support/swift/toolchain.bzl).
+#
+# Everything that depends on it -- the filegroups, the diff tests, :regenerate --
+# inherits the incompatibility, so no wildcard build has to know about this.
+swift_proto_srcs(
+    name = "regenerated",
+    descriptor_set = "//proto/cadpole/v1:cadpole_v1_descriptor_set",
+    exec_compatible_with = ["@platforms//os:linux"],
+    proto = "//proto/cadpole/v1:cadpole_v1_proto",
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+# One diff_test per file so a failure names the file that drifted. The
+# generated files have no labels of their own (declare_file, not predeclared
+# outputs), so :regenerated publishes one output group per file and a filegroup
+# picks it out.
+[
+    filegroup(
+        name = "gen_" + f.replace(".", "_"),
+        srcs = [":regenerated"],
+        output_group = f.replace(".", "_"),
+    )
+    for f in _PB_SWIFT
+]
+
+[
+    diff_test(
+        name = "diff_" + f.replace(".", "_"),
+        file1 = "cadpole/v1/" + f,
+        file2 = ":gen_" + f.replace(".", "_"),
+        size = "small",
+        # Same reason as :regenerated -- the inputs are Linux-built.
+        target_compatible_with = ["@platforms//os:linux"],
+    )
+    for f in _PB_SWIFT
+]
+
+test_suite(
+    name = "pb_swift_diff_test",
+    tests = ["diff_" + f.replace(".", "_") for f in _PB_SWIFT],
+)
+
+# `bazel run //src/apple/CadpoleProto:regenerate` after editing proto/cadpole/v1/*.proto.
+sh_binary(
+    name = "regenerate",
+    srcs = ["regenerate.sh"],
+    data = [":regenerated"],
+    env = {"CADPOLE_PB_SWIFT_FILES": " ".join(_PB_SWIFT)},
+)

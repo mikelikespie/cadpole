@@ -1,0 +1,16 @@
+// Cadpole's two file types. Generated from build_support/file_types.bzl,
+// where the values are set; nothing else spells them out.
+
+public enum CadpoleFileTypes {
+    /// A packed document: a serialised `cadpole.v1.Document`.
+    public static let documentExtension = "@DOCUMENT_EXT@"
+    /// The document's exported UTType, declared in both apps' Info.plist.
+    public static let documentTypeIdentifier = "@DOCUMENT_UTTYPE@"
+    /// A baked model: an evaluated `BakedModel`, zlib-deflated.
+    public static let bakedExtension = "@BAKED_EXT@"
+    /// A loose Starlark script. Not ours, so both apps IMPORT its type (the
+    /// system has none for `.star`); it conforms to public.script and so to
+    /// public.plain-text, which is what lets the open panel offer it.
+    public static let starlarkExtension = "star"
+    public static let starlarkTypeIdentifier = "net.starlark.script"
+}

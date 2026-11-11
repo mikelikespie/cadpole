@@ -1,0 +1,43 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_doc_test", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# 2D sketch constraint solver. One dependency, the pinned transcendentals:
+# the dense SVD it needs is in src/linalg.rs, which keeps the wasm32
+# build and the licence table trivial.
+rust_library(
+    name = "cadpole_sketch_solve",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**"],
+    ),
+    crate_name = "cadpole_sketch_solve",
+    deps = ["@crates//:libm"],
+)
+
+rust_test(
+    name = "cadpole_sketch_solve_test",
+    size = "small",
+    crate = ":cadpole_sketch_solve",
+)
+
+# The examples in lib.rs and system.rs are the API's contract; run them.
+rust_doc_test(
+    name = "cadpole_sketch_solve_doc_test",
+    size = "small",  # 0.5 s
+    crate = ":cadpole_sketch_solve",
+)
+
+# `bazel run --config=opt //src/rust/cadpole-sketch-solve:bench`
+rust_binary(
+    name = "bench",
+    srcs = ["src/bin/bench.rs"],
+    deps = [":cadpole_sketch_solve"],
+)
+
+# The crate's sources as files, for //src/rust/cadpole-wasm:transcendental_lint_test:
+# no f64 math method on the geometry path outside cadpole_core::fmath.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+)

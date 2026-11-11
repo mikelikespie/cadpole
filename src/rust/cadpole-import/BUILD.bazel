@@ -1,0 +1,67 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# For //src/rust/cadpole-wasm:transcendental_lint_test: every sin, cos,
+# atan2 here goes through cadpole_core::fmath, so a STEP imported in the browser
+# is the same solid as one imported natively.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+)
+
+rust_library(
+    name = "cadpole_import",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-assets:cadpole_assets",
+        "//src/rust/cadpole-core:cadpole_core",
+        "//src/rust/cadpole-export-3mf:cadpole_export_3mf",
+        # The 2D joiner and the bulge/B-spline conversions the DXF reader
+        # shares with the SVG one; a workspace crate, nothing new.
+        "//src/rust/cadpole-import-2d:cadpole_import_2d",
+        "@crates//:roxmltree",
+        # glTF's JSON chunk; already linked by cadpole-engine and cadpole-wasm.
+        "@crates//:serde_json",
+        "@crates//:truck-base",
+        "@crates//:truck-geometry",
+        "@crates//:truck-modeling",
+        "@crates//:truck-stepio",
+        "@crates//:truck-topology",
+    ],
+)
+
+# The malformed-file corpus under testdata/fuzz: every file must come back as
+# a diagnostic, never a panic.
+filegroup(
+    name = "fuzz_corpus",
+    srcs = glob(["testdata/fuzz/*"]),
+)
+
+rust_test(
+    name = "cadpole_import_test",
+    size = "medium",
+    crate = ":cadpole_import",
+    data = [
+        ":fuzz_corpus",
+        # The survey fixture the DXF example imports, checked to be byte for
+        # byte what Cadpole's own DXF writer writes.
+        "//examples:assets",
+        # The generator of examples/assets/scan_room.glb, so the test that
+        # regenerates the asset knows when the script has moved on.
+        "//examples/tools:scan_room_glb.py",
+    ],
+    env = {
+        "CADPOLE_EXAMPLES": "examples",
+        "CADPOLE_IMPORT_TESTDATA": "src/rust/cadpole-import/testdata",
+    },
+    deps = [
+        # Test only: Cadpole's own STEP writer, so every fixture is a file Cadpole
+        # exported and the round trip is measured against its source solid.
+        "//src/rust/cadpole-export-step:cadpole_export_step",
+        # Test only: the drawing IR and Cadpole's own DXF writer, so what
+        # `cadpole export --format dxf` writes is read back by the DXF reader.
+        "//src/rust/cadpole-drawing:cadpole_drawing",
+        "//src/rust/cadpole-drawing-out:cadpole_drawing_out",
+    ],
+)

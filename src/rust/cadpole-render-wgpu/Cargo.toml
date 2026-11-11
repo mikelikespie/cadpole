@@ -1,0 +1,27 @@
+[package]
+name = "cadpole-render-wgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole GPU renderer: one wgpu/WGSL viewport for Metal, Vulkan and WebGPU."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+bytemuck.workspace = true
+# The shader translator wgpu already carries. Depended on directly so the WGSL
+# can be parsed and validated by a test that needs no adapter at all.
+naga.workspace = true
+
+# Native (Linux/macOS/iOS): Vulkan and Metal only. `gles` and `dx12` are
+# deliberately off -- neither is a Cadpole target and each drags in its own
+# backend tree.
+#
+# There is deliberately NO wasm32 entry yet. wgpu's `webgpu` feature pulls
+# js-sys 0.3.104, which requires wasm-bindgen =0.2.127, and the workspace pins
+# wasm-bindgen to =0.2.121 -- the version of the CLI that
+# rules_rust_wasm_bindgen 0.74.0 ships, which //src/rust/cadpole-wasm must keep
+# building against. Adding the wasm arm therefore waits on that rules bump; the
+# canvas surface path is designed for it in src/surface.rs. Until then the
+# browser viewport stays on the interim three.js viewer.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wgpu = { workspace = true, features = ["std", "wgsl", "vulkan", "metal", "parking_lot"] }

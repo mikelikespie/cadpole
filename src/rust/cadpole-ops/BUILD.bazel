@@ -1,0 +1,45 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_ops",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "//src/rust/cadpole-engine:cadpole_engine",
+        "//src/rust/cadpole-proto:cadpole_proto",
+        "@crates//:anyhow",
+        "@crates//:prost",
+        "@crates//:prost-reflect",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "cadpole_ops_test",
+    size = "small",  # 8.7 s
+    crate = ":cadpole_ops",
+    compile_data = glob(["testdata/*"]),
+)
+
+# Characterisation tests for the RPC encoding (JSON and protobuf): what the
+# encoding does, known gaps included. An integration test over the crate's
+# public API, separate from the unit tests in `lib.rs`.
+rust_test(
+    name = "rpc_encoding_test",
+    size = "small",  # 0.2 s
+    srcs = ["tests/rpc_encoding.rs"],
+    deps = [
+        ":cadpole_ops",
+        "//src/rust/cadpole-engine:cadpole_engine",
+        "//src/rust/cadpole-proto:cadpole_proto",
+        "@crates//:prost",
+        "@crates//:serde_json",
+    ],
+)
+
+# The capability policy as text. //spec:names_test diffs spec/capability.qnt
+# against the GRANTED and DENIED lists in here, so the model of the boundary
+# cannot drift from the boundary.
+exports_files(["src/capability.rs"])

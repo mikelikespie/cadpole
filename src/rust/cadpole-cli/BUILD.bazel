@@ -1,0 +1,76 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# CARGO_PKG_VERSION, which rules_rust takes from `version` and not from
+# Cargo.toml (its default is "0.0.0"). Keep in step with Cargo.toml's
+# [workspace.package] version, as //src/rust/cadpole-ffi does.
+CADPOLE_VERSION = "0.1.0"
+
+rust_binary(
+    name = "cadpole",
+    version = CADPOLE_VERSION,
+    srcs = glob(["src/**/*.rs"]),
+    data = ["//src/web:dist"],
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "//src/rust/cadpole-engine:cadpole_engine",
+        "//src/rust/cadpole-ops:cadpole_ops",
+        # HiGHS, the solver `opt` scripts use: native only, so the
+        # CLI is the one binary that links it.
+        "//src/rust/cadpole-opt:cadpole_opt",
+        "//src/rust/cadpole-render-wgpu:cadpole_render_wgpu",
+        "//src/rust/cadpole-proto:cadpole_proto",
+        "@crates//:anyhow",
+        "@crates//:axum",
+        "@crates//:base64",
+        "@crates//:miniz_oxide",
+        "@crates//:chrono",
+        "@crates//:png",
+        "@crates//:prost-reflect",
+        "@crates//:rand",
+        "@crates//:tokio-stream",
+        "@crates//:clap",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:tokio",
+        "@crates//:tower-http",
+        "@crates//:tracing",
+        "@crates//:tracing-subscriber",
+        "@crates//:ureq",
+        "@rules_rust//tools/runfiles",
+    ],
+)
+
+rust_test(
+    name = "cadpole_cli_test",
+    version = CADPOLE_VERSION,
+    # 10-15 s, but it spawns real `cadpole` processes, solves included, and
+    # under heavy load that can pass "small"'s 60 s.
+    timeout = "moderate",
+    # The real page, which `publish::rewrite_index` is tested against:
+    # a change to it that the rewrite no longer understands fails
+    # here rather than publishing a playground.
+    compile_data = ["//src/web:index.html"],
+    crate = ":cadpole",
+    # The binary itself: the solution cache and solve jobs are tested
+    # across real `cadpole` processes -- a second `cadpole eval`, a job's child.
+    data = [
+        ":cadpole",
+        "//examples:star_files",
+        # Traces of spec/reply_stream.qnt, replayed against the StreamReply
+        # handler (`the_model_traces_replay_against_the_handler`).
+        "//spec:reply_stream_traces",
+    ],
+)
+
+# //spec:names_test reads the two places this file decides how much of a
+# request is bounded and how big the event log may get, and diffs them against
+# spec/lifecycle.qnt and spec/eventlog.qnt.
+# It also reads how `cadpole listen` and the channel in `cadpole mcp` decide
+# what is worth a model turn, for spec/wakeups.qnt.
+exports_files([
+    "src/main.rs",
+    "src/mcp.rs",
+    "src/server.rs",
+])

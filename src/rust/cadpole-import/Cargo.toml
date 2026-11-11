@@ -1,0 +1,39 @@
+[package]
+name = "cadpole-import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole 3D import: STEP into B-rep solids over truck-stepio's lexer, STL/OBJ/3MF/glTF into mesh bodies with a repair report."
+
+[dependencies]
+cadpole-assets = { path = "../cadpole-assets" }
+cadpole-core = { path = "../cadpole-core" }
+# The 3MF package reader: the deterministic zip this crate's sibling writes
+# with, read back under caps.
+cadpole-export-3mf = { path = "../cadpole-export-3mf" }
+# The 2D joiner and the bulge/B-spline conversions the DXF reader
+# shares with the SVG one: a workspace crate, nothing new in the graph.
+cadpole-import-2d = { path = "../cadpole-import-2d" }
+# STEP: truck's own Part 21 lexer and typed holder table (Apache-2.0, already
+# in the graph behind truck-shapeops, so this adds no crate). Its
+# `to_compressed_shell` is *not* used: it drops faces it cannot convert and
+# prints the reason to stderr; this crate walks the holders itself and owns
+# every failure.
+truck-stepio.workspace = true
+truck-base.workspace = true
+truck-geometry.workspace = true
+truck-modeling.workspace = true
+truck-topology.workspace = true
+roxmltree.workspace = true
+# glTF's JSON: the same serde_json cadpole-engine and cadpole-wasm link,
+# so it adds no crate to the graph -- only this member's dependency list.
+serde_json.workspace = true
+
+[dev-dependencies]
+# Tests only: the crate's own STEP writer, so what Cadpole exports is read back
+# and compared with the solid it came from (a workspace member; no new crate).
+cadpole-export-step = { path = "../cadpole-export-step" }
+# Tests only: the drawing IR and Cadpole's own DXF writer, so what
+# `cadpole export --format dxf` writes is read back by the DXF reader.
+cadpole-drawing = { path = "../cadpole-drawing" }
+cadpole-drawing-out = { path = "../cadpole-drawing-out" }

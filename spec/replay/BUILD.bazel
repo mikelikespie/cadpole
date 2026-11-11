@@ -1,0 +1,66 @@
+# Replays of the models' traces against the implementation. See ../README.md,
+# "Trace replay".
+#
+#   bazel test //spec/replay/...                                        # bounded, in the sweep
+#   bazel run  //spec/replay:listener_replay -- --traces=1000 --steps=40
+#
+# The models generate the traces; each replay makes the real program take the
+# same steps and compares what it shows with the model's state after every
+# one.
+
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+load("//build_support/quint:defs.bzl", "quint_replay")
+
+package(default_visibility = ["//visibility:public"])
+
+# //spec:names_test checks that each replay knows every action of its model.
+exports_files([
+    "listener_replay.mjs",
+    "transport_replay.mjs",
+    "wakeups_replay.mjs",
+])
+
+js_library(
+    name = "traces",
+    srcs = ["traces.mjs"],
+)
+
+# spec/listener.qnt against the shipped listener entry point, with the server
+# and the headless session played by this test one step at a time.
+quint_replay(
+    name = "listener_replay",
+    entry_point = "listener_replay.mjs",
+    models = ["//spec:listener.qnt"],
+    data = [
+        ":traces",
+        "//src/tools/listener:fake_cadpole_mcp",
+        "//src/tools/listener:fake_headless_cli",
+        "//src/tools/listener:listener_lib",
+    ],
+)
+
+# spec/wakeups.qnt against a real `cadpole serve` and the three real readers:
+# `cadpole listen`, the channel in `cadpole mcp`, and the listener's loop.
+quint_replay(
+    name = "wakeups_replay",
+    entry_point = "wakeups_replay.mjs",
+    models = ["//spec:wakeups.qnt"],
+    data = [
+        ":traces",
+        "//src/rust/cadpole-cli:cadpole",
+        "//src/tools/listener:listener_lib",
+    ],
+)
+
+# spec/transport.qnt against real `cadpole serve` processes, real `cadpole
+# mcp` clients started with no `--server`, and requests straight at both
+# surfaces.
+quint_replay(
+    name = "transport_replay",
+    entry_point = "transport_replay.mjs",
+    models = ["//spec:transport.qnt"],
+    data = [
+        ":traces",
+        "//src/rust/cadpole-cli:cadpole",
+    ],
+)

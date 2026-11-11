@@ -1,0 +1,34 @@
+[package]
+name = "cadpole-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WebAssembly bindings for the Cadpole engine."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# A deliberate panic on the real `evaluate` path, so the crash-reporting
+# pipeline can be tested end to end against a genuine Rust panic. Built only
+# by //src/rust/cadpole-wasm:cadpole_wasm_test_hooks; the engine //src/web:dist
+# ships has no way to be told to crash.
+test_hooks = []
+
+[dependencies]
+cadpole-engine = { path = "../cadpole-engine" }
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+console_error_panic_hook.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# getrandom's JS backend must be enabled through Cargo feature resolution so
+# its optional wasm-bindgen/js-sys dependencies are pulled in.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.4", features = ["wasm_js"] }
+# `dxf` (through `cadpole-import-2d`) uses `uuid` with `v4`, and uuid refuses to
+# compile for wasm32-unknown-unknown without a randomness source. Declaring it
+# here is how that feature reaches the shared resolution; nothing in this
+# crate calls uuid.
+uuid = { version = "1", features = ["js"] }

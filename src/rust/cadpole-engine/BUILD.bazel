@@ -1,0 +1,89 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# CARGO_PKG_VERSION, which rules_rust takes from `version` and not from
+# Cargo.toml (its default is "0.0.0"). Keep in step with Cargo.toml's
+# [workspace.package] version, as //src/rust/cadpole-ffi does.
+# cadpole_engine::VERSION: the CLI's --version, MCP serverInfo, the STEP
+# originating system, glTF's generator, published sites, wasm Engine.version().
+CADPOLE_VERSION = "0.1.0"
+
+rust_library(
+    name = "cadpole_engine",
+    version = CADPOLE_VERSION,
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-assets:cadpole_assets",
+        "//src/rust/cadpole-core:cadpole_core",
+        "//src/rust/cadpole-export-3mf:cadpole_export_3mf",
+        "//src/rust/cadpole-export-step:cadpole_export_step",
+        "//src/rust/cadpole-print:cadpole_print",
+        "//src/rust/cadpole-drawing:cadpole_drawing",
+        "//src/rust/cadpole-drawing-out:cadpole_drawing_out",
+        "//src/rust/cadpole-proto:cadpole_proto",
+        "//src/rust/cadpole-script:cadpole_script",
+        "@crates//:anyhow",
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+# The process-wide evaluation limits (`set_default_limits`), which `cadpole serve`
+# installs once at startup and every deadline-less evaluation reads. Its own
+# binary, and single-threaded: the limits are per-process globals, so a test
+# that sets a 250 ms deadline inside the crate's own test binary would impose
+# it on every other test evaluating a document there.
+rust_test(
+    name = "process_deadline_test",
+    srcs = ["tests/process_deadline.rs"],
+    args = ["--test-threads=1"],
+    deps = [":cadpole_engine"],
+)
+
+# The kernel-op memo, tested by counts: which ops ran, hit or were
+# deferred, never how long they took. Its own binary because it evaluates
+# the compressor wheel cold several times, which a debug build does slowly.
+rust_test(
+    name = "memo_test",
+    timeout = "eternal",  # every example cold and warm through the memo: ~7 min in a debug build under load
+    size = "large",
+    srcs = ["tests/memo.rs"],
+    data = [
+        "//examples:assets",
+        "//examples:star_files",
+    ],
+    env = {"CADPOLE_EXAMPLES": "examples"},
+    deps = [
+        ":cadpole_engine",
+        # The CLI's solver, so the `opt` examples solve here; the
+        # engine library itself never links it.
+        "//src/rust/cadpole-opt:cadpole_opt",
+    ],
+)
+
+rust_test(
+    name = "cadpole_engine_test",
+    version = CADPOLE_VERSION,
+    # The STEP round trip of every example evaluates the whole
+    # corpus once on the exact kernel, exports and re-imports every body:
+    # ~7 min in a debug build under load; the rest of the crate is seconds.
+    size = "medium",
+    timeout = "eternal",
+    crate = ":cadpole_engine",
+    data = [
+        "//examples:assets",
+        "//examples:star_files",
+    ],
+    env = {"CADPOLE_EXAMPLES": "examples"},
+    deps = [
+        # Test only: Cadpole's own STEP importer, so every example's
+        # export is read back and compared with the model it came from.
+        "//src/rust/cadpole-import:cadpole_import",
+        # Test only: truck's own STEP reader, so the Gridfinity STEP this
+        # crate writes is parsed back by a separate implementation and
+        # compared with the model it came from.
+        "@crates//:truck-meshalgo",
+        "@crates//:truck-stepio",
+    ],
+)

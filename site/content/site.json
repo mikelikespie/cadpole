@@ -1,0 +1,20 @@
+{
+ "title": "Cadpole: parametric CAD for bots",
+ "description": "Cadpole is parametric CAD for bots. Your coding agent builds the model, sets its parameters, measures it, renders it and runs its tests; you watch in 3D, drag a parameter and say what you want. Parts and assemblies, buildings and plans.",
+ "card": "Your agent builds it and checks it. You steer.",
+ "hero": {
+  "eyebrow": "Bring your own coding agent",
+  "headline": [
+   "Parametric CAD",
+   "for bots."
+  ],
+  "sub": "Your agent builds the model and checks its own work: it measures, renders and runs the model's tests. Every dimension is a parameter. The bot sets it, you drag it, the model rebuilds.",
+  "facts": [
+   "Parts and assemblies",
+   "Buildings and plans",
+   "MCP server",
+   "STEP, STL, 3MF",
+   "Apache-2.0"
+  ]
+ }
+}

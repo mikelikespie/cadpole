@@ -1,0 +1,20 @@
+package(default_visibility = ["//visibility:public"])
+
+# The bundled face, compiled into `cadpole-font` with `include_bytes!`.
+#
+# Inter is SIL OFL 1.1 and declares no Reserved Font Names, so it may be
+# bundled and even subset under its own name. It is *data*, not linked code:
+# the licence policy in //build_support/licenses allows OFL only here, and
+# only for what `fonts.tsv` records. `Inter-OFL.txt` must ship with it.
+filegroup(
+    name = "builtin",
+    srcs = [
+        "Inter-OFL.txt",
+        "Inter.ttf",
+    ],
+)
+
+exports_files([
+    "Inter.ttf",
+    "Inter-OFL.txt",
+])

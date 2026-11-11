@@ -1,0 +1,217 @@
+{
+ "modes": {
+  "lede": "Cadpole models mechanical parts and it models buildings. An agent drives both through the same operations, so this page shows them one after the other and then what they share.",
+  "shared": "Shared by both: the operations an agent calls, parameters and sweeps, tests, renders, dimensioned drawings, exports and the viewer. The building side is a set of libraries on top; a part never touches it.",
+  "cols": [
+   {
+    "title": "Parts and assemblies",
+    "to": "parts",
+    "go": "See parts",
+    "img": "planetary",
+    "alt": "A herringbone planetary gear set, exploded",
+    "body": "Brackets, enclosures, gears, threads, mechanisms that move and whole assemblies, in millimetres, to print, machine or draw.",
+    "tags": [
+     "Assemblies",
+     "Gears",
+     "Threads",
+     "Print checks",
+     "STEP, 3MF"
+    ]
+   },
+   {
+    "title": "Buildings and plans",
+    "to": "buildings",
+    "go": "See buildings",
+    "img": "plan-cabin",
+    "alt": "A small cabin with its roof removed, showing the rooms",
+    "body": "Massing, lots and terrain, floor plans, sun and shadow, sightlines and drawing sets, in feet and inches.",
+    "tags": [
+     "Floor plans",
+     "Sites",
+     "Sun and shadow",
+     "Layout solver",
+     "Sheet sets"
+    ]
+   }
+  ]
+ },
+ "groups": {
+  "parts": {
+   "eyebrow": "Part one",
+   "title": "Parts and assemblies.",
+   "lede": "The turbojet at the top is this kind of work. Next: a mechanism that prints in place, artwork turned into relief, an engine taken apart, and a part you can change in the browser.",
+   "note": "On GitHub:",
+   "doc": "parts.md",
+   "docLabel": "the guide to parts and assemblies"
+  },
+  "buildings": {
+   "eyebrow": "Part two",
+   "title": "Buildings and plans.",
+   "lede": "The same engine at the scale of a house. Scripts write feet and inches, and optional libraries add rooms and storeys, lots and terrain, the sun, sightlines and a solver that places rooms. Every building, lot and rule below is invented.",
+   "note": "On GitHub:",
+   "doc": "buildings.md",
+   "docLabel": "the guide to buildings and plans"
+  },
+  "shared": {
+   "eyebrow": "Part three",
+   "title": "What both share.",
+   "lede": "One engine underneath. The modelling operations, the drawings, the exports and the tools below work the same for a bracket and for a house."
+  }
+ },
+ "sections": [
+  {
+   "id": "site",
+   "eyebrow": "sites and terrain",
+   "title": "A lot, its ground and its rules.",
+   "lede": "An invented 40 ft by 80 ft parcel on a 25 % slope, modelled from the shapes site data comes in: corner coordinates, a surveyed profile and ground samples. The height rule is a body you can see and test against.",
+   "img": "lot",
+   "size": [
+    1600,
+    1200
+   ],
+   "model": "lot",
+   "view": "-115,24,24,1",
+   "name": "Hillside lot",
+   "script": "hillside_lot.star",
+   "alt": "A house stepping down a sloping lot, seen from downhill: its three levels inside a translucent blue height envelope, a garden studio on its own pad and two grey neighbours",
+   "sub": "The envelope is geometry",
+   "body": "The translucent blue volume is the height rule: 30 ft above the ground at every point (its 40 ft cap never bites on this lot). The house steps down the slope in three levels, the walk-out floor a level below the sidewalk on a filled terrace; a test fails when any of it leaves the envelope, and lowering the upper setback paints the part that does in red. The ground is drawn in 5 ft bands, so each edge is a contour.",
+   "facts": [
+    [
+     "Parcel",
+     "40 ft × 80 ft"
+    ],
+    [
+     "Slope",
+     "25 %"
+    ],
+    [
+     "Height limit above grade",
+     "30 ft"
+    ],
+    [
+     "Height cap",
+     "40 ft"
+    ],
+    [
+     "Upper floor setback",
+     "15 ft"
+    ],
+    [
+     "Tests in the script",
+     "12 pass"
+    ]
+   ],
+   "command": [
+    "cadpole test examples/hillside_lot.star"
+   ]
+  },
+  {
+   "id": "sun",
+   "eyebrow": "sun and shadow",
+   "title": "Where the shadow falls, as a number.",
+   "lede": "<code>sun()</code> places the sun for a latitude, a date and a time. <code>shadow_study()</code> returns the shadow a house throws on a neighbour's light court as an exact area, so a test can hold it at zero.",
+   "img": "shadow",
+   "size": [
+    1968,
+    1557
+   ],
+   "model": "shadow",
+   "view": "20,55,24,1",
+   "name": "Shadow study",
+   "script": "shadow_study.star",
+   "alt": "Nine pictures of a proposed house on a lot beside its neighbour's light court, seen from above, its shadow at three dates and three times of day",
+   "sub": "Nine tiles from one command",
+   "body": "Three dates by three times of day: the June solstice, the equinox and the December solstice at 9, 12 and 3, looking down the slot between the house and the neighbour's light court. In 3D the court's footprint for the document's own date and hour is drawn in teal, and the line of sight from the sidewalk to the studio's roof lantern turns red where the house cuts it; widen the passage to 12 ft and it clears.",
+   "facts": [
+    [
+     "Lot",
+     "50 ft × 100 ft"
+    ],
+    [
+     "Proposed house",
+     "30 × 40 × 30 ft"
+    ],
+    [
+     "Shadow on the court, winter noon",
+     "0 sq ft"
+    ],
+    [
+     "Lantern from the sidewalk, 8 ft passage",
+     "hidden"
+    ],
+    [
+     "Lantern from the sidewalk, 12 ft passage",
+     "seen"
+    ],
+    [
+     "Tests in the script",
+     "8 pass"
+    ]
+   ],
+   "command": [
+    "cadpole render examples/shadow_study.star --shadow-study \\",
+    "  --sun 38,-140,2026-06-21,12:00,-9 -o study.png"
+   ]
+  },
+  {
+   "id": "layout",
+   "eyebrow": "layout optimisation",
+   "title": "State the rules. The solver places the rooms.",
+   "lede": "<code>opt</code> is a linear and mixed-integer solver in the script language. This script gives four rooms minimum sizes and a limit on how long and narrow two of them may be, forbids overlaps, asks the kitchen to share 4 ft of wall with the living room and caps the floor area. The solver picks every size and position.",
+   "img": "layout",
+   "size": [
+    1200,
+    1200
+   ],
+   "model": "layout",
+   "view": "-22,58,24,1",
+   "name": "Rooms placed by the solver",
+   "script": "room_layout_opt.star",
+   "alt": "Four rooms the solver placed, seen from above at an angle: coloured floors labelled with their sizes, low walls with a 4 ft opening between kitchen and living room, and the outline of the second floor the cap counts",
+   "sub": "Proven optimal, and it says which rule decided",
+   "body": "The answer names the rules that bind and what each costs. Here the floor-area cap, which counts two floors, sets the plate's depth; the outline above the rooms is that second floor. Whole floor plans fitted to a template over three storeys are the same kind of problem and run as background jobs.",
+   "rules": [
+    "p = opt.problem(name=\"rooms\")",
+    "depth = p.var(\"plate depth\", min=20, max=MAX_DEPTH)",
+    "p.constrain(FLOORS * WIDTH * depth, max=CAP, name=\"floor-area cap\")",
+    "apart(\"living\", \"kitchen\")",
+    "shares_wall(\"kitchen\", \"living\", DOOR)",
+    "sol = p.solve()"
+   ],
+   "command": [
+    "cadpole test examples/room_layout_opt.star"
+   ]
+  }
+ ],
+ "set": {
+  "id": "set-a3",
+  "name": "Section and elevation",
+  "title": "A drawing set from one export.",
+  "lede": "Sheets are part of the script: a cover with a table of the house at three setbacks, a site plan with 1 ft contours, floor plans with their rooms, stair, glazing and door swings dimensioned in feet and inches, a section and an elevation. One <code>export()</code> writes them as one PDF.",
+  "alt": "A drawing sheet with a section of a small house down a slope and its street elevation",
+  "sub": "Sheet A3.0, section and elevation",
+  "body": "The section runs down the slope through both floors and the roof, with the earth hatched and the 30 ft height line. The street elevation has its hidden lines removed and the buried lower level masked by the grade. Every dimension and level is the model's own length, written in feet and inches.",
+  "facts": [
+   [
+    "Sheets",
+    "4"
+   ],
+   [
+    "Sheet size",
+    "ARCH D, 36 × 24 in"
+   ],
+   [
+    "Scale of this sheet",
+    "3/16 in = 1 ft"
+   ],
+   [
+    "Tests in the script",
+    "5 pass"
+   ]
+  ],
+  "command": [
+   "cadpole export examples/house_set.star --run-exports --out-dir ."
+  ]
+ }
+}

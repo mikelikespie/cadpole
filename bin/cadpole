@@ -1,0 +1,37 @@
+#!/bin/sh
+# Run the cadpole CLI from this checkout, building it first when it is out of
+# date. Arguments and the working directory are passed through unchanged:
+#
+#   bin/cadpole serve examples/bracket.star
+#   bin/install                     # puts this script on PATH as `cadpole`
+#
+# Everything this script and Bazel print goes to stderr; stdout belongs to
+# the CLI (`cadpole mcp` speaks JSON-RPC on it).
+#
+#   CADPOLE_NO_BUILD=1   run the last build without asking Bazel
+
+set -eu
+
+# The checkout: this script's directory, through any symlinks to it (an
+# installed `cadpole` is a symlink to this file).
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+CADPOLE_ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
+
+# shellcheck source=lib/preflight.sh
+. "$CADPOLE_ROOT/bin/lib/preflight.sh"
+# shellcheck source=lib/build.sh
+. "$CADPOLE_ROOT/bin/lib/build.sh"
+
+preflight || exit 1
+if [ "${CADPOLE_NO_BUILD:-}" != 1 ]; then
+    build_cadpole || exit 1
+fi
+if [ ! -x "$CADPOLE_BIN" ]; then
+    echo "cadpole: $CADPOLE_BIN is not built; run bin/cadpole without CADPOLE_NO_BUILD=1" >&2
+    exit 1
+fi
+exec "$CADPOLE_BIN" "$@"

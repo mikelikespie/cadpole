@@ -1,0 +1,23 @@
+[package]
+name = "cadpole-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole geometry core: feature tree, sketches, B-rep kernel bindings, tessellation."
+
+[dependencies]
+cadpole-proto = { path = "../cadpole-proto" }
+anyhow.workspace = true
+thiserror.workspace = true
+truck-base.workspace = true
+truck-geometry.workspace = true
+truck-topology.workspace = true
+truck-modeling.workspace = true
+truck-meshalgo.workspace = true
+truck-shapeops.workspace = true
+truck-polymesh.workspace = true
+manifold-rust.workspace = true
+png.workspace = true
+i_overlay.workspace = true
+libm.workspace = true
+rayon-core.workspace = true

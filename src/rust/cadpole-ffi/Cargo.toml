@@ -1,0 +1,12 @@
+[package]
+name = "cadpole-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C ABI for embedding the Cadpole engine (iOS / macOS via Swift)."
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+cadpole-engine = { path = "../cadpole-engine" }

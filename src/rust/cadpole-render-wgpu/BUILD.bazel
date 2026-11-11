@@ -1,0 +1,35 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_render_wgpu",
+    srcs = glob(["src/**/*.rs"]),
+    # `include_str!`ed into the shader modules.
+    compile_data = glob(["src/shaders/*.wgsl"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "@crates//:bytemuck",
+        "@crates//:naga",
+        "@crates//:wgpu",
+    ],
+)
+
+# Most of these tests need a GPU. There is no adapter in a remote-execution
+# sandbox and there may be none on a contributor's box, so every one of them
+# skips with a printed reason rather than failing when `Renderer::new` reports
+# `NoAdapter` -- and the WGSL validation test needs no adapter at all, so the
+# shaders stay checked on every machine.
+rust_test(
+    name = "cadpole_render_wgpu_test",
+    size = "small",  # 14 s: the software rasteriser, on one core
+    crate = ":cadpole_render_wgpu",
+    tags = [
+        # Picks whatever adapter the machine has (lavapipe in CI): the result
+        # is a property of the driver, so it is neither cached nor shipped to
+        # a remote worker.
+        "no-cache",
+        "no-remote-exec",
+        "requires-gpu",
+    ],
+)

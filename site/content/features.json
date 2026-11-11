@@ -1,0 +1,183 @@
+[
+  {
+    "id": "params",
+    "group": "Solids",
+    "title": "Parameters",
+    "blurb": "Named numbers with limits drive the model; change one and the part rebuilds.",
+    "alt": "A teal plate with rounded corners and three evenly spaced holes.",
+    "view": "-32,28,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "extrude",
+    "group": "Solids",
+    "title": "Extrude",
+    "blurb": "A flat sketch, holes included, pushed up into a solid.",
+    "alt": "A teal rounded block with a round hole through its top.",
+    "view": "-32,28,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "revolve",
+    "group": "Solids",
+    "title": "Revolve",
+    "blurb": "A profile turned about an axis, here three quarters of the way round.",
+    "alt": "A teal flanged bushing with a quarter cut away to show its profile.",
+    "view": "40,30,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "sweep",
+    "group": "Solids",
+    "title": "Sweep",
+    "blurb": "A section carried along a path of lines and arcs.",
+    "alt": "A teal tube with a smooth right-angle bend, its open end visible.",
+    "view": "30,20,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "loft",
+    "group": "Solids",
+    "title": "Loft",
+    "blurb": "One solid stretched through several cross-sections.",
+    "alt": "A teal vase-like solid that narrows in the middle and widens again.",
+    "view": "-32,22,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "boolean",
+    "group": "Solids",
+    "title": "Booleans",
+    "blurb": "Join two solids, cut one from the other, or keep only the overlap.",
+    "alt": "A block and cylinder joined, the block with the cylinder cut out, and their overlap in amber.",
+    "view": "-8,42,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "thread",
+    "group": "Solids",
+    "title": "Threads",
+    "blurb": "Bolts and nuts from the standard library carry real helical threads.",
+    "alt": "A teal hex bolt with a visible thread and an amber nut part way up it.",
+    "view": "-30,20,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "chamfer",
+    "group": "Edges",
+    "title": "Chamfer",
+    "blurb": "Pick edges by the face they belong to and cut them back to a flat.",
+    "alt": "A teal block whose top edges are bevelled.",
+    "view": "-32,32,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "fillet",
+    "group": "Edges",
+    "title": "Fillet",
+    "blurb": "Round the edges you select, each set with its own radius.",
+    "alt": "A teal block with rounded corners and a softly rounded top edge.",
+    "view": "-32,32,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "mirror",
+    "group": "Patterns",
+    "title": "Mirror",
+    "blurb": "Model one half and reflect it across a plane.",
+    "alt": "A teal bracket half with a hole and its amber mirror image beside it.",
+    "view": "-20,40,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "linear-pattern",
+    "group": "Patterns",
+    "title": "Linear pattern",
+    "blurb": "Copies of a body stepped along a direction.",
+    "alt": "Five amber pegs in a row on a teal strip.",
+    "view": "-28,30,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "circular-pattern",
+    "group": "Patterns",
+    "title": "Circular pattern",
+    "blurb": "Copies spaced around an axis, used here to cut a ring of holes.",
+    "alt": "A teal disc with eight holes in a circle.",
+    "view": "-30,40,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "constraints",
+    "group": "Sketch",
+    "title": "Sketch constraints",
+    "blurb": "Describe a profile by its relationships and sizes; the solver finds the shape.",
+    "alt": "A teal L-shaped block with a small hole near one end.",
+    "view": "-30,45,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "offset",
+    "group": "Sketch",
+    "title": "Offset",
+    "blurb": "Grow or shrink an outline by a set distance to make walls and rims.",
+    "alt": "A teal L-shaped floor with an amber wall of even thickness around it.",
+    "view": "-30,40,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "text",
+    "group": "Sketch",
+    "title": "Text",
+    "blurb": "Lettering becomes ordinary geometry you can raise, cut or engrave.",
+    "alt": "A teal nameplate with the word CADPOLE in raised amber letters.",
+    "view": "-18,42,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "emboss",
+    "group": "Surfaces and fields",
+    "title": "Emboss",
+    "blurb": "Artwork wrapped around a curved face and raised from it.",
+    "alt": "A teal cylinder with the number 42 raised on its curved side.",
+    "view": "-4,16,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "smooth-blend",
+    "group": "Surfaces and fields",
+    "title": "Smooth blend",
+    "blurb": "Shapes described as distance fields merge with a soft radius.",
+    "alt": "A teal post flowing smoothly into a rounded base.",
+    "view": "-35,28,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "twist",
+    "group": "Surfaces and fields",
+    "title": "Twist",
+    "blurb": "A field turned steadily about its axis, then turned into a mesh.",
+    "alt": "A teal rounded bar twisted along its height.",
+    "view": "-32,20,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "section",
+    "group": "Output",
+    "title": "Section",
+    "blurb": "Cut a part on a plane to see inside it.",
+    "alt": "A teal spool cut in half, showing its bore and flanges.",
+    "view": "-25,22,24,1",
+    "kind": "model"
+  },
+  {
+    "id": "drawing",
+    "group": "Output",
+    "title": "Drawing",
+    "blurb": "Dimensioned three-view sheets, written out as PDF and DXF.",
+    "alt": "A line drawing with top, front, right and pictorial views of a flanged boss, dimensioned in inches.",
+    "view": "-32,28,24,1",
+    "kind": "drawing",
+    "drawing": "sheet-flanged-boss"
+  }
+]

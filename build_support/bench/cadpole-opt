@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Run the optimized `cadpole`, whatever else the working tree has been building.
+#
+#   build_support/bench/cadpole-opt render examples/planter.star -o /tmp/p.png
+#   time build_support/bench/cadpole-opt eval examples/bracket.star
+#
+# `bazel-bin/src/rust/cadpole-cli/cadpole` is not a safe thing to time: `bazel-bin`
+# follows whatever configuration built last, so after any `bazel test` it is
+# the fastbuild binary, which is about 10x slower. This asks Bazel where the
+# opt binary is instead of guessing, so a number taken through it is a number
+# about the shipped configuration.
+#
+# `--config=opt` also keeps its own `bazel-opt-bin` symlink (see .bazelrc), so
+# the same binary is at bazel-opt-bin/src/rust/cadpole-cli/cadpole; this script is
+# for scripts and for anyone who would rather not remember that.
+set -euo pipefail
+
+target="${CADPOLE_OPT_TARGET:-//src/rust/cadpole-cli:cadpole}"
+cd "${BUILD_WORKSPACE_DIRECTORY:-$(dirname "$0")/../..}"
+
+# Build first: cquery reports where the file would be, not that it is there.
+bazel build --config=opt "$target" >&2
+
+# One output file, execroot-relative ("bazel-out/k8-opt/bin/..."); `bazel info
+# execution_root` turns it into something executable from anywhere.
+binary="$(bazel cquery --config=opt --output=files "$target" 2>/dev/null | tail -1)"
+if [[ -z "$binary" ]]; then
+  echo "cannot resolve $target with --config=opt" >&2
+  exit 1
+fi
+exec "$(bazel info --config=opt execution_root 2>/dev/null)/$binary" "$@"

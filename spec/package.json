@@ -1,0 +1,11 @@
+{
+  "name": "cadpole-spec",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Quint models of Cadpole's protocols. Pins the Quint CLI for //spec:quint_test.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@informalsystems/quint": "0.32.0"
+  }
+}

@@ -1,0 +1,28 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_field",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+    ],
+)
+
+rust_test(
+    name = "cadpole_field_test",
+    crate = ":cadpole_field",
+    # The accuracy and solidity tests contour a handful of ~100^3 grids:
+    # about 26-32 s in a debug build, half the 60 s limit. Small on purpose:
+    # a longer limit only delays reporting a hang, and a suite near the limit
+    # on a loaded machine is the cue to trim a case.
+    size = "small",
+)
+
+# The crate's sources as files, for //src/rust/cadpole-wasm:transcendental_lint_test:
+# no f64 math method on the geometry path outside cadpole_core::fmath.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+)

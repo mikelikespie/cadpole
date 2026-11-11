@@ -1,0 +1,20 @@
+[package]
+name = "cadpole-export-3mf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole 3MF writer: core materials, per-triangle colours and the PrusaSlicer / Bambu paint conventions."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+# Raw DEFLATE for the OPC (zip) container. Pure Rust, builds for wasm32, and
+# already in the graph behind `png`. The zip container itself is ours: see
+# `zip.rs` for why (determinism, and there is not much of it).
+miniz_oxide.workspace = true
+# XML reader, for the tests that parse our own output back.
+roxmltree.workspace = true
+# Bambu Studio's `project_settings.config` is JSON: read from a project the
+# user saved (`template=`) and written back with Cadpole's filament slots.
+# The same serde_json cadpole-engine and cadpole-import link, so no crate is added
+# to the graph -- only this member's dependency list.
+serde_json.workspace = true

@@ -1,0 +1,40 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# Compiled on Linux by //src/apple/CadpoleKitTests/DocumentModel: neither
+# file imports SwiftUI, so the screen's logic is tested without an Apple SDK.
+exports_files(
+    ["DocumentModel.swift", "FeatureTree.swift"],
+    visibility = ["//src/apple/CadpoleKitTests/DocumentModel:__pkg__"],
+)
+
+# The shared SwiftUI screens: one implementation for Mac, iPad and iPhone.
+#
+# target_compatible_with, and why it matters: everything here touches SwiftUI
+# and `@Observable`, so building it in the HOST configuration (a plain
+# `bazel build //src/apple/...` on Linux, or `bazel test //...` on a Mac) is
+# never what anyone meant. It is only ever reached through :CadpoleMac or
+# :CadpoleiOS, which transition to their own Apple platform.
+swift_library(
+    name = "CadpoleUI",
+    srcs = glob(["*.swift"]),
+    copts = select({
+        "@platforms//os:macos": [
+            "-target",
+            "arm64-apple-macos26.0",
+        ],
+        "//conditions:default": [],
+    }),
+    module_name = "CadpoleUI",
+    target_compatible_with = select({
+        "@platforms//os:ios": [],
+        "@platforms//os:macos": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleProto",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)

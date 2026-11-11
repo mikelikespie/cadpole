@@ -1,0 +1,333 @@
+# Cadpole web UI: TypeScript (type-checked + transpiled by tsc via rules_ts),
+# bundled to a single ESM file by esbuild, and collected with the static
+# assets into the `dist` directory that the Rust CLI embeds and serves.
+load("@aspect_rules_esbuild//esbuild:defs.bzl", "esbuild")
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@npm//src/web:@bufbuild/protoc-gen-es/package_json.bzl", protoc_gen_es_bin = "bin")
+load("//build_support/playwright:defs.bzl", "playwright_test")
+load("//build_support/proto:ts.bzl", "es_proto_srcs")
+
+# Read by //spec:names_test, which diffs this file's entity-kind table
+# against `cadpole.v1.EntityKind`.
+exports_files([
+    "src/normalize.ts",
+    # Read by //src/rust/cadpole-cli:cadpole_cli_test, which tests `cadpole publish`'s
+    # rewrite of the page against the real one.
+    "index.html",
+])
+
+package(default_visibility = ["//visibility:public"])
+
+# Materialises `node_modules/<pkg>` targets for the deps in package.json.
+npm_link_all_packages(name = "node_modules")
+
+# --------------------------------------------------------------------------
+# The wire format, in TypeScript.
+#
+# The browser speaks `application/x-protobuf` to `cadpole serve`, with the
+# same messages every other front-end uses. These are generated from
+# proto/cadpole/v1/*.proto on every build -- never committed -- so there is no
+# second, hand-maintained shape of the schema anywhere in the tree.
+
+# protoc-gen-es as a Bazel tool: the npm package's own bin, run by the
+# hermetic Node toolchain.
+protoc_gen_es_bin.protoc_gen_es_binary(name = "protoc_gen_es")
+
+es_proto_srcs(
+    name = "cadpole_pb_srcs",
+    descriptor_set = "//proto/cadpole/v1:cadpole_v1_descriptor_set",
+    out_prefix = "gen",
+    plugin = ":protoc_gen_es",
+    proto = "//proto/cadpole/v1:cadpole_v1_proto",
+)
+
+# `gen/cadpole/v1/*_pb.js` + `.d.ts`: already type-complete, so no tsc pass.
+js_library(
+    name = "cadpole_pb",
+    srcs = [":cadpole_pb_srcs"],
+    deps = [":node_modules/@bufbuild/protobuf"],
+)
+
+# Type-check and transpile src/**/*.ts -> src/**/*.js (+ .js.map).
+ts_project(
+    name = "ts",
+    srcs = glob(["src/**/*.ts"]),
+    declaration = False,
+    source_map = True,
+    transpiler = "tsc",
+    tsconfig = "tsconfig.json",
+    deps = [
+        ":cadpole_pb",
+        ":node_modules/@bufbuild/protobuf",
+        ":node_modules/@types/three",
+        ":node_modules/three",
+    ],
+)
+
+# Single ESM bundle for latest Chrome only (WebGPU).
+esbuild(
+    name = "bundle",
+    entry_point = "src/main.js",
+    format = "esm",
+    minify = True,
+    output = "app.js",
+    sourcemap = "external",
+    target = "chrome130",
+    deps = [":ts"],
+)
+
+# The worker half of failure reporting, as its own module so a worker
+# can import it without pulling in the whole UI. Small, and separate from
+# app.js on purpose: a worker that imported app.js would run main().
+esbuild(
+    name = "worker_report_bundle",
+    entry_point = "src/worker-report.js",
+    format = "esm",
+    minify = True,
+    output = "worker-report.js",
+    sourcemap = "external",
+    target = "chrome130",
+    deps = [":ts"],
+)
+
+# The engine, off the main thread: the default place evaluation runs.
+#
+# A third entry point for the same reason as the one above -- a worker that
+# imported app.js would run main() -- and it imports `./cadpole_wasm.js` at run
+# time from the directory it is served in, so the wasm is not bundled into it
+# either.
+esbuild(
+    name = "engine_worker_bundle",
+    entry_point = "src/engine-worker.js",
+    format = "esm",
+    minify = True,
+    output = "engine-worker.js",
+    sourcemap = "external",
+    target = "chrome130",
+    deps = [":ts"],
+)
+
+# The project site's own 3D (//site): a slim renderer with one WebGL context
+# for the whole page, over this package's engine worker, camera controller
+# and studio lighting. Its source sits with theirs (src/site/) so one
+# type-check covers both; the site's visitors use every current browser, so
+# it is not held to the app's Chrome-only target.
+esbuild(
+    name = "site3d_bundle",
+    entry_point = "src/site/site3d.js",
+    format = "esm",
+    minify = True,
+    output = "site3d.js",
+    target = "es2022",
+    deps = [":ts"],
+)
+
+# Everything the CLI serves, as one directory artifact:
+#   dist/index.html, dist/styles.css, dist/app.js, dist/app.js.map
+# plus `cadpole_wasm.js` + `cadpole_wasm_bg.wasm` from //src/rust/cadpole-wasm:cadpole_wasm.
+STATIC_FILES = [
+    "index.html",
+    "styles.css",
+    "manifest.webmanifest",
+    "sw.js",
+]
+
+DIST_PATTERNS = STATIC_FILES + [
+    "app.js",
+    "app.js.map",
+    "worker-report.js",
+    "worker-report.js.map",
+    "engine-worker.js",
+    "engine-worker.js.map",
+    "cadpole_wasm.js",
+    "cadpole_wasm_bg.wasm",
+    "cadpole_wasm.d.ts",
+    "cadpole_wasm_bg.wasm.d.ts",
+]
+
+copy_to_directory(
+    name = "dist",
+    srcs = STATIC_FILES + [
+        ":bundle",
+        ":engine_worker_bundle",
+        ":worker_report_bundle",
+        # The wasm engine (wasm-bindgen output, always built with -c opt):
+        # cadpole_wasm.js + cadpole_wasm_bg.wasm.
+        "//src/rust/cadpole-wasm:cadpole_wasm_opt",
+    ],
+    include_srcs_patterns = DIST_PATTERNS,
+    # Flatten `src/rust/cadpole-wasm/cadpole_wasm/<file>` to the dist root so
+    # index.html can import ./cadpole_wasm.js.
+    root_paths = [
+        "src/web",
+        "src/rust/cadpole-wasm/cadpole_wasm",
+    ],
+)
+
+# The same bundle against the test-hooks engine, plus the one worker script the
+# crash suite needs. Used only by the crash suite in :e2e_test: it is how a *real*
+# Rust panic gets driven through the real panic hook and the real report path.
+# Everything else here is byte-for-byte what `dist` serves.
+copy_to_directory(
+    name = "e2e_dist",
+    srcs = STATIC_FILES + [
+        ":bundle",
+        ":engine_worker_bundle",
+        ":worker_report_bundle",
+        "e2e/crash-worker.js",
+        "//src/rust/cadpole-wasm:cadpole_wasm_test_hooks_opt",
+    ],
+    include_srcs_patterns = DIST_PATTERNS + ["crash-worker.js"],
+    root_paths = [
+        "src/web",
+        "src/web/e2e",
+        "src/rust/cadpole-wasm/cadpole_wasm_test_hooks",
+    ],
+)
+
+# Optional dev loop without the Rust CLI: serves dist/ plus an in-memory
+# implementation of the /api session endpoints.
+#   bazel run //src/web:devserver -- [--port 7331]
+# Shared by the devserver binary and the e2e test (which run in different
+# configurations); owning the copy here avoids conflicting copy actions.
+js_library(
+    name = "devserver_lib",
+    srcs = ["devserver.mjs"],
+    # It answers `POST /api/ops/<Rpc>` in the wire format, from the same
+    # generated types the browser encodes with.
+    deps = [
+        ":cadpole_pb",
+        ":node_modules/@bufbuild/protobuf",
+    ],
+)
+
+js_binary(
+    name = "devserver",
+    args = ["$(rootpath :dist)"],
+    # `:devserver_lib` as well as the entry point: js_binary puts the entry
+    # point in the runfiles but not the generated protobuf modules it imports,
+    # so without it `bazel run //src/web:devserver` dies on `gen/cadpole/v1/ops_pb.js`.
+    data = [
+        ":devserver_lib",
+        ":dist",
+    ],
+    entry_point = ":devserver_lib",
+)
+
+# The pure modules, on node's own test runner (`node:test`): the build plan,
+# the job runner, the shape of the stylesheet. No browser, no framework, and
+# the code under test is the transpiled output of `:ts` -- the same JavaScript
+# esbuild bundles into app.js. Anything that needs a DOM is `e2e_test`.
+#
+#   bazel test //src/web:unit_test
+js_library(
+    name = "unit_lib",
+    srcs = glob(["test/**/*.mjs"]),
+    deps = [":ts"],
+)
+
+js_test(
+    name = "unit_test",
+    size = "small",
+    chdir = package_name(),
+    data = [
+        # test/devserver-static.test.mjs starts the dev server.
+        ":devserver_lib",
+        ":unit_lib",
+        # test/branding.test.mjs reads the splash and the icons.
+        "index.html",
+        "manifest.webmanifest",
+        "styles.css",
+    ],
+    entry_point = "test/unit.mjs",
+)
+
+# Every bundled example script (src/examples.ts) evaluates on the real engine,
+# through `cadpole eval`, so the gallery stays honest against the API the page
+# actually runs in session mode, not only against the mock.
+#
+#   bazel test //src/web:examples_test
+js_test(
+    name = "examples_test",
+    size = "small",
+    chdir = package_name(),
+    data = [
+        ":unit_lib",
+        "//src/rust/cadpole-cli:cadpole",
+    ],
+    entry_point = "test/examples.test.mjs",
+)
+
+# The real example models the e2e suites open. rules_js insists that a
+# target's data files live in its own package or in the output tree, so the
+# examples are copied here rather than depended on across packages -- and only
+# the ones a suite uses.
+copy_to_directory(
+    name = "perf_examples",
+    srcs = ["//examples:star_files"],
+    # The base lid for the apply-path benchmark, and the gear toy for the opt-in plates
+    # screenshot (`CADPOLE_E2E_TOY=1`): its three Bambu plates on the
+    # real engine.
+    include_srcs_patterns = [
+        "gridfinity_baselid.star",
+        "gear_toy.star",
+        # The published-page suite: `cadpole publish` bakes the cabin,
+        # which loads its parts, and the page opens the bake.
+        "cabin_site.star",
+        "cabin_parts.star",
+    ],
+    root_paths = ["examples"],
+)
+
+# Playwright end-to-end tests against dist/: screenshot tests in mock mode
+# (?mock=1) plus one that loads the real wasm engine. Fully hermetic -- the
+# Chromium headless shell comes from //build_support/playwright:browsers, which
+# Bazel downloads sha256-pinned, so no `playwright install` and no
+# ~/.cache/ms-playwright are involved.
+#
+#   bazel test //src/web:e2e_test      # compare against e2e/__screenshots__
+#   bazel run  //src/web:e2e_update    # regenerate those baselines in-tree
+#
+# The HTML report and any failure screenshots/traces end up in
+# bazel-testlogs/src/web/e2e_test/test.outputs/outputs.zip.
+playwright_test(
+    name = "e2e_test",
+    config = "e2e/playwright.config.ts",
+    # A dozen projects and a hundred and fifty tests on a software
+    # rasteriser: minutes on an idle box, and past "long"'s 900 s on a busy
+    # one.
+    timeout = "eternal",
+    data = [
+        ":devserver_lib",
+        ":dist",
+        # The crash suite needs the real server, the real op registry
+        # and the real event log, none of which devserver.mjs has -- plus the
+        # test-hooks engine, so a real Rust panic can be provoked.
+        ":e2e_dist",
+        ":node_modules/@playwright/test",
+        "//src/rust/cadpole-cli:cadpole",
+        ":perf_examples",
+        # `"type": "module"`, so Playwright loads the .ts config as ESM.
+        "package.json",
+    ] + glob([
+        "e2e/**",
+    ]),
+    env = {
+        "CADPOLE_DIST": "dist",
+        "CADPOLE_E2E_DIST": "e2e_dist",
+    },
+    snapshot_dir = "e2e/__screenshots__",
+    tags = [
+        # The dev server and the browser talk over loopback, which a fresh
+        # network namespace still has: linux-sandbox brings `lo` up. So this
+        # is `block-network`, not `requires-network`: Chromium cannot reach
+        # past the machine. Enforced wherever the sandbox is real:
+        # --config=hermetic in .bazelrc, which CI always passes. The servers'
+        # ports do not depend on it: e2e/playwright.config.ts takes free ones
+        # from the kernel for every run, so concurrent runs never share one.
+        "block-network",
+    ],
+)

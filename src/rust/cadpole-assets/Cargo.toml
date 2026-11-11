@@ -1,0 +1,8 @@
+[package]
+name = "cadpole-assets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole assets: content-addressed external files a document refers to by name."
+
+[dependencies]

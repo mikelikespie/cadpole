@@ -1,0 +1,30 @@
+HiGHS 1.15.1's MODULE.bazel without rules_cuda and zlib.
+
+The companion highs_build.patch says why: no CUDA anywhere (rules_cuda's
+toolkit extension probes the host for a CUDA install at fetch time), and no
+zlib, which nothing in the library calls. This hunk lives in a patch of its own
+because Bazel 9 applies every hunk of a patch that touches MODULE.bazel to
+MODULE.bazel ("CONTENT_DOES_NOT_MATCH_TARGET" on the BUILD.bazel hunks
+otherwise). It takes effect only because Cadpole is the root module.
+
+diff --git a/MODULE.bazel b/MODULE.bazel
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -8,17 +8,3 @@ module(
+ bazel_dep(name = "bazel_skylib", version = "1.9.0")
+ bazel_dep(name = "platforms", version = "1.1.0")
+ bazel_dep(name = "rules_cc", version = "0.2.20")
+-bazel_dep(name = "zlib", version = "1.3.2")
+-bazel_dep(name = "rules_cuda", version = "0.3.0")
+-
+-# Load the extension
+-cuda = use_extension("@rules_cuda//cuda:extensions.bzl", "toolchain")
+-cuda.toolkit(
+-    name = "cuda",
+-)
+-
+-# Use 'cuda' as the repository name
+-# use_repo(cuda, "cuda")
+-
+-# Alias local_cuda
+-use_repo(cuda, local_cuda = "cuda")

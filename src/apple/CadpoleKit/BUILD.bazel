@@ -1,0 +1,52 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+load("//build_support:file_types.bzl", "file_types_expand")
+
+# Read by //spec:names_test, which diffs `EntityKindNames` against
+# `cadpole.v1.EntityKind`.
+exports_files(["RemoteEngine.swift"])
+
+package(default_visibility = ["//visibility:public"])
+
+# The shared Swift library: the `EngineClient` protocol, the model types every
+# screen is written against, and `RemoteEngine` -- the implementation that works
+# on both platforms and is the only one iOS has.
+#
+# `LocalEngine`, the other implementation, lives in //src/apple/CadpoleLocalEngine
+# because it links the Rust static library and is therefore macOS-only; keeping
+# it out of here is what lets this module (and so the protocol, the wire format,
+# the SSE parser and the coalescing rule) be TESTED ON LINUX (docs/apple-apps.md).
+#
+# Nothing here imports UIKit, AppKit or SwiftUI. Deliberately: the cheap test
+# layer gates every commit and the Simulator target only proves the Simulator
+# path.
+swift_library(
+    name = "CadpoleKit",
+    srcs = glob(["*.swift"]) + [":file_types_swift"],
+    # rules_swift 3.6.1 under Bazel 9 resolves no Apple deployment version for a
+    # plain swift_library built for the host, emitting `-target arm64-apple-macos`
+    # with no version; swiftc then refuses with "requires a minimum deployment
+    # target of macOS 10.9.0". Neither --macos_minimum_os, --host_macos_minimum_os,
+    # --platforms nor --incompatible_enable_apple_toolchain_resolution changes it,
+    # so supply the triple here. Only affects the macOS configuration; Linux and
+    # iOS keep their own defaults.
+    copts = select({
+        "@platforms//os:macos": [
+            "-target",
+            "arm64-apple-macos26.0",
+        ],
+        "//conditions:default": [],
+    }),
+    module_name = "CadpoleKit",
+    deps = [
+        "//src/apple/CadpoleProto",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)
+
+# CadpoleFileTypes: the file types' extensions and the document's UTType, from
+# build_support/file_types.bzl.
+file_types_expand(
+    name = "file_types_swift",
+    src = "CadpoleFileTypes.swift.in",
+    out = "CadpoleFileTypes.swift",
+)

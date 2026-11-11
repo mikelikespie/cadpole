@@ -1,0 +1,81 @@
+# Execution platforms for a BuildFarm remote-execution farm (the `remote` and
+# `apple-remote` configs in //.bazelrc).
+#
+# Actions carry platform properties that BuildFarm matches against what each
+# worker advertises. The Linux worker takes OSFamily=linux; the Mac worker
+# takes OSFamily=macos.
+#
+# OSFamily and NOTHING ELSE. The queues run with allowUnmatched:false, so any
+# property here that the matching queue does not declare gets the action
+# rejected outright with FAILED_PRECONDITION ("properties are not valid for
+# queue eligibility"). container-image is the usual offender; it only means
+# anything with bring-your-own-container, which this farm does not use.
+
+load("@build_bazel_apple_support//xcode:xcode_config.bzl", "xcode_config")
+load("@build_bazel_apple_support//xcode:xcode_version.bzl", "xcode_version")
+
+package(default_visibility = ["//visibility:public"])
+
+platform(
+    name = "linux_remote",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    exec_properties = {
+        "OSFamily": "linux",
+    },
+)
+
+# Where every Swift and Clang action for //src/apple goes. A Linux client CAN
+# drive this: the hard part is analysis, not execution -- see
+# :remote_xcodes below and `build:apple-remote` in //.bazelrc.
+platform(
+    name = "macos_remote",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:arm64",
+    ],
+    exec_properties = {
+        "OSFamily": "macos",
+    },
+)
+
+# An Xcode description for a client that has no Xcode.
+#
+# rules_swift's xcode_swift_toolchain reads the Xcode version during ANALYSIS,
+# which happens on the client. Bazel's generated
+# @local_config_xcode//:host_xcodes is empty on Linux, so analysis dies with
+# "Could not determine Xcode version at all" before any action is scheduled and
+# remote execution never gets a chance to help. Pointing
+# --xcode_version_config at this hand-written config states what the macOS
+# WORKER has instead of probing what the client has.
+#
+# These versions must match the Mac worker's real Xcode: this is the one place
+# that states them. They are baked into action keys (XCODE_VERSION_OVERRIDE,
+# APPLE_SDK_VERSION_OVERRIDE), so a mismatch splits the cache, hands an action
+# an SDK version the worker does not have, or is refused by a worker that
+# checks. Re-check after upgrading Xcode there:
+#   xcodebuild -version                       # version and build
+#   xcrun --sdk macosx --show-sdk-version
+#   xcrun --sdk iphonesimulator --show-sdk-version
+# and re-check the simulator pins under `test:apple-remote` in //.bazelrc with
+#   xcrun simctl list devicetypes && xcrun simctl list runtimes
+xcode_version(
+    name = "xcode_27_2",
+    aliases = [
+        "27.2",
+        "27.2.0",
+    ],
+    default_ios_sdk_version = "27.2",
+    default_macos_sdk_version = "27.2",
+    default_tvos_sdk_version = "27.2",
+    default_watchos_sdk_version = "27.2",
+    version = "27.2.0.27B52",
+)
+
+xcode_config(
+    name = "remote_xcodes",
+    default = ":xcode_27_2",
+    versions = [":xcode_27_2"],
+)

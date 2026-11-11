@@ -1,0 +1,242 @@
+common --enable_platform_specific_config
+
+# Never compile protoc from source; protobuf >= 33.4 ships prebuilt binaries.
+common --@protobuf//bazel/toolchains:prefer_prebuilt_protoc
+# Belt and braces: if anything tries to compile protobuf's C++ anyway, fail loudly.
+common --per_file_copt=external/.*protobuf.*@--PROTOBUF_WAS_NOT_SUPPOSED_TO_BE_BUILT
+common --host_per_file_copt=external/.*protobuf.*@--PROTOBUF_WAS_NOT_SUPPOSED_TO_BE_BUILT
+
+build --incompatible_strict_action_env
+test --test_output=errors
+
+# ---- Rust
+build --@rules_rust//rust/settings:rustfmt.toml=//:rustfmt.toml
+# Keep rustc error output readable.
+build --@rules_rust//rust/settings:error_format=human
+# No pipelined compilation (@rules_rust//rust/settings:pipelined_compilation):
+# rules_rust implements it as a second, metadata-only rustc run per library,
+# and measured here it made a cold build ~25% slower and an edit to
+# cadpole-script slower too, with no gain on an edit to cadpole-core.
+
+# Third-party crates at -Copt-level=3 in every compilation mode (Cargo's
+# `[profile.dev.package."*"] opt-level = 3`). The debug test binaries spend most
+# of their time inside starlark, manifold-rust and truck, which run several
+# times faster optimized; the crates are compiled once and then cached, and
+# Cadpole's own crates keep the debug build's opt-level 0.
+#
+# Debug and test builds keep those crates' debug assertions (and so their
+# overflow checks) on, as Cargo's dev profile does: rustc ties them to the opt
+# level unless told otherwise, so -Copt-level=3 alone would drop them. A flag
+# here cannot depend on the compilation mode, so the optimized builds turn them
+# off again by name, as Cargo's release profile has them: `--config=opt` (and
+# so `release` and `fast`), the wasm configs, and the opt transition in
+# //build_support/transitions (the wasm engine the web app ships, the CLI that
+# publishes the site). rustc takes the last -Cdebug-assertions it is given. A
+# bare `-c opt` is not one of those and keeps the assertions: build what ships
+# with `--config=opt`.
+build --@rules_rust//rust/settings:per_crate_rustc_flag=external/rules_rust++crate+crates__@-Copt-level=3
+build --@rules_rust//rust/settings:per_crate_rustc_flag=external/rules_rust++crate+crates__@-Cdebug-assertions=on
+
+# ---- C/C++
+# HiGHS at -O2 in every mode: the fastbuild default (-O0) makes a MILP several
+# times slower, which is what pushed the solver tests past their limits under
+# load. -c opt already compiles it at -O2.
+build --per_file_copt=external/highs[+]/.*@-O2
+
+# ---- Target configs
+# WebAssembly build of the engine (wasm-bindgen).
+build:wasm --platforms=@rules_rust//rust/platform:wasm32
+build:wasm -c opt
+build:wasm --@rules_rust//rust/settings:per_crate_rustc_flag=external/rules_rust++crate+crates__@-Cdebug-assertions=off
+
+# ---- Optimized builds get their own convenience symlinks.
+#
+# `bazel-bin` is repointed by every build: after `bazel build -c opt
+# //src/rust/cadpole-cli:cadpole` it is `bazel-out/k8-opt/bin`, and after the next
+# routine `bazel test //src/rust/...` it is `bazel-out/k8-fastbuild/bin` -- the
+# same path, now naming the ~10x slower debug binary.
+#
+# So the optimized build gets a prefix of its own: `--config=opt` writes
+# `bazel-opt-bin`, `bazel-opt-testlogs`, `bazel-opt-out`, and a fastbuild test
+# run cannot move them, because it only owns `bazel-*`. Quote a timing only
+# from `bazel-opt-bin`, from `bazel run --config=opt`, or from
+# `build_support/bench/cadpole-opt`, which resolves the path by asking Bazel.
+build:opt -c opt
+# No debug assertions in third-party crates (see the per-crate flags above).
+build:opt --@rules_rust//rust/settings:per_crate_rustc_flag=external/rules_rust++crate+crates__@-Cdebug-assertions=off
+build:opt --symlink_prefix=bazel-opt-
+
+# Release native build.
+build:release --config=opt
+
+# ---- Apple (src/apple; docs/apple-apps.md)
+# One deployment target, 26.0: no @available fences, no fallback paths. A
+# deployment target above the SDK does not build, so raise it only with the
+# Xcode in use, together with the app rules' minimum_os_version. The Xcode
+# that --config=apple-remote builds with is stated in //build_support/platforms.
+build --macos_minimum_os=26.0
+# The EXEC configuration needs its own: host tools built for darwin (rules_swift's
+# worker, SwiftProtobuf's compiler plugin) do not see --macos_minimum_os, and
+# without this they fail with "Swift requires a minimum deployment target of
+# macOS 10.9.0". Inert on Linux, which builds no macOS targets in the exec config.
+build --host_macos_minimum_os=26.0
+# Do NOT force a Swift `-target` globally here: `build:macos` keys off the HOST,
+# so on a Mac it poisons iOS-configured compiles ("using sysroot for
+# 'iPhoneSimulator' but targeting 'MacOSX'"). Targets that need a deployment
+# triple set it themselves; see //src/apple/CadpoleKit.
+build:ios-sim --ios_multi_cpus=sim_arm64
+build:ios --ios_multi_cpus=arm64
+
+# ---- Performance
+# Native CPU features for local builds (not for artifacts you ship).
+#
+# Floating-point policy: the native and wasm engines
+# must compute the same bits. Rust never contracts `a * b + c` into a fused
+# multiply-add (RFC 3514), on any target, at any -C opt-level, with or without
+# the `fma` target feature, so no `-C target-feature=-fma` is needed here and
+# none is set: the x86-64 baseline rustc targets has no FMA, `target-cpu=native`
+# below enables the instruction and still never fuses (only an explicit
+# `mul_add` does, and //src/rust/cadpole-wasm:transcendental_lint_test keeps that
+# off the geometry path). `cadpole_core::fmath::tests::no_fma_contraction` asserts
+# it on whatever toolchain built the test. `--config=fast` is still forbidden
+# for goldens, as policy rather than because of a measured difference.
+# Never add `+relaxed-simd` to the wasm flags: its FMA "may or may not fuse".
+build:fast --config=opt
+build:fast --@rules_rust//rust/settings:extra_rustc_flag=-Ctarget-cpu=native
+# Release wasm: optimized, small.
+build:wasm-release -c opt
+build:wasm-release --@rules_rust//rust/settings:per_crate_rustc_flag=external/rules_rust++crate+crates__@-Cdebug-assertions=off
+build:wasm-release --@rules_rust//rust/settings:extra_rustc_flag=-Copt-level=3
+
+# ---- Local disk cache
+#
+# Shared by every workspace on the machine. Each git worktree gets its own
+# *output base* (Bazel derives it from the workspace path) and would otherwise
+# rebuild all ~400 crates from nothing; with the disk cache those builds are
+# cache hits, so an output base can be expunged cheaply
+# (build_support/bazel-gc.sh).
+#
+# Capped and garbage-collected, because an uncapped cache is the same disk
+# problem one level down. The collector runs in the background after the
+# server has been idle for a while; it never deletes an entry a running build
+# is using.
+build --disk_cache=~/.cache/bazel-disk
+build --experimental_disk_cache_gc_max_size=40G
+build --experimental_disk_cache_gc_max_age=30d
+
+# ---- Remote cache (opt-in; nothing needs it, see docs/getting-started.md).
+# The endpoint and instance name are not here: set --remote_cache and
+# --remote_instance_name for this config in .bazelrc.user (gitignored), which
+# is try-imported at the end of this file.
+build:remotecache --remote_upload_local_results=true
+# BuildFarm rejects aggressive pings with ENHANCE_YOUR_CALM; keep this at 300s.
+build:remotecache --grpc_keepalive_time=300s
+build:remotecache --remote_timeout=600
+
+# ---- Remote EXECUTION on a BuildFarm you configure (opt-in). Set
+# --remote_executor for this config in .bazelrc.user. It expects two kinds of
+# worker: Linux, and execution-only macOS (Apple silicon, Xcode). Actions
+# route by the OSFamily property on the execution platform.
+#
+# Apple targets ARE buildable from Linux with this, given an explicit
+# xcode_config and an --extra_execution_platforms naming macos_remote alone
+# (see the apple-remote config below). Simulator tests run on the Mac worker
+# too; only a physical device needs a real Mac.
+build:remote --config=remotecache
+build:remote --jobs=50
+# Overrides remotecache's 600s. Bazel warns about the double expansion; that is
+# expected and harmless, the later value wins. Executing an action is slower
+# than fetching one, so it needs the longer deadline.
+build:remote --remote_timeout=3600
+build:remote --extra_execution_platforms=//build_support/platforms:linux_remote,//build_support/platforms:macos_remote
+build:remote --host_platform=//build_support/platforms:linux_remote
+# (There is deliberately no `test:remote --config=remote`. `build:` options
+# already apply to `test`, and naming the config inside itself makes Bazel
+# refuse every `bazel test --config=remote` with "Config expansion has a cycle:
+# config value remote expands to itself".)
+
+# ---- Apple targets from Linux, executed on the macOS worker.
+#
+#   bazel build --config=apple-remote //src/apple/...
+#   bazel build --config=apple-remote --ios_multi_cpus=sim_arm64 //src/apple/CadpoleiOS:CadpoleiOS
+#   bazel test  --config=apple-remote --ios_multi_cpus=sim_arm64 \
+#       //src/apple/CadpoleKitTests:SimulatorTests
+#
+# Analysis runs on the Linux client, so it has to be told about the worker.
+# The three lines below must stay in this order.
+build:apple-remote --config=remote
+# 1. rules_swift's xcode_swift_toolchain reads the Xcode version at analysis
+#    time and Bazel's generated @local_config_xcode//:host_xcodes is empty on
+#    Linux, so analysis dies with "Could not determine Xcode version at all".
+#    Describe the WORKER's Xcode instead of probing the client's.
+build:apple-remote --xcode_version_config=//build_support/platforms:remote_xcodes
+# 2. The macOS execution platform must be the ONLY one, and this must come
+#    AFTER --config=remote: --extra_execution_platforms is last-one-wins rather
+#    than cumulative, and with linux_remote still in the list the exec
+#    configuration resolves to Linux and apple_support's crosstool fails
+#    analysis with "A valid Apple platform constraint could not be found for
+#    @apple_support//crosstool:exec_wrapped_clang.target_config" -- an error
+#    that reads like "Apple builds are impossible from Linux" and is really a
+#    misordered flag. Non-Apple actions still have somewhere to run: the host
+#    platform is always an execution platform, and --config=remote points it at
+#    linux_remote.
+build:apple-remote --extra_execution_platforms=//build_support/platforms:macos_remote
+# 3. The TARGET platform, for everything that does not transition on its own.
+#    `--config=remote` points the host platform at linux_remote, and a bare
+#    swift_library takes the host platform as its target -- which asks for the
+#    pinned Linux Swift toolchain, whose `root` is an absolute host path and so
+#    cannot execute remotely ("forking process failed '.../usr/bin/swiftc'. No
+#    such file or directory"). Naming the Mac as the target platform builds
+#    those libraries for macOS instead. It does NOT fight the app rules:
+#    macos_application and ios_application transition to their own Apple
+#    platform and that transition wins (verified -- the Mac app resolves
+#    @apple_support//platforms:darwin_arm64 with this set).
+build:apple-remote --platforms=//build_support/platforms:macos_remote
+# The worker is Apple silicon, and aarch64-apple-darwin is the only macOS Rust
+# slice MODULE.bazel registers. Without this, macos_application transitions to
+# darwin_x86_64 (from the Linux client's host cpu) and rules_rust fails
+# analysis with "No matching toolchains found" for //src/rust/cadpole-ffi.
+build:apple-remote --macos_cpus=arm64
+# Likewise for iOS: default to the Simulator slice the worker can boot. A
+# device build overrides it (`--config=ios` comes later on the command line and
+# --ios_multi_cpus is last-one-wins).
+build:apple-remote --ios_multi_cpus=sim_arm64
+# The device and runtime must exist on the WORKER. rules_apple's default device
+# is "iPhone 6s Plus", which no iOS 26 runtime has, and the failure is opaque:
+# the log says "Creating a new simulator: New-iPhone 6s Plus-<version>" and then
+# only "tests exited with '15'". The version is the iOS runtime of the Xcode in
+# //build_support/platforms:remote_xcodes; change the two together. Re-check
+# with `xcrun simctl list devicetypes` and `xcrun simctl list runtimes` on that
+# Mac after any Xcode change.
+test:apple-remote --ios_simulator_device="iPhone 17"
+test:apple-remote --ios_simulator_version=27.2
+
+# ---- Hermetic tests: demand the sandbox that can block the network.
+#
+# Bazel registers linux-sandbox only where unprivileged user namespaces work.
+# Elsewhere -- Ubuntu 24.04 with kernel.apparmor_restrict_unprivileged_userns=1
+# included -- it falls back to processwrapper-sandbox without a word, and that
+# sandbox has no network namespace, so every `block-network` tag in the tree
+# (the Quint models, the Playwright and listener suites) is silently ignored. Under this config the
+# fallback is an error instead, and //build_support:network_is_blocked_test
+# runs to prove the block is real. `--config=ci` always uses it; on such a host
+# run `sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0` first.
+test:hermetic --strategy=TestRunner=linux-sandbox
+test:hermetic --//build_support:require_network_sandbox=true
+
+# ---- CI: `--config=ci` is for a 4-vCPU CI runner (see
+# build_support/ci/prepare-runner.sh).
+build:ci --color=yes
+build:ci --show_timestamps
+build:ci --verbose_failures
+test:ci --config=hermetic
+# Test sizes are set for a many-core workstation. A runner has 4 vCPUs and runs 4
+# tests at once, and the example-corpus tests are multi-threaded, so every
+# timeout is doubled: short, moderate, long, eternal, in seconds.
+test:ci --test_timeout=120,600,1800,3600
+
+# ---- Machine-local settings, last so they override everything above.
+# Optional local rc files; neither needs to exist. .bazelrc.user is
+# gitignored: put your remote cache or executor endpoint there.
+try-import %workspace%/.bazelrc.maintainer
+try-import %workspace%/.bazelrc.user

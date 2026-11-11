@@ -1,0 +1,270 @@
+"""Cadpole: scripted parametric CAD.
+
+Rust core + Starlark scripting, compiled to native (Linux/macOS/iOS) and
+WebAssembly. Persistence is protobuf. Everything is built with Bazel.
+"""
+
+module(
+    name = "cadpole",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "platforms", version = "1.1.0")
+bazel_dep(name = "bazel_skylib", version = "1.9.2")
+bazel_dep(name = "rules_shell", version = "0.8.0")
+bazel_dep(name = "rules_cc", version = "0.2.22")
+
+# ---- Apple (src/apple)
+# The native SwiftUI apps for macOS and iOS (docs/apple-apps.md).
+#
+# Versions are the ones that build against Xcode 27.2. They are NOT the
+# newest on the BCR (rules_apple 5.0.0 / rules_swift 4.0.1 exist): under
+# rules_swift 4.x SwiftProtobuf moved from the `non_module_deps` extension to a
+# module-internal `use_repo_rule` archive, which a downstream module cannot
+# `use_repo`, and there is no swift-protobuf module on the BCR. Upgrading means
+# vendoring our own swift-protobuf archive + BUILD overlay first.
+bazel_dep(name = "apple_support", version = "2.8.1", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "rules_apple", version = "4.5.3", repo_name = "build_bazel_rules_apple")
+bazel_dep(name = "rules_swift", version = "3.6.1", repo_name = "build_bazel_rules_swift")
+
+# See the patch header: 3.6.1 does not give the modulewrap/autolink-extract
+# tools the toolchain's `env`, so linking any Swift binary with a Swift.org
+# Linux toolchain fails under --incompatible_strict_action_env. Only Linux
+# hosts are affected; Xcode-hosted builds never take this path.
+single_version_override(
+    module_name = "rules_swift",
+    patch_strip = 1,
+    patches = ["//build_support/patches:rules_swift_toolchain_env.patch"],
+)
+
+# Apple's CC toolchains must be registered BEFORE the hermetic LLVM one below:
+# toolchain priority is registration order, and `objc_library` (which
+# apple_support's XCTest shim pulls in) refuses to build under any other CC
+# toolchain. The trap is *where* it bites -- not on app code, which is pure
+# Swift, but on the first Swift TEST target, failing analysis with "Compiling
+# objc_library targets requires the Apple CC toolchain" and naming a rule
+# nobody wrote. These toolchains are Darwin-constrained, so Linux still
+# resolves to LLVM and nothing else changes.
+apple_cc = use_extension("@build_bazel_apple_support//crosstool:setup.bzl", "apple_cc_configure_extension")
+use_repo(apple_cc, "local_config_apple_cc_toolchains")
+
+register_toolchains("@local_config_apple_cc_toolchains//:all")
+
+# SwiftProtobuf comes from rules_swift's own dependency set (Apache-2.0).
+# //src/apple/CadpoleProto commits the generated *.pb.swift rather than using
+# swift_proto_library, which is broken under rules_swift 3.6.1 + Bazel 9;
+# :ProtoCompilerPlugin here is what the regenerate-and-diff test runs.
+swift_non_module_deps = use_extension("@build_bazel_rules_swift//swift:extensions.bzl", "non_module_deps")
+use_repo(swift_non_module_deps, "com_github_apple_swift_protobuf")
+
+# ---- Pinned Swift toolchain for Linux (see build_support/swift/toolchain.bzl).
+# Same version as the Xcode 27.2 toolchain (Swift 6.4.2). rules_swift's own
+# `build_bazel_rules_swift_local_config` sniffs `swiftc` from PATH; override_repo
+# swaps in this pinned one so //src/apple/CadpoleKitTests runs on Linux and
+# in CI with no "install swift" step. On macOS the replacement emits the
+# identical Xcode toolchain, so nothing changes there.
+swift_linux_toolchain = use_repo_rule("//build_support/swift:toolchain.bzl", "swift_linux_toolchain")
+
+swift_linux_toolchain(
+    name = "swift_toolchain_pinned",
+    # swift.org tarballs for each Ubuntu release a builder runs (26.04, and
+    # GitHub's runners' 24.04); each signature checks out against swift.org's
+    # "Swift 6.x Release Signing Key" (EF80A866B47A981F).
+    sha256 = {
+        "24.04": "2e9ebec040ad459dd89a6d093a02d8314939135104850fae4d5c0f174fb3ba8c",
+        "26.04": "ff69258a20ad7a70e31ec6bd983b4bcb241481001ebdbf5245150f7125f11e27",
+    },
+    version = "6.4.2",
+)
+
+override_repo(
+    swift_non_module_deps,
+    build_bazel_rules_swift_local_config = "swift_toolchain_pinned",
+)
+
+# ---- Hermetic C/C++ toolchain (linking native binaries, crates' C build
+# scripts). Without this Bazel autodetects whatever gcc/ld the machine has.
+# Apple platforms keep Xcode's toolchain via apple_support.
+bazel_dep(name = "toolchains_llvm", version = "1.12.0")
+
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
+
+# exec_os/exec_arch: declare the Linux toolchain on every host. On a Mac,
+# toolchains_llvm otherwise declares only darwin toolchains, and registering
+# the Linux one below then fails analysis of every target (verified: with this,
+# //src/apple/..., the CLI and the web UI build on a plain Mac with Xcode 26).
+llvm.toolchain(
+    exec_arch = "x86_64",
+    exec_os = "linux",
+    llvm_version = "23.1.4",
+    stdlib = {"linux-x86_64": "stdc++"},
+)
+use_repo(llvm, "llvm_toolchain")
+
+# Only the Linux toolchain: registering `:all` would also register a darwin
+# C++ toolchain that shadows Xcode's clang, and rules_apple/rules_swift must
+# use Xcode's.
+register_toolchains(
+    "@llvm_toolchain//:cc-toolchain-x86_64-linux",
+    dev_dependency = True,
+)
+
+# ---- protobuf (proto/)
+# Prebuilt protoc is selected in .bazelrc (--@protobuf//bazel/toolchains:prefer_prebuilt_protoc).
+bazel_dep(name = "protobuf", version = "36.1.bcr.1")
+
+# ---- Rust (src/rust)
+bazel_dep(name = "rules_rust", version = "0.74.0")
+bazel_dep(name = "rules_rust_prost", version = "0.74.0")
+bazel_dep(name = "rules_rust_wasm_bindgen", version = "0.74.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2024",
+    extra_target_triples = [
+        "wasm32-unknown-unknown",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "aarch64-apple-darwin",
+    ],
+    versions = ["1.98.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+# Third-party crates. Cargo.toml / Cargo.lock at the repo root are the source
+# of truth; run `CARGO_BAZEL_REPIN=1 bazel build //src/rust/cadpole-core:cadpole_core`
+# (any target that depends on @crates: one without, such as
+# //build_support/lockfiles:lockfiles, never evaluates this extension and the
+# lock does not move) after editing them.
+#
+# Not `bazel mod deps`: `bazel mod` evaluates
+# every module extension in the graph, including the deprecated
+# `@rules_rust//crate_universe:extension.bzl%crate` spelling that protobuf
+# 36.1.bcr.1 uses for its own Rust tests. rules_rust 0.74.0 fails that usage
+# with "crate_universe extension call `crates` is in a non-root module but has
+# no lockfile", so `bazel mod deps` exits 2 with a Starlark traceback -- after
+# repinning ours correctly, which is the confusing part. A build evaluates
+# only the extensions it needs, so it repins and exits 0. Revisit when
+# protobuf's BCR entry stops using the deprecated spelling; then
+# `bazel mod deps --lockfile_mode=error` can become a CI step.
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+crate.from_cargo(
+    name = "crates",
+    cargo_lockfile = "//:Cargo.lock",
+    manifests = ["//:Cargo.toml"],
+    supported_platform_triples = [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-apple-ios",
+        "aarch64-apple-ios-sim",
+        "wasm32-unknown-unknown",
+    ],
+)
+crate.annotation(
+    crate = "protoc-gen-prost",
+    gen_binaries = ["protoc-gen-prost"],
+)
+
+# starlark 0.14.2 drops the rounding carry when it prints a float in
+# scientific form (1999999.7 printed as 1e+06); the patch header says how.
+# Pinned to the version it was written against, so a starlark bump has to
+# look at it again.
+crate.annotation(
+    crate = "starlark",
+    patch_args = ["-p1"],
+    patches = ["//build_support/patches:starlark_float_carry.patch"],
+    version = "0.14.2",
+)
+use_repo(crate, "crates")
+
+# Our own prost toolchain so generated code uses the same `prost` crate as the
+# rest of the workspace (rules_rust_prost's default toolchain pins an older one).
+register_toolchains("//build_support/toolchains:prost_toolchain")
+
+# ---- HiGHS (src/rust/cadpole-opt)
+# The LP/MILP solver behind MATLAB's linprog/intlinprog, SciPy and JuMP. MIT.
+# Native only: //src/rust/cadpole-opt links it into the CLI (`cadpole eval`, `cadpole
+# serve`, `cadpole mcp`); the wasm engine and the Apple apps never see it.
+bazel_dep(name = "highs", version = "1.15.1")
+
+# The patch header says why, at length. In short: the published module
+# dlopen()s a "libhighs_extras" it never builds (so what HiGHS computes would
+# depend on the machine), pulls in rules_cuda and probes the host for CUDA, and
+# links a zlib nothing calls. The patch links the extras in without HiPO and
+# drops CUDA and zlib, so `@highs//:highs` is plain C/C++ under Cadpole's LLVM
+# toolchain on Linux and Xcode's on the Mac.
+single_version_override(
+    module_name = "highs",
+    patch_strip = 1,
+    patches = [
+        "//build_support/patches:highs_module.patch",
+        "//build_support/patches:highs_build.patch",
+    ],
+)
+
+# ---- Web (src/web)
+# TypeScript + three.js UI built with aspect rules_js / rules_ts / rules_esbuild.
+# npm deps come from the pnpm workspace (//:pnpm-workspace.yaml + //:pnpm-lock.yaml);
+# regenerate the lockfile with `cd src/web && pnpm install --lockfile-only`.
+bazel_dep(name = "aspect_rules_js", version = "3.4.1")
+bazel_dep(name = "aspect_rules_ts", version = "3.10.1")
+bazel_dep(name = "aspect_rules_esbuild", version = "0.27.0")
+bazel_dep(name = "rules_nodejs", version = "6.7.5")
+
+# copy_to_directory for //src/web:dist (already a transitive dep of rules_js).
+bazel_dep(name = "bazel_lib", version = "3.7.0")
+
+node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
+node.toolchain(node_version = "22.22.0")
+
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm",
+    npmrc = "//src/web:.npmrc",
+    pnpm_lock = "//:pnpm-lock.yaml",
+    verify_node_modules_ignored = "//:.bazelignore",
+)
+use_repo(npm, "npm")
+
+typescript = use_extension("@aspect_rules_ts//ts:extensions.bzl", "typescript")
+typescript.deps(version_from = "//src/web:package.json")
+use_repo(typescript, "npm_typescript")
+
+# Newer esbuild than rules_esbuild's default (0.19.x); the root module wins.
+esbuild = use_extension("@aspect_rules_esbuild//esbuild:extensions.bzl", "esbuild")
+esbuild.toolchain(esbuild_version = "0.28.0")
+use_repo(esbuild, "esbuild_toolchains")
+
+register_toolchains("@esbuild_toolchains//:all")
+
+# The Chromium headless shell that the pinned @playwright/test drives, fetched
+# by Bazel and sha256-pinned, so //src/web:e2e_test needs no
+# `playwright install` and no ~/.cache/ms-playwright
+# (build_support/playwright/browsers.bzl). Only the branch that the host
+# `select()` picks is downloaded.
+playwright = use_extension("//build_support/playwright:extensions.bzl", "playwright")
+use_repo(
+    playwright,
+    "playwright_chromium_linux_x86_64",
+    "playwright_chromium_macos_aarch64",
+)
+
+# ---- Quint (spec/)
+# The formal models. The CLI is the pinned `@informalsystems/quint` in the
+# `spec` pnpm workspace package; its Rust simulation backend is a separate
+# GitHub release that quint would otherwise download into ~/.quint at *test*
+# time, so it is fetched here instead, sha256-pinned, and reached through
+# QUINT_HOME in runfiles (build_support/quint/evaluator.bzl). Only the
+# branch that the host `select()` picks is downloaded.
+quint = use_extension("//build_support/quint:extensions.bzl", "quint")
+use_repo(
+    quint,
+    "quint_evaluator_linux_aarch64",
+    "quint_evaluator_linux_x86_64",
+    "quint_evaluator_macos_aarch64",
+    "quint_evaluator_macos_x86_64",
+)

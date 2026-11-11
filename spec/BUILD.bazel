@@ -1,0 +1,352 @@
+# The Quint models and their checks. See README.md.
+#
+#   bazel test //spec/...                                          # quick tier
+#   bazel run  //spec:quint_check -- --samples=20000 --steps=60    # deep tier
+#
+# Quint is pinned in package.json and its Rust evaluator is fetched by Bazel
+# with a sha256 (build_support/quint/evaluator.bzl), so the tests use no
+# network and need nothing installed.
+
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_run_binary", "js_test")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+load("//build_support/quint:defs.bzl", "quint_test")
+
+package(default_visibility = ["//visibility:public"])
+
+npm_link_all_packages(name = "node_modules")
+
+exports_files([
+    "capability.qnt",
+    "deadlines.qnt",
+    "eventlog.qnt",
+    "hotswap.qnt",
+    "jobs.qnt",
+    "lifecycle.qnt",
+    "listener.qnt",
+    "reload.qnt",
+    "reply_stream.qnt",
+    "revisions.qnt",
+    "session.qnt",
+    "session_progress.qnt",
+    "transport.qnt",
+    "wakeups.qnt",
+])
+
+# Typecheck each model, simulate it against the invariants listed here, and
+# run every `run` definition in it as a scenario. Also defines
+# //spec:quint_check, the same checks with --samples/--steps/--seed.
+quint_test(
+    name = "quint_test",
+    models = {
+        "session.qnt": [
+            "seqMonotonic",
+            "revisionMatchesLog",
+            "staleBaseRejected",
+            "selectionValid",
+            "deliveryIsPrefix",
+            "cursorCovered",
+            "cursorBounded",
+        ],
+        "jobs.qnt": [
+            "displayIsNewestCompleted",
+            "supersededIsNeverShownAsCurrent",
+            "displayIsNotFromTheFuture",
+            "noJobOutlivesItsRequest",
+            "burstIsBounded",
+            "fallbackRefusesRatherThanGuesses",
+            "onlyAwaitedResultsAreAccepted",
+        ],
+        "reload.qnt": [
+            "reloadsAreBoundedByBuilds",
+            "noBuildMeansNoReload",
+            "caughtUpMeansCurrentBuild",
+        ],
+        "hotswap.qnt": [
+            "alwaysAnEngine",
+            "enginesAreBounded",
+            "noStaleDisplay",
+            "reloadsOnlyForTheAppBundle",
+            "aStalePageAlwaysSaysSo",
+            "displayedComesFromTheLiveEngineWhenIdle",
+        ],
+        "deadlines.qnt": [
+            "callerIsNeverHeldPastTheDeadline",
+            "everyTimeoutIsRecognisable",
+            "aFinishedCallIsNeverATimeout",
+            "noDeadlineFiresEarly",
+        ],
+        "revisions.qnt": [
+            "zeroIsNeverALegitimateBase",
+            "everyAcceptedWriteChecked",
+            "noLostUpdates",
+            "noWriteIsBasedOnAnUnobservedRevision",
+            "staleBaseRejectedOnTheWire",
+        ],
+        "eventlog.qnt": [
+            "nothingIsLostSilently",
+            "noCurrentReaderIsPastTheEndOfTheLog",
+            "everySeenEventIsAtOrBelowTheCursor",
+            "theWindowIsDense",
+            "cursorNeverPassesTheLog",
+            "everySeenEventWasIssued",
+        ],
+        "lifecycle.qnt": [
+            "exactlyOneReplyPerRequest",
+            "aRefusedRequestNeverRuns",
+            "callerIsReleasedByItsBound",
+            "everyAdmittedRequestTerminates",
+            "everyDoorBoundsEveryHeavyOperation",
+        ],
+        "reply_stream.qnt": [
+            "onlyTheAuthorWritesToItsMessage",
+            "aFinishedMessageNeverChanges",
+            "aStreamedMessageIsNeverFromTheUser",
+            "theTextChangesOnlyByAppending",
+            "theLimitsHold",
+            "everyMessageInProgressEndsInBoundedTime",
+            "anUpdateIsNeverAnEvent",
+            "noStreamedMessageStartsATurn",
+            "aRefusedCallChangesNothing",
+        ],
+        "capability.qnt": [
+            "listenerNeverRunsADeniedOperation",
+            "listenerNeverReachesADeniedEffect",
+            "theListenersEffectsAreASubsetOfItsGrants",
+            "anonymousRunsNothing",
+            "theOwnerIsNotRestricted",
+            "onlyRealOperationsRun",
+            "everyDenialBuysSomething",
+            "everyOperationIsClassified",
+            "everySpellingResolves",
+            "theSameOperationIsDeniedOnEveryRoute",
+        ],
+        "listener.qnt": [
+            "noAnswerFromAnUncheckedSession",
+            "afterARefusalNothingIsWritten",
+            "onlyABadReportRefuses",
+            "oneTurnAtATime",
+            "handledInArrivalOrder",
+            "askedAgainOnlyAfterAnInterruption",
+            "oneEndingPerMessage",
+            "nothingIsDroppedSilently",
+            "aRepeatedFailureIsToldOnce",
+            "chatMatchesTheEndings",
+            "nothingIsWrittenForWhatWasSentWhileListenWasOff",
+            "nothingIsWrittenWhileIdle",
+            "noTurnWithoutAUsableBinary",
+            "aNewConversationCarriesNoTurn",
+            "aConversationIsBounded",
+            "nothingStartsAfterAStop",
+            "aStoppedListenerHoldsNothing",
+            "restsOnlyWhereItBlocks",
+        ],
+        "session_progress.qnt": [
+            "everyReaderIsServedInTurn",
+            "deliveriesMakeProgress",
+            "catchUpWithinTheBound",
+            "messagesReachTheAssistantWithinTheBound",
+            "theSessionInvariantsHold",
+        ],
+        "wakeups.qnt": [
+            "onlyActionableEventsAreHandedOver",
+            "everyHandOverWasSentWhileListening",
+            "handedOverAtMostOnceUnlessInterrupted",
+            "nothingActionableIsSkipped",
+            "aNewClientStartsAtTheEnd",
+            "aReaderAdoptsTheEndOnce",
+            "aRestartedChannelStartsAtTheEnd",
+            "everyHandOverIsFromTheLogItWasReadFrom",
+            "nothingIsHandedOverWhileNothingIsAsked",
+            "noCursorIsPastTheLog",
+            "aTurnIsInFlightOnlyWhileTheListenerIsUp",
+        ],
+        "transport.qnt": [
+            "callsGoOnlyToLiveServers",
+            "callsCarryTheirServersToken",
+            "clientsNeverFollowForeignFiles",
+            "cleanupNeverRemovesALiveServersFiles",
+            "aClientNeverSwitchesDocuments",
+            "aCallRunsAtMostOnce",
+            "aFinishedCallRanExactlyWhenAllowed",
+            "aClientRecoversWhenItsServerIsBack",
+            "theWebUiIsNeverOnTheSocket",
+            "agentTokensStayOffTcpUnlessAllowed",
+            "aTokensDecisionNeverDependsOnTheSurface",
+            "theListenerNeverRunsADeniedOperation",
+            "aRequestWithoutAGoodTokenIsRefused",
+            "serversStartOnlyInAPrivateDirectory",
+            "tokensNeverLeak",
+        ],
+    },
+    # Deliberately broken variants of a model, each with the invariant that
+    # must catch it.
+    mutants = {
+        "session_progress.qnt": {
+            "initWithoutFairness": "everyReaderIsServedInTurn",
+        },
+        "transport.qnt": {
+            "initAcceptsAnyToken": "aRequestWithoutAGoodTokenIsRefused",
+            "initAdmitsAgentTokensOnTcp": "agentTokensStayOffTcpUnlessAllowed",
+            "initDecidesBySurface": "theListenerNeverRunsADeniedOperation",
+            "initFollowsALooseRecord": "clientsNeverFollowForeignFiles",
+            "initKeepsTheStaleToken": "callsCarryTheirServersToken",
+            "initLogsTheToken": "tokensNeverLeak",
+            "initNeverLooksAgain": "aClientRecoversWhenItsServerIsBack",
+            "initRetriesAfterSend": "aCallRunsAtMostOnce",
+            "initServesTheUiOnTheSocket": "theWebUiIsNeverOnTheSocket",
+            "initStartsInALooseDirectory": "serversStartOnlyInAPrivateDirectory",
+            "initSweepsWithoutConnect": "cleanupNeverRemovesALiveServersFiles",
+            "initSwitchesDocument": "aClientNeverSwitchesDocuments",
+            "initTrustsAStaleRecord": "callsGoOnlyToLiveServers",
+        },
+        "wakeups.qnt": {
+            "initANewClientReadsFromTheStart": "aNewClientStartsAtTheEnd",
+            "initDoesNotRecordTheAdoptedEnd": "aReaderAdoptsTheEndOnce",
+            "initKeepsItsCursorAcrossAServerRestart": "nothingActionableIsSkipped",
+            "initPassesOverWhatWasSentBeforeListenWentOff": "nothingActionableIsSkipped",
+            "initRecordsItsPlaceOncePerBatch": "handedOverAtMostOnceUnlessInterrupted",
+            "initTrustsTheToggleAsItIsNow": "everyHandOverWasSentWhileListening",
+            "initWakesOnEveryEvent": "onlyActionableEventsAreHandedOver",
+        },
+        "listener.qnt": {
+            "initAsksAgainAfterARefusal": "afterARefusalNothingIsWritten",
+            "initDoesNotWaitForTheTurn": "oneTurnAtATime",
+            "initForgetsAFailedTurn": "askedAgainOnlyAfterAnInterruption",
+            "initNeverReplacesAConversation": "aConversationIsBounded",
+            "initReadsTheAnswerBeforeTheCheck": "noAnswerFromAnUncheckedSession",
+            "initRecordsAnInterruptedTurnAsRead": "nothingIsDroppedSilently",
+            "initRefusesAfterAnExit": "onlyABadReportRefuses",
+            "initSkipsTheVersionCheck": "noTurnWithoutAUsableBinary",
+            "initStartsATurnWhileStopping": "nothingStartsAfterAStop",
+            "initStartsOverWithATurnInFlight": "aNewConversationCarriesNoTurn",
+            "initTellsEveryFailure": "aRepeatedFailureIsToldOnce",
+            "initTrustsTheToggleAsItIsNow": "nothingIsWrittenForWhatWasSentWhileListenWasOff",
+        },
+    },
+    # About three minutes on an idle machine, most of it the mutants, and
+    # more beside a full sweep: "moderate" (300 s) is too tight.
+    timeout = "long",
+)
+
+# Diffs the lists and constants the models transcribe from the code against
+# the code: see the header of names_test.mjs.
+_NAMES_TEST_SOURCES = [
+    "BUILD.bazel",
+    "capability.qnt",
+    "eventlog.qnt",
+    "lifecycle.qnt",
+    "listener.qnt",
+    "revisions.qnt",
+    "session_progress.qnt",
+    "transport.qnt",
+    "wakeups.qnt",
+    "//docs:assistant-integration.md",
+    "//proto/cadpole/v1:document.proto",
+    "//proto/cadpole/v1:engine.proto",
+    "//proto/cadpole/v1:ops.proto",
+    "//spec/replay:listener_replay.mjs",
+    "//spec/replay:transport_replay.mjs",
+    "//spec/replay:wakeups_replay.mjs",
+    "//src/rust/cadpole-cli:src/main.rs",
+    "//src/rust/cadpole-cli:src/mcp.rs",
+    "//src/rust/cadpole-cli:src/server.rs",
+    "//src/rust/cadpole-ffi:src/lib.rs",
+    "//src/tools/listener:driver.mjs",
+    "//src/tools/listener:listener.mjs",
+    "//src/tools/listener:main.mjs",
+    "//src/rust/cadpole-ops:src/capability.rs",
+    "//src/web:src/normalize.ts",
+    "//src/apple/CadpoleKit:RemoteEngine.swift",
+]
+
+js_test(
+    name = "names_test",
+    data = _NAMES_TEST_SOURCES,
+    entry_point = "names_test.mjs",
+    # rules_js cannot copy files from other packages into bazel-bin, so read
+    # them in place. The .qnt files are listed too: //spec:quint_test already
+    # copies them, and a second copy would be a conflicting action.
+    no_copy_to_bin = _NAMES_TEST_SOURCES,
+    env = {
+        "ASSISTANT_DOC": "$(rlocationpath //docs:assistant-integration.md)",
+        "CAPABILITY_QNT": "$(rlocationpath capability.qnt)",
+        "DRIVER_MJS": "$(rlocationpath //src/tools/listener:driver.mjs)",
+        "LISTENER_MAIN_MJS": "$(rlocationpath //src/tools/listener:main.mjs)",
+        "LISTENER_MJS": "$(rlocationpath //src/tools/listener:listener.mjs)",
+        "LISTENER_QNT": "$(rlocationpath listener.qnt)",
+        "LISTENER_REPLAY_MJS": "$(rlocationpath //spec/replay:listener_replay.mjs)",
+        "MAIN_RS": "$(rlocationpath //src/rust/cadpole-cli:src/main.rs)",
+        "MCP_RS": "$(rlocationpath //src/rust/cadpole-cli:src/mcp.rs)",
+        "SESSION_PROGRESS_QNT": "$(rlocationpath session_progress.qnt)",
+        "SPEC_BUILD": "$(rlocationpath BUILD.bazel)",
+        "WAKEUPS_QNT": "$(rlocationpath wakeups.qnt)",
+        "WAKEUPS_REPLAY_MJS": "$(rlocationpath //spec/replay:wakeups_replay.mjs)",
+        "CAPABILITY_RS": "$(rlocationpath //src/rust/cadpole-ops:src/capability.rs)",
+        "DOCUMENT_PROTO": "$(rlocationpath //proto/cadpole/v1:document.proto)",
+        "ENGINE_PROTO": "$(rlocationpath //proto/cadpole/v1:engine.proto)",
+        "EVENTLOG_QNT": "$(rlocationpath eventlog.qnt)",
+        "FFI_RS": "$(rlocationpath //src/rust/cadpole-ffi:src/lib.rs)",
+        "LIFECYCLE_QNT": "$(rlocationpath lifecycle.qnt)",
+        "OPS_PROTO": "$(rlocationpath //proto/cadpole/v1:ops.proto)",
+        "REVISIONS_QNT": "$(rlocationpath revisions.qnt)",
+        "NORMALIZE_TS": "$(rlocationpath //src/web:src/normalize.ts)",
+        "REMOTE_ENGINE_SWIFT": "$(rlocationpath //src/apple/CadpoleKit:RemoteEngine.swift)",
+        "SERVER_RS": "$(rlocationpath //src/rust/cadpole-cli:src/server.rs)",
+        "TRANSPORT_QNT": "$(rlocationpath transport.qnt)",
+        "TRANSPORT_REPLAY_MJS": "$(rlocationpath //spec/replay:transport_replay.mjs)",
+    },
+    timeout = "short",
+)
+
+# Traces of reply_stream.qnt's `step`, for the replay against the handler:
+# //src/rust/cadpole-cli:cadpole_cli_test
+# (`the_model_traces_replay_against_the_handler`). 300 traces of 30 steps,
+# from a fixed seed.
+_EVALUATOR = "//build_support/quint:evaluator"
+
+_MARKER = "//build_support/quint:quint_home_marker"
+
+js_binary(
+    name = "traces",
+    data = [
+        "reply_stream.qnt",
+        ":node_modules/@informalsystems/quint",
+        _EVALUATOR,
+        _MARKER,
+    ],
+    entry_point = "traces.mjs",
+    env = {
+        "QUINT_MODEL": "$(rlocationpath reply_stream.qnt)",
+        "QUINT_HOME_MARKER": "$(rlocationpath %s)" % _MARKER,
+        "QUINT_EVALUATOR_DIR": "rust-evaluator-v0.6.0",
+        # The linked package is a directory tree, which has no single
+        # rlocationpath; this is where it sits in the main repository's
+        # runfiles.
+        "QUINT_CLI": "_main/" + package_name() + "/node_modules/@informalsystems/quint/dist/src/cli.js",
+    },
+    no_copy_to_bin = [
+        _EVALUATOR,
+        _MARKER,
+    ],
+    # The same tag as //spec:quint_test: quint fetches nothing, and the two
+    # targets then share one copy of the model in bazel-bin.
+    tags = ["block-network"],
+)
+
+js_run_binary(
+    name = "reply_stream_traces",
+    execution_requirements = {"block-network": "1"},
+    outs = ["reply_stream_traces.json"],
+    args = [
+        "--out",
+        "$(rootpath reply_stream_traces.json)",
+        "--traces",
+        "300",
+        "--steps",
+        "30",
+        "--drop",
+        "prev,prevLog",
+    ],
+    mnemonic = "QuintTraces",
+    tool = ":traces",
+)

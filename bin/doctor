@@ -1,0 +1,18 @@
+#!/bin/sh
+# Check this machine for what Cadpole needs, and print the command that
+# fixes each missing piece. Installs nothing. The other bin/ scripts run the
+# required checks themselves; this is the full list, optional tools included.
+
+set -eu
+
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+CADPOLE_ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
+
+# shellcheck source=lib/preflight.sh
+. "$CADPOLE_ROOT/bin/lib/preflight.sh"
+
+preflight_report

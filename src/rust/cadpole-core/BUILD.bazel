@@ -1,0 +1,41 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_core",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-proto:cadpole_proto",
+        "@crates//:anyhow",
+        "@crates//:i_overlay",
+        "@crates//:libm",
+        "@crates//:manifold-rust",
+        "@crates//:png",
+        "@crates//:rayon-core",
+        "@crates//:thiserror",
+        "@crates//:truck-base",
+        "@crates//:truck-geometry",
+        "@crates//:truck-meshalgo",
+        "@crates//:truck-modeling",
+        "@crates//:truck-polymesh",
+        "@crates//:truck-shapeops",
+        "@crates//:truck-topology",
+    ],
+)
+
+rust_test(
+    name = "cadpole_core_test",
+    # 600-odd tests, among them the kernel's boolean catalogue and the solid
+    # property tests: about 30 s in a debug build, several times that on a
+    # busy machine that is also running the example-corpus tests.
+    timeout = "long",
+    crate = ":cadpole_core",
+)
+
+# The crate's sources as files, for //src/rust/cadpole-wasm:transcendental_lint_test:
+# no f64 math method on the geometry path outside cadpole_core::fmath.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+)

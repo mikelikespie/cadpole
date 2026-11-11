@@ -1,0 +1,37 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# CARGO_PKG_VERSION, which rules_rust takes from `version` and not from
+# Cargo.toml (its default is "0.0.0"). Keep in step with Cargo.toml's
+# [workspace.package] version, as //src/rust/cadpole-ffi does.
+# The STEP header's preprocessor version.
+CADPOLE_VERSION = "0.1.0"
+
+rust_library(
+    name = "cadpole_export_step",
+    version = CADPOLE_VERSION,
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "@crates//:truck-base",
+        "@crates//:truck-geometry",
+        "@crates//:truck-modeling",
+        "@crates//:truck-polymesh",
+        "@crates//:truck-topology",
+    ],
+)
+
+rust_test(
+    name = "cadpole_export_step_test",
+    version = CADPOLE_VERSION,
+    size = "small",  # 0.4 s
+    crate = ":cadpole_export_step",
+    deps = [
+        # Test only: truck's own STEP *reader*, used to parse this crate's
+        # output back and compare solids. Already in the graph behind
+        # truck-shapeops, so it costs nothing to build.
+        "@crates//:truck-meshalgo",
+        "@crates//:truck-stepio",
+    ],
+)

@@ -1,0 +1,113 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_script",
+    srcs = glob(["src/**/*.rs"]),
+    # The standard library: `//stdlib/*.star`, `include_str!`ed by
+    # `src/stdlib.rs`. One `rustc_env` per module, an exec-root path from
+    # `$(location)` rather than a source-relative one, for the same reason as
+    # cadpole-font's font: a remote action's input root resolves it too. The
+    # wasm and FFI builds compile this same target, so they carry the same
+    # files without any further step.
+    compile_data = ["//stdlib:star_files"],
+    data = [
+        "//stdlib:building.star",
+        "//stdlib:gears.star",
+        "//stdlib:mechanical.star",
+        "//stdlib:plan.star",
+        "//stdlib:plan_frame.star",
+        "//stdlib:plan_spans.star",
+        "//stdlib:plan_ask.star",
+        "//stdlib:plan_audit.star",
+        "//stdlib:plan_draw.star",
+        "//stdlib:plan_fit_tables.star",
+        "//stdlib:plan_fit_tables_gen.star",
+        "//stdlib:plan_furnish.star",
+        "//stdlib:plan_furniture.star",
+        "//stdlib:plan_kitchen.star",
+        "//stdlib:plan_light.star",
+        "//stdlib:plan_roof.star",
+        "//stdlib:plan_parti.star",
+        "//stdlib:plan_rules.star",
+        "//stdlib:plan_templates.star",
+        "//stdlib:plan_solve.star",
+        "//stdlib:print.star",
+        "//stdlib:site.star",
+    ],
+    rustc_env = {
+        "CADPOLE_STDLIB_BUILDING": "$(location //stdlib:building.star)",
+        "CADPOLE_STDLIB_GEARS": "$(location //stdlib:gears.star)",
+        "CADPOLE_STDLIB_MECHANICAL": "$(location //stdlib:mechanical.star)",
+        "CADPOLE_STDLIB_PLAN": "$(location //stdlib:plan.star)",
+        "CADPOLE_STDLIB_PLAN_FRAME": "$(location //stdlib:plan_frame.star)",
+        "CADPOLE_STDLIB_PLAN_SPANS": "$(location //stdlib:plan_spans.star)",
+        "CADPOLE_STDLIB_PLAN_ASK": "$(location //stdlib:plan_ask.star)",
+        "CADPOLE_STDLIB_PLAN_AUDIT": "$(location //stdlib:plan_audit.star)",
+        "CADPOLE_STDLIB_PLAN_DRAW": "$(location //stdlib:plan_draw.star)",
+        "CADPOLE_STDLIB_PLAN_FIT_TABLES": "$(location //stdlib:plan_fit_tables.star)",
+        "CADPOLE_STDLIB_PLAN_FIT_TABLES_GEN": "$(location //stdlib:plan_fit_tables_gen.star)",
+        "CADPOLE_STDLIB_PLAN_FURNISH": "$(location //stdlib:plan_furnish.star)",
+        "CADPOLE_STDLIB_PLAN_FURNITURE": "$(location //stdlib:plan_furniture.star)",
+        "CADPOLE_STDLIB_PLAN_KITCHEN": "$(location //stdlib:plan_kitchen.star)",
+        "CADPOLE_STDLIB_PLAN_LIGHT": "$(location //stdlib:plan_light.star)",
+        "CADPOLE_STDLIB_PLAN_ROOF": "$(location //stdlib:plan_roof.star)",
+        "CADPOLE_STDLIB_PLAN_PARTI": "$(location //stdlib:plan_parti.star)",
+        "CADPOLE_STDLIB_PLAN_RULES": "$(location //stdlib:plan_rules.star)",
+        "CADPOLE_STDLIB_PLAN_TEMPLATES": "$(location //stdlib:plan_templates.star)",
+        "CADPOLE_STDLIB_PLAN_SOLVE": "$(location //stdlib:plan_solve.star)",
+        "CADPOLE_STDLIB_PRINT": "$(location //stdlib:print.star)",
+        "CADPOLE_STDLIB_SITE": "$(location //stdlib:site.star)",
+    },
+    proc_macro_deps = [
+        "@crates//:starlark_derive",
+    ],
+    deps = [
+        "//src/rust/cadpole-assets:cadpole_assets",
+        "//src/rust/cadpole-core:cadpole_core",
+        "//src/rust/cadpole-field:cadpole_field",
+        "//src/rust/cadpole-drawing:cadpole_drawing",
+        "//src/rust/cadpole-drawing-out:cadpole_drawing_out",
+        "//src/rust/cadpole-font:cadpole_font",
+        "//src/rust/cadpole-import-2d:cadpole_import_2d",
+        "//src/rust/cadpole-import:cadpole_import",
+        "//src/rust/cadpole-export-3mf:cadpole_export_3mf",
+        "//src/rust/cadpole-print:cadpole_print",
+        "//src/rust/cadpole-proto:cadpole_proto",
+        "//src/rust/cadpole-sketch-solve:cadpole_sketch_solve",
+        "@crates//:allocative",
+        "@crates//:anyhow",
+        "@crates//:starlark",
+        "@crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "cadpole_script_test",
+    # Evaluates every example three times over in the debug configuration.
+    timeout = "eternal",  # the examples gate: ~40 documents, ~10 min in a debug build under load
+    crate = ":cadpole_script",
+    data = [
+        "//docs:starlark-api.md",  # its code blocks that say they run are run
+        "//examples:assets",
+        "//examples:star_files",
+        "//stdlib:star_files",
+    ],
+    env = {
+        "CADPOLE_EXAMPLES": "examples",
+        "CADPOLE_STDLIB": "stdlib",
+    },
+    # The tests install the CLI's solver so the examples and the
+    # stdlib test documents solve the way `cadpole eval` and `cadpole test` do. The
+    # library itself never depends on it: the wasm engine and the FFI compile
+    # this crate, and HiGHS is native only.
+    deps = ["//src/rust/cadpole-opt:cadpole_opt"],
+)
+
+# The crate's sources as files, for //src/rust/cadpole-wasm:transcendental_lint_test:
+# no f64 math method on the geometry path outside cadpole_core::fmath.
+filegroup(
+    name = "rust_sources",
+    srcs = glob(["src/**/*.rs"]),
+)

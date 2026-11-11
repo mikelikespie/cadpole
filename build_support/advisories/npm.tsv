@@ -1,0 +1,104 @@
+# Every advisory OSV knows about for the npm packages in pnpm-lock.yaml,
+# at every version -- the version matching is done by the test, not here.
+#
+# Source: https://api.osv.dev/v1/query, ecosystem npm, one query per package.
+# Taken:  2026-09-16
+#
+# Regenerate: build_support/advisories/refresh.py --npm
+# Enforced by: bazel test //build_support/advisories:advisory_test
+#
+# Columns are the same as rustsec.tsv. OSV states the *affected* ranges, so
+# here `vulnerable` carries them and `not_vulnerable` is usually empty.
+#
+# `covered` is the package list this snapshot was taken for. The test fails
+# when pnpm-lock.yaml contains a package that is not on it, so a new npm
+# dependency cannot arrive unaudited.
+# covered: @bufbuild/protobuf @bufbuild/protoc-gen-es @bufbuild/protoplugin @dimforge/rapier3d-compat @grpc/grpc-js @grpc/proto-loader @informalsystems/quint @isaacs/fs-minipass @js-sdsl/ordered-map @octokit/endpoint @octokit/openapi-types @octokit/request @octokit/request-error @octokit/types @playwright/test @protobufjs/aspromise @protobufjs/base64 @protobufjs/codegen @protobufjs/eventemitter @protobufjs/fetch @protobufjs/float @protobufjs/path @protobufjs/pool @protobufjs/utf8 @sweet-monads/either @sweet-monads/interfaces @sweet-monads/maybe @tweenjs/tween.js @types/line-column @types/lodash @types/lodash.clonedeep @types/node @types/seedrandom @types/stats.js @types/three @types/webxr @typescript/vfs adm-zip ansi-regex ansi-styles antlr4ts bignumber.js chalk chownr cli-progress cliui color-convert color-name cross-spawn debug deprecation emoji-regex eol escalade fflate get-caller-file has-flag immutable is-fullwidth-code-point isarray isexe isobject json-bigint line-column lodash lodash.camelcase lodash.clonedeep long meshoptimizer minipass minizlib ms once path-key playwright playwright-core protobufjs require-directory seedrandom shebang-command shebang-regex string-width strip-ansi supports-color tar three typescript undici-types universal-user-agent which wrap-ansi wrappy y18n yallist yargs yargs-parser
+id	package	kind	vulnerable	not_vulnerable	url	title
+GHSA-5375-pq7m-f5r2	@grpc/grpc-js	high	>= 1.14.0, < 1.14.4		https://osv.dev/vulnerability/GHSA-5375-pq7m-f5r2	@grpc/grpc-js: A malformed request can cause a server crash
+GHSA-7v5v-9h63-cj86	@grpc/grpc-js	moderate	< 1.8.22		https://osv.dev/vulnerability/GHSA-7v5v-9h63-cj86	@grpc/grpc-js can allocate memory for incoming messages well above configured limits
+GHSA-99f4-grh7-6pcq	@grpc/grpc-js	high	>= 1.14.0, < 1.14.4		https://osv.dev/vulnerability/GHSA-99f4-grh7-6pcq	@grpc/grpc-js: An incoming malformed compressed message can cause a client or server crash
+GHSA-pp75-xfpw-37g9	@grpc/grpc-js	high	< 1.1.8		https://osv.dev/vulnerability/GHSA-pp75-xfpw-37g9	Prototype pollution in grpc and @grpc/grpc-js
+GHSA-x4c5-c7rf-jjgv	@octokit/endpoint	moderate	>= 10.0.0, < 10.1.3		https://osv.dev/vulnerability/GHSA-x4c5-c7rf-jjgv	@octokit/endpoint has a Regular Expression in parse that Leads to ReDoS Vulnerability Due to Catastrophic Backtracking
+GHSA-rmvr-2pp2-xj38	@octokit/request	moderate	>= 1.0.0, < 8.4.1		https://osv.dev/vulnerability/GHSA-rmvr-2pp2-xj38	@octokit/request has a Regular Expression in fetchWrapper that Leads to ReDoS Vulnerability Due to Catastrophic Backtracking
+GHSA-xx4v-prfh-6cgc	@octokit/request-error	moderate	>= 6.0.0, < 6.1.7		https://osv.dev/vulnerability/GHSA-xx4v-prfh-6cgc	@octokit/request-error has a Regular Expression in index that Leads to ReDoS Vulnerability Due to Catastrophic Backtracking
+GHSA-q6x5-8v7m-xcrf	@protobufjs/utf8	moderate	< 1.1.1		https://osv.dev/vulnerability/GHSA-q6x5-8v7m-xcrf	protobufjs has overlong UTF-8 decoding
+GHSA-3v6h-hqm4-2rg6	adm-zip	moderate	< 0.4.11		https://osv.dev/vulnerability/GHSA-3v6h-hqm4-2rg6	Arbitrary File Write in adm-zip
+GHSA-vwc7-r8mq-g2x9	adm-zip	moderate	>= 0.5.9, <= 0.6.0		https://osv.dev/vulnerability/GHSA-vwc7-r8mq-g2x9	adm-zip extraction follows destination symlinks, allowing arbitrary file overwrite
+GHSA-xcpc-8h2w-3j85	adm-zip	high	< 0.6.0		https://osv.dev/vulnerability/GHSA-xcpc-8h2w-3j85	adm-zip: Crafted ZIP file triggers 4GB memory allocation
+GHSA-93q8-gq69-wqmw	ansi-regex	high	>= 3.0.0, < 3.0.1		https://osv.dev/vulnerability/GHSA-93q8-gq69-wqmw	Inefficient Regular Expression Complexity in chalk/ansi-regex
+MAL-2025-46966	ansi-regex	vulnerability	= 6.2.1		https://osv.dev/vulnerability/MAL-2025-46966	Malicious code in ansi-regex (npm)
+MAL-2025-46967	ansi-styles	vulnerability	= 6.2.2		https://osv.dev/vulnerability/MAL-2025-46967	Malicious code in ansi-styles (npm)
+MAL-2025-46969	chalk	vulnerability	= 5.6.1		https://osv.dev/vulnerability/MAL-2025-46969	Malicious code in chalk (npm)
+GHSA-c6rq-rjc2-86v2	chownr	low	< 1.1.0		https://osv.dev/vulnerability/GHSA-c6rq-rjc2-86v2	Time-of-check Time-of-use (TOCTOU) Race Condition in chownr
+GHSA-pxx3-g568-hxr4	color-convert	high	>= 3.1.1, < 3.1.2		https://osv.dev/vulnerability/GHSA-pxx3-g568-hxr4	color-convert@3.1.1 contains malware after npm account takeover
+MAL-2025-46971	color-convert	vulnerability	= 3.1.1		https://osv.dev/vulnerability/MAL-2025-46971	Malicious code in color-convert (npm)
+GHSA-5fvm-p68v-5wmh	color-name	high	>= 2.0.1, < 2.0.2		https://osv.dev/vulnerability/GHSA-5fvm-p68v-5wmh	color-name@2.0.1 contains malware after npm account takeover
+MAL-2025-46972	color-name	vulnerability	= 2.0.1		https://osv.dev/vulnerability/MAL-2025-46972	Malicious code in color-name (npm)
+GHSA-3xgq-45jj-v275	cross-spawn	high	< 6.0.6		https://osv.dev/vulnerability/GHSA-3xgq-45jj-v275	Regular Expression Denial of Service (ReDoS) in cross-spawn
+GHSA-4x49-vf9v-38px	debug	high	>= 4.4.2, < 4.4.3		https://osv.dev/vulnerability/GHSA-4x49-vf9v-38px	debug@4.4.2 contains malware after npm account takeover
+GHSA-9vvw-cc9w-f27h	debug	high	< 2.6.9		https://osv.dev/vulnerability/GHSA-9vvw-cc9w-f27h	debug Inefficient Regular Expression Complexity vulnerability
+GHSA-gxpj-cx7g-858c	debug	low	>= 4.0.0, < 4.3.1		https://osv.dev/vulnerability/GHSA-gxpj-cx7g-858c	Regular Expression Denial of Service in debug
+MAL-2025-46974	debug	vulnerability	= 4.4.2		https://osv.dev/vulnerability/MAL-2025-46974	Malicious code in debug (npm)
+GHSA-px8p-9vwx-vf98	fflate	moderate	>= 0.8.0, < 0.8.3		https://osv.dev/vulnerability/GHSA-px8p-9vwx-vf98	fflate unzipSync can enter an infinite loop when parsing malformed ZIP64 archives
+GHSA-v56q-mh7h-f735	immutable	high	>= 5.0.0-beta.1, < 5.1.8		https://osv.dev/vulnerability/GHSA-v56q-mh7h-f735	Immutable.js `List` 32-bit trie overflow → unrecoverable DoS
+GHSA-wf6x-7x77-mvgw	immutable	high	< 3.8.3		https://osv.dev/vulnerability/GHSA-wf6x-7x77-mvgw	Immutable is vulnerable to Prototype Pollution
+GHSA-xvcm-6775-5m9r	immutable	high	< 3.8.4		https://osv.dev/vulnerability/GHSA-xvcm-6775-5m9r	Immutable: Hash-collision algorithmic complexity denial of service in Immutable.Map/Set
+GHSA-wgfq-7857-4jcc	json-bigint	high	< 1.0.0		https://osv.dev/vulnerability/GHSA-wgfq-7857-4jcc	Uncontrolled Resource Consumption in json-bigint
+GHSA-29mw-wpgm-hmr9	lodash	moderate	>= 4.0.0, < 4.17.21		https://osv.dev/vulnerability/GHSA-29mw-wpgm-hmr9	Regular Expression Denial of Service (ReDoS) in lodash
+GHSA-35jh-r3h4-6jhm	lodash	high	< 4.17.21		https://osv.dev/vulnerability/GHSA-35jh-r3h4-6jhm	Command Injection in lodash
+GHSA-4xc9-xhrj-v574	lodash	high	< 4.17.11		https://osv.dev/vulnerability/GHSA-4xc9-xhrj-v574	Prototype Pollution in lodash
+GHSA-f23m-r3pf-42rh	lodash	moderate	< 4.18.0		https://osv.dev/vulnerability/GHSA-f23m-r3pf-42rh	lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`
+GHSA-fvqr-27wr-82fm	lodash	moderate	< 4.17.5		https://osv.dev/vulnerability/GHSA-fvqr-27wr-82fm	Prototype Pollution in lodash
+GHSA-jf85-cpcp-j695	lodash	critical	< 4.17.12		https://osv.dev/vulnerability/GHSA-jf85-cpcp-j695	Prototype Pollution in lodash
+GHSA-p6mc-m468-83gw	lodash	high	>= 3.7.0, < 4.17.19		https://osv.dev/vulnerability/GHSA-p6mc-m468-83gw	Prototype Pollution in lodash
+GHSA-r5fr-rjxr-66jc	lodash	high	>= 4.0.0, < 4.18.0		https://osv.dev/vulnerability/GHSA-r5fr-rjxr-66jc	lodash vulnerable to Code Injection via `_.template` imports key names
+GHSA-x5rq-j2xg-h7qm	lodash	moderate	>= 4.7.0, < 4.17.11		https://osv.dev/vulnerability/GHSA-x5rq-j2xg-h7qm	Regular Expression Denial of Service (ReDoS) in lodash
+GHSA-xxjr-mmjv-4gpg	lodash	moderate	>= 4.0.0, < 4.17.23		https://osv.dev/vulnerability/GHSA-xxjr-mmjv-4gpg	Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions
+GHSA-3fx5-fwvr-xrjg	ms	high	< 0.7.1		https://osv.dev/vulnerability/GHSA-3fx5-fwvr-xrjg	Regular Expression Denial of Service in ms
+GHSA-w9mr-4mfr-499f	ms	moderate	< 2.0.0		https://osv.dev/vulnerability/GHSA-w9mr-4mfr-499f	Vercel ms Inefficient Regular Expression Complexity vulnerability
+GHSA-7mvr-c777-76hp	playwright	high	< 1.55.1		https://osv.dev/vulnerability/GHSA-7mvr-c777-76hp	Playwright downloads and installs browsers without verifying the authenticity of the SSL certificate
+GHSA-2pr8-phx7-x9h3	protobufjs	moderate	>= 8.0.0, < 8.0.2		https://osv.dev/vulnerability/GHSA-2pr8-phx7-x9h3	protobuf.js: Denial of service from crafted field names in generated code
+GHSA-66ff-xgx4-vchm	protobufjs	high	>= 8.0.0, < 8.0.2		https://osv.dev/vulnerability/GHSA-66ff-xgx4-vchm	protobuf.js: Code injection through bytes field defaults in generated toObject code
+GHSA-685m-2w69-288q	protobufjs	high	>= 8.0.0, < 8.0.2		https://osv.dev/vulnerability/GHSA-685m-2w69-288q	protobuf.js: Denial of service through unbounded protobuf recursion
+GHSA-75px-5xx7-5xc7	protobufjs	high	>= 8.0.0, < 8.0.2		https://osv.dev/vulnerability/GHSA-75px-5xx7-5xc7	protobuf.js: Code generation gadget after prototype pollution
+GHSA-762f-c2wg-m8c8	protobufjs	moderate	< 5.0.3		https://osv.dev/vulnerability/GHSA-762f-c2wg-m8c8	Denial of Service in protobufjs
+GHSA-94rc-8x27-4472	protobufjs	moderate	>= 8.2.0, < 8.5.0		https://osv.dev/vulnerability/GHSA-94rc-8x27-4472	protobufjs: Memory amplification from preserved unknown fields in binary decode
+GHSA-f38q-mgvj-vph7	protobufjs	moderate	>= 8.0.0, < 8.6.0		https://osv.dev/vulnerability/GHSA-f38q-mgvj-vph7	protobufjs : Schema-derived names can shadow runtime-significant properties
+GHSA-fx83-v9x8-x52w	protobufjs	moderate	>= 8.0.0, < 8.0.2		https://osv.dev/vulnerability/GHSA-fx83-v9x8-x52w	protobuf.js: Prototype injection in generated message constructors
+GHSA-g954-5hwp-pp24	protobufjs	high	>= 6.10.0, < 6.10.3		https://osv.dev/vulnerability/GHSA-g954-5hwp-pp24	Prototype Pollution in protobufjs
+GHSA-h755-8qp9-cq85	protobufjs	critical	>= 6.10.0, < 6.11.4		https://osv.dev/vulnerability/GHSA-h755-8qp9-cq85	protobufjs Prototype Pollution vulnerability
+GHSA-j3f2-48v5-ccww	protobufjs	moderate	>= 8.0.0, < 8.6.6		https://osv.dev/vulnerability/GHSA-j3f2-48v5-ccww	protobufjs: Denial of Service via infinite loop in .proto option parsing
+GHSA-jfj6-75fj-8934	protobufjs	moderate	>= 8.2.0, < 8.6.5		https://osv.dev/vulnerability/GHSA-jfj6-75fj-8934	protobufjs: Text Format string map parsing can mutate returned map object prototype
+GHSA-jggg-4jg4-v7c6	protobufjs	moderate	>= 8.0.0, < 8.2.0		https://osv.dev/vulnerability/GHSA-jggg-4jg4-v7c6	protobufjs: Denial of Service via unbounded recursive JSON descriptor expansion
+GHSA-jvwf-75h9-cwgg	protobufjs	high	>= 8.0.0, < 8.0.2		https://osv.dev/vulnerability/GHSA-jvwf-75h9-cwgg	protobuf.js: Process-wide denial of service through unsafe option paths
+GHSA-q6x5-8v7m-xcrf	protobufjs	moderate	>= 8.0.0, < 8.0.2		https://osv.dev/vulnerability/GHSA-q6x5-8v7m-xcrf	protobufjs has overlong UTF-8 decoding
+GHSA-wcpc-wj8m-hjx6	protobufjs	high	>= 8.0.0, < 8.4.1		https://osv.dev/vulnerability/GHSA-wcpc-wj8m-hjx6	protobufjs: Denial of service through unbounded Any expansion during JSON conversion
+GHSA-xq3m-2v4x-88gg	protobufjs	critical	< 7.5.5		https://osv.dev/vulnerability/GHSA-xq3m-2v4x-88gg	Arbitrary code execution in protobufjs
+MAL-2025-46980	strip-ansi	vulnerability	= 7.1.1		https://osv.dev/vulnerability/MAL-2025-46980	Malicious code in strip-ansi (npm)
+MAL-2025-46981	supports-color	vulnerability	= 10.2.1		https://osv.dev/vulnerability/MAL-2025-46981	Malicious code in supports-color (npm)
+GHSA-23hp-3jrh-7fpw	tar	critical	< 7.5.19		https://osv.dev/vulnerability/GHSA-23hp-3jrh-7fpw	node-tar: Decompression/parse DoS via unlimited input
+GHSA-29xp-372q-xqph	tar	moderate	>= 7.5.1, < 7.5.2		https://osv.dev/vulnerability/GHSA-29xp-372q-xqph	node-tar has a race condition leading to uninitialized memory exposure
+GHSA-34x7-hfp2-rc4v	tar	high	< 7.5.7		https://osv.dev/vulnerability/GHSA-34x7-hfp2-rc4v	node-tar Vulnerable to Arbitrary File Creation/Overwrite via Hardlink Path Traversal
+GHSA-3jfq-g458-7qm9	tar	high	>= 6.0.0, < 6.1.1		https://osv.dev/vulnerability/GHSA-3jfq-g458-7qm9	Arbitrary File Creation/Overwrite due to insufficient absolute path sanitization
+GHSA-5955-9wpr-37jh	tar	high	>= 6.0.0, < 6.1.9		https://osv.dev/vulnerability/GHSA-5955-9wpr-37jh	Arbitrary File Creation/Overwrite on Windows via insufficient relative path sanitization
+GHSA-83g3-92jg-28cx	tar	high	< 7.5.8		https://osv.dev/vulnerability/GHSA-83g3-92jg-28cx	Arbitrary File Read/Write via Hardlink Target Escape Through Symlink Chain in node-tar Extraction
+GHSA-8qq5-rm4j-mr97	tar	high	< 7.5.3		https://osv.dev/vulnerability/GHSA-8qq5-rm4j-mr97	node-tar is Vulnerable to Arbitrary File Overwrite and Symlink Poisoning via Insufficient Path Sanitization
+GHSA-8x88-c5mf-7j5w	tar	high	< 7.5.18		https://osv.dev/vulnerability/GHSA-8x88-c5mf-7j5w	node-tar: Negative tar entry size causes infinite loop in archive replace
+GHSA-9ppj-qmqm-q256	tar	high	< 7.5.11		https://osv.dev/vulnerability/GHSA-9ppj-qmqm-q256	node-tar Symlink Path Traversal via Drive-Relative Linkpath
+GHSA-9r2w-394v-53qc	tar	high	>= 6.0.0, < 6.1.7		https://osv.dev/vulnerability/GHSA-9r2w-394v-53qc	Arbitrary File Creation/Overwrite via insufficient symlink protection due to directory cache poisoning using symbolic links
+GHSA-f5x3-32g6-xq36	tar	moderate	< 6.2.1		https://osv.dev/vulnerability/GHSA-f5x3-32g6-xq36	Denial of service while parsing a tar file due to lack of folders count validation
+GHSA-gfjr-3jmm-4g9v	tar	high	< 2.0.0		https://osv.dev/vulnerability/GHSA-gfjr-3jmm-4g9v	Symlink Arbitrary File Overwrite in tar
+GHSA-gvwx-54wh-qm9j	tar	moderate	< 7.5.17		https://osv.dev/vulnerability/GHSA-gvwx-54wh-qm9j	node-tar: Uncaught Exception DoS via NUL byte in PAX path/linkpath records
+GHSA-j44m-qm6p-hp7m	tar	high	< 2.2.2		https://osv.dev/vulnerability/GHSA-j44m-qm6p-hp7m	Arbitrary File Overwrite in tar
+GHSA-qffp-2rhf-9h96	tar	high	< 7.5.10		https://osv.dev/vulnerability/GHSA-qffp-2rhf-9h96	tar has Hardlink Path Traversal via Drive-Relative Linkpath
+GHSA-qq89-hq3f-393p	tar	high	>= 6.0.0, < 6.1.9		https://osv.dev/vulnerability/GHSA-qq89-hq3f-393p	Arbitrary File Creation/Overwrite via insufficient symlink protection due to directory cache poisoning using symbolic links
+GHSA-r292-9mhp-454m	tar	high	< 7.5.21		https://osv.dev/vulnerability/GHSA-r292-9mhp-454m	node-tar: Uncontrolled recursion in mapHas/filesFilter allows uncatchable stack-overflow DoS via crafted long-path tar with member selection
+GHSA-r628-mhmh-qjhw	tar	high	>= 6.0.0, < 6.1.2		https://osv.dev/vulnerability/GHSA-r628-mhmh-qjhw	Arbitrary File Creation/Overwrite via insufficient symlink protection due to directory cache poisoning
+GHSA-r6q2-hw4h-h46w	tar	high	< 7.5.4		https://osv.dev/vulnerability/GHSA-r6q2-hw4h-h46w	Race Condition in node-tar Path Reservations via Unicode Ligature Collisions on macOS APFS
+GHSA-vmf3-w455-68vh	tar	moderate	< 7.5.16		https://osv.dev/vulnerability/GHSA-vmf3-w455-68vh	node-tar applies PAX size override to intermediary GNU long-name/long-link headers, causing tar parser interpretation differential (file smuggling)
+GHSA-w8wr-v893-vjvp	tar	moderate	< 7.5.18		https://osv.dev/vulnerability/GHSA-w8wr-v893-vjvp	node-tar: Process crash via PAX numeric path type confusion
+GHSA-fq6p-x6j3-cmmq	three	high	< 0.125.0		https://osv.dev/vulnerability/GHSA-fq6p-x6j3-cmmq	Denial of service in three
+MAL-2025-46983	wrap-ansi	vulnerability	= 9.0.1		https://osv.dev/vulnerability/MAL-2025-46983	Malicious code in wrap-ansi (npm)
+GHSA-c4w7-xm78-47vh	y18n	high	>= 5.0.0, < 5.0.5		https://osv.dev/vulnerability/GHSA-c4w7-xm78-47vh	Prototype Pollution in y18n
+GHSA-p9pc-299p-vxgp	yargs-parser	moderate	< 5.0.1		https://osv.dev/vulnerability/GHSA-p9pc-299p-vxgp	yargs-parser Vulnerable to Prototype Pollution

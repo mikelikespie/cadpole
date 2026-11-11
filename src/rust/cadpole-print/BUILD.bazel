@@ -1,0 +1,17 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_print",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+    ],
+)
+
+rust_test(
+    name = "cadpole_print_test",
+    size = "small",  # 0.1 s
+    crate = ":cadpole_print",
+)

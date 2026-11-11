@@ -1,0 +1,24 @@
+[package]
+name = "cadpole-sketch-solve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole 2D sketch constraint solver: analytic Jacobians, LM + dogleg, SVD diagnostics."
+
+# One dependency, deliberately: `libm`, the pure-Rust transcendentals every
+# geometry crate is pinned to, so the angle a constraint solves to is
+# the same bits natively and in the browser. The linear algebra a sketch needs
+# is one dense SVD of a matrix with tens of rows; `src/linalg.rs` is that, in
+# 300 lines, and it keeps this crate buildable for wasm32 with nothing to
+# vendor. This crate sits below cadpole-core, so it calls `libm` directly where
+# the others go through `cadpole_core::fmath`.
+
+[lib]
+name = "cadpole_sketch_solve"
+path = "src/lib.rs"
+
+# src/bin/bench.rs is discovered automatically as the `bench` binary; Bazel
+# builds it as //src/rust/cadpole-sketch-solve:bench.
+
+[dependencies]
+libm.workspace = true

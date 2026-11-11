@@ -1,0 +1,11 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+# Fails when the set of tests the Linux sweep does not run (manual tags, or
+# targets under a subtracted pattern) differs from the list in the script.
+# It queries the workspace, so it runs with `bazel run`, not as a test:
+#
+#   bazel run //build_support/ci:skipped_targets
+sh_binary(
+    name = "skipped_targets",
+    srcs = ["skipped-targets.sh"],
+)

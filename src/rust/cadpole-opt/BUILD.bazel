@@ -1,0 +1,33 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# HiGHS (C++, the BCR module `highs`, patched in build_support/patches) behind
+# a safe Rust API, installed as cadpole_core::opt's solver.
+#
+# Native only. The CLI is the one binary that depends on this, so `cadpole eval`,
+# `cadpole test`, `cadpole serve` and `cadpole mcp` can solve; the wasm engine
+# (//src/rust/cadpole-wasm) and the C FFI the Apple apps link
+# (//src/rust/cadpole-ffi) never do, which is what keeps C++ out of them. The
+# wasm32 incompatibility makes an accidental dependency fail by name rather
+# than with a missing C toolchain.
+rust_library(
+    name = "cadpole_opt",
+    srcs = glob(["src/**/*.rs"]),
+    target_compatible_with = select({
+        "@platforms//cpu:wasm32": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    # The C++ library: rules_rust links it into every binary that depends
+    # on this crate (`link_deps` is rules_rust's name for C/C++ FFI deps).
+    link_deps = ["@highs"],
+    deps = ["//src/rust/cadpole-core:cadpole_core"],
+)
+
+rust_test(
+    name = "cadpole_opt_test",
+    # The thread test runs 96 solves on eight threads: a few seconds idle,
+    # more under load.
+    size = "medium",
+    crate = ":cadpole_opt",
+)

@@ -1,0 +1,21 @@
+[package]
+name = "cadpole-drawing-out"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole drawing writers that need a third-party library: PDF and DXF."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+cadpole-drawing = { path = "../cadpole-drawing" }
+chrono.workspace = true
+dxf.workspace = true
+pdf-writer.workspace = true
+# Deflate for the PDF's streams: the same crate the 3MF writer's zip uses.
+miniz_oxide.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+# The round-trip tests read our own SVG and DXF back with Cadpole's importer,
+# which is the strongest end-to-end check the writers get.
+cadpole-import-2d = { path = "../cadpole-import-2d" }

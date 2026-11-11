@@ -1,0 +1,7 @@
+No Quint Rust evaluator is pinned for this host platform.
+
+//build_support/quint:evaluator only has quint_evaluator builds for
+linux-x86_64, linux-aarch64, macos-aarch64 and macos-x86_64. Add the target
+triple and its sha256 to QUINT_EVALUATOR_ARCHIVES in
+build_support/quint/evaluator.bzl and a matching config_setting + select branch
+in build_support/quint/BUILD.bazel.

@@ -1,0 +1,32 @@
+# The canonical text of every licence Cadpole's dependencies are offered
+# under, and of every term allowed.txt permits.
+#
+# MIT, BSD-2/3-Clause and ISC each require "this permission notice" to
+# be included with a binary distribution, and Apache-2.0 section 4(a) a
+# copy of the licence itself. A list of SPDX identifiers is not that, so
+# THIRD-PARTY-NOTICES.md reproduces these texts in full; the per-package
+# copyright notices that go with them are in crates.tsv / npm.tsv.
+#
+# Source: SPDX license-list-data, tag v3.27.0, text/<id>.txt.
+# `sha256` is of the file as fetched, so a text cannot drift unnoticed.
+#
+# Regenerate: build_support/licenses/refresh.py --texts
+# Enforced by: bazel test //build_support/licenses:license_test
+#              (every term in use has a text, and every text matches)
+id	file	sha256	source
+0BSD	0BSD.txt	e3f18c71e10d673590eb9856c1d79dd3b4b0d65404efb5e8584dbede7edd608b	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/0BSD.txt
+Apache-2.0	Apache-2.0.txt	074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Apache-2.0.txt
+BlueOak-1.0.0	BlueOak-1.0.0.txt	8a1af140fdfbf5afd3df27f7e662f989c5b963a300020dfafce42033cae9e004	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/BlueOak-1.0.0.txt
+BSD-2-Clause	BSD-2-Clause.txt	f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/BSD-2-Clause.txt
+BSD-3-Clause	BSD-3-Clause.txt	5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/BSD-3-Clause.txt
+BSL-1.0	BSL-1.0.txt	84c6ef3ea9e3254a54d0acf5d3e0c61ae011b8fef7dd6940591cf060e6380a8f	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/BSL-1.0.txt
+CC0-1.0	CC0-1.0.txt	a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/CC0-1.0.txt
+ISC	ISC.txt	f2ec607f67bb0dd3053b49835b02110d5cd0f8eb6da3aac4dc0b142a6b299be9	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/ISC.txt
+LLVM-exception	LLVM-exception.txt	e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/LLVM-exception.txt
+MIT	MIT.txt	b05785f9f18e6716bab63424b11454513b9943a222595b70411009202fc592b5	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt
+MIT-0	MIT-0.txt	59746d6285ffa44bfc7ecada352aa5d6a20dc8eab418a60ce091cc739012c135	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT-0.txt
+OFL-1.1	OFL-1.1.txt	8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/OFL-1.1.txt
+Unicode-3.0	Unicode-3.0.txt	f7db81051789b729fea528a63ec4c938fdcb93d9d61d97dc8cc2e9df6d47f2a1	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Unicode-3.0.txt
+Unicode-DFS-2016	Unicode-DFS-2016.txt	1a33fc12a3abb0b3eb14db70e36ef1d0af51c93b1cc1f80f022c3bd406e9b874	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Unicode-DFS-2016.txt
+Unlicense	Unlicense.txt	0bdebfeda07d45dada625ae1317c6f833186e798b171d0db640bcf32e92a8240	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Unlicense.txt
+Zlib	Zlib.txt	bfb1112d49db5b1daecdfef24bd7e2f3ea0bafb33aa67aa0ab51e2bf8407c03d	https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/Zlib.txt

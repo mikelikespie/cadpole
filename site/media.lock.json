@@ -1,0 +1,87 @@
+{
+ "sets": {
+  "seq/ir/d": {
+   "count": 60,
+   "bytes": 1252121,
+   "sha256": "8086549c27e124ecaacde4373f691c6ed76617421f7f7ba732d18cdd5640b4af"
+  },
+  "seq/ir/m": {
+   "count": 30,
+   "bytes": 664498,
+   "sha256": "a6b9af4e63837dff9dbacf0f46aa14eec9b17e495db5eb91c937b371dea5c24d"
+  },
+  "seq/ir/w": {
+   "count": 60,
+   "bytes": 1847726,
+   "sha256": "0ea688ffe095fb45247ed91f264f79dc968502bfe9a765e90c1d56a10bad8a2a"
+  },
+  "seq/mg/d": {
+   "count": 72,
+   "bytes": 933594,
+   "sha256": "46e07060dea7dcd24cc8be66a6f5190d5dc4b4bd24bb146c0289fd86ba18f48c"
+  },
+  "seq/mg/m": {
+   "count": 36,
+   "bytes": 559592,
+   "sha256": "0eb630cae9cefd622cd695a11563cd745b8b1e1209fa21b3fb783643bce6aa04"
+  },
+  "seq/mg/w": {
+   "count": 72,
+   "bytes": 1582644,
+   "sha256": "f1e45a607cfdd4774731d3460e7dfd5033a3877a409502a7e768539d88616f4e"
+  },
+  "seq/ra/d": {
+   "count": 72,
+   "bytes": 2218287,
+   "sha256": "d244497976b8278fd268acde5cfda77931e5b2b058fbb1cf4e678ebd0e403dc0"
+  },
+  "seq/ra/m": {
+   "count": 36,
+   "bytes": 1019416,
+   "sha256": "5f8a1d860c8663b44727ad2b6faf83834818812cb525fa59c9360a99a710be51"
+  },
+  "seq/ra/w": {
+   "count": 72,
+   "bytes": 3022550,
+   "sha256": "10602bcb4f5866be647baf670b0afb8f8db5d72f1ba74566c64b86c47bb5b297"
+  },
+  "seq/tj/d": {
+   "count": 96,
+   "bytes": 3292515,
+   "sha256": "cd52965a891a34c1b15aee39ef2007f2fb29580c01a70d6c0a23e83795477134"
+  },
+  "seq/tj/m": {
+   "count": 48,
+   "bytes": 1532946,
+   "sha256": "f91a8ec8a198f3eb2300d9ab35f1c5e00db138f5965ce9759fe7eba512b365a7"
+  },
+  "seq/tj/w": {
+   "count": 96,
+   "bytes": 4137376,
+   "sha256": "2ce01b0c8c326fdfd0b1f417ab6206193aeec5f78e8af871b95cce5c0aeb6662"
+  },
+  "seq/tj/x": {
+   "count": 96,
+   "bytes": 4552817,
+   "sha256": "e6525d3a74c1dd9da9e17270651362bab0ed4276f351a244ed1a6ee5c44dda46"
+  }
+ },
+ "files": {
+  "agent/agent.mp4": {
+   "bytes": 6612166,
+   "sha256": "240dcd740ec916c00f97b84f7525dcf3b02d22cecf803876e58b2d35dc5d2a31"
+  },
+  "agent/agent.webm": {
+   "bytes": 5462192,
+   "sha256": "4f713f512ae4f0196c7395ef95393d60803852d41ea1602699bd8f5017fefbc6"
+  },
+  "agent/agent-phone.mp4": {
+   "bytes": 441694,
+   "sha256": "b5f6f0d144ca08ca84dad513f827434e3b74efa80b5b1c3512b8ed7b8cb71ed1"
+  },
+  "agent/agent-phone.webm": {
+   "bytes": 353249,
+   "sha256": "6d25a5a6d4cd5f3c796b5871f0fe0c62febbf7d9fad98e5a63ee809efde2e676"
+  }
+ }
+}

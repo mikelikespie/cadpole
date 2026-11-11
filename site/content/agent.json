@@ -1,0 +1,100 @@
+{
+ "steps": [
+  {
+   "t": 1.2,
+   "text": "Type a request in the Messages box."
+  },
+  {
+   "t": 9.1,
+   "text": "The agent edits the script. The bracket is 1 in wider, with two mounting holes in the base."
+  },
+  {
+   "t": 11.7,
+   "text": "It replies with what it changed."
+  },
+  {
+   "t": 15.2,
+   "text": "Click a face to select it, then ask about \"this face\"."
+  },
+  {
+   "t": 23.2,
+   "text": "The agent reads the selection and puts two holes through that face."
+  },
+  {
+   "t": 28.8,
+   "text": "It says what it did."
+  }
+ ],
+ "steps_phone": [
+  {
+   "t": 1.8,
+   "text": "Open Chat and type a request."
+  },
+  {
+   "t": 8.8,
+   "text": "The agent edits the script. The bracket gets wider."
+  },
+  {
+   "t": 11.2,
+   "text": "The agent replies. Close the sheet to see the holes."
+  },
+  {
+   "t": 20.5,
+   "text": "Tap a face to select it."
+  },
+  {
+   "t": 23.5,
+   "text": "Ask about \"this face\"."
+  },
+  {
+   "t": 29.8,
+   "text": "The agent puts holes through the selected face."
+  }
+ ],
+ "setup": [
+  {
+   "text": "Have Claude Code installed. Cadpole uses your own install and ships no agent of its own.",
+   "command": "claude --version"
+  },
+  {
+   "text": "Open your script in the web app.",
+   "command": "cadpole serve bracket.star"
+  },
+  {
+   "text": "Register Cadpole's MCP server, in your project folder.",
+   "command": "claude mcp add cadpole -- cadpole mcp",
+   "note": "This adds it for you in this folder (the local scope); <code>--scope project</code> writes it to <code>.mcp.json</code> for everyone on the project. <code>claude mcp list</code> checks the connection and <code>claude mcp remove cadpole</code> takes it out.",
+   "alt": {
+    "summary": "Another MCP client, or by hand: .mcp.json",
+    "command": "{\"mcpServers\": {\"cadpole\": {\"command\": \"cadpole\", \"args\": [\"mcp\"]}}}"
+   }
+  },
+  {
+   "text": "Start Claude Code in that folder and ask it to wait for Cadpole. It runs cadpole listen in the background, which costs nothing until you send a message.",
+   "command": "claude",
+   "prompt": "Wait for messages from Cadpole in the background and act on them."
+  },
+  {
+   "text": "Turn Listen on in the web app and type in the Messages box."
+  }
+ ],
+ "can": [
+  [
+   "Builds and edits",
+   "It writes the model's script and changes it, one exact edit at a time."
+  ],
+  [
+   "Reads what went wrong",
+   "Every error names the line and the feature it came from."
+  ],
+  [
+   "Checks its own work",
+   "It measures clearances and volumes, renders pictures and runs the model's tests."
+  ],
+  [
+   "Sees what you point at",
+   "Click a face in the 3D view and say \"this face\"."
+  ]
+ ],
+ "setup_agent": "Set up Cadpole's assistant integration from github.com/mikelikespie/cadpole (docs/assistant-integration.md): register its MCP server with claude mcp add, start cadpole serve on my script, and tell me when to restart you so you can wait for my messages."
+}

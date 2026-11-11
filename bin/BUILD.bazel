@@ -1,0 +1,23 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# The checkout scripts, run from a copy of bin/ in a scratch checkout with a
+# stub `bazel` (and stub compilers) on a PATH that holds nothing else: the
+# preflight checklist for each platform and each missing tool, the stamp that
+# keeps the happy path quiet, the wrapper's clean stdout while a build prints,
+# relative paths from another directory, and install/uninstall.
+sh_test(
+    name = "bin_test",
+    size = "small",
+    srcs = ["bin_test.sh"],
+    data = [
+        "cadpole",
+        "dev",
+        "doctor",
+        "install",
+        "lib/build.sh",
+        "lib/preflight.sh",
+        "test",
+        "//src/rust/cadpole-cli:cadpole",
+        "//src/tools/listener:driver.mjs",
+    ],
+)

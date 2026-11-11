@@ -1,0 +1,26 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_test")
+
+# The real `DocumentModel` (and the `FeatureTree` it builds), compiled on
+# Linux with the screen's tests.
+#
+# CadpoleUI as a module is SwiftUI and only builds for an Apple platform, but
+# DocumentModel itself needs nothing beyond Foundation, Observation and
+# CadpoleKit. Compiling its source straight into a host test is what lets the
+# rules that are easy to get wrong -- which parameter set a slider sends,
+# which render result wins, which events are our own echo, when the screen
+# leaves a failure behind -- run on every commit instead of only on a Mac:
+#
+#   bazel test //src/apple/CadpoleKitTests/DocumentModel:DocumentModelTests
+swift_test(
+    name = "DocumentModelTests",
+    srcs = glob(["*.swift"]) + [
+        "//src/apple/CadpoleUI:DocumentModel.swift",
+        "//src/apple/CadpoleUI:FeatureTree.swift",
+    ],
+    module_name = "DocumentModelTests",
+    deps = [
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleProto",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)

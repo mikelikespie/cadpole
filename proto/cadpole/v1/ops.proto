@@ -1,0 +1,2481 @@
+// The Cadpole operation registry.
+//
+// `service CadpoleOps` is the *only* place a user-facing operation is defined.
+// MCP tools, the HTTP `/api/ops/*` routes and `cadpole op` are all derived from
+// this file's descriptor at run time (docs/design.md), so they cannot
+// drift from each other or from the engine. To add an operation: add an rpc
+// here with its request/response messages, then add one handler arm in
+// `src/rust/cadpole-ops/src/lib.rs`. Nothing else needs touching.
+//
+// Documentation is not a side-car: the leading comment of an rpc becomes the
+// MCP tool description and the CLI `--help` text, and the leading comment of
+// a request field becomes that field's JSON Schema `description` and the
+// flag's help. Write them for an assistant that has never seen Cadpole.
+syntax = "proto3";
+
+package cadpole.v1;
+
+import "cadpole/v1/document.proto";
+import "cadpole/v1/engine.proto";
+import "cadpole/v1/eval.proto";
+import "cadpole/v1/geometry.proto";
+import "cadpole/v1/options.proto";
+import "google/protobuf/struct.proto";
+
+// Everything Cadpole can do for a user or an assistant.
+//
+// Two families of operation:
+//
+//   * *engine* operations (Evaluate, Render, Sweep, Export, PrintCheck,
+//     Inspect, Drawing, RunTests, ApiDoc) run in-process against
+//     `cadpole-engine`. They take an optional `document`; when
+//     it is absent the front-end supplies one (the CLI from `--doc`, MCP and
+//     the server from the current session).
+//   * *session* operations (GetSession, GetSelection, SetScript, EditScript,
+//     SetParams, SetSelection, Reply, StreamReply, WaitEvents, Ack,
+//     GetAttachment, AddAsset, ReportClientFailure) read or write the live
+//     session of a
+//     running `cadpole serve`.
+//     They are marked `needs_session` and fail with a clear error when no
+//     server is reachable.
+//
+// Every rpc is unary: `WaitEvents` long-polls instead, so every front-end
+// (a shell pipeline, an MCP tool call, a fetch from the browser) can use it.
+service CadpoleOps {
+  // Evaluate a document and return the model: parameters with their effective
+  // values, the feature tree, bodies with topology and (unless `skip_mesh`)
+  // triangle meshes, and diagnostics. Script errors are diagnostics in a
+  // successful response, never an error: read `model.diagnostics`.
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse) {
+    option (cadpole.op) = {
+      cli_name: "eval",
+      idempotent: true,
+      alias: "evaluate"
+    };
+  }
+
+  // Render one image of a document with the built-in CPU rasterizer. Needs no
+  // GPU and runs identically on every platform, so an assistant can look at
+  // what it just changed. The PNG comes back in `png`.
+  rpc Render(RenderRequest) returns (RenderResponse) {
+    option (cadpole.op) = {
+      cli_name: "render",
+      idempotent: true,
+      image_field: "png"
+    };
+  }
+
+  // Render a labelled contact sheet over the cartesian product of parameter
+  // values, e.g. `{"wall": [1.6, 2.4], "height": [80, 100]}` gives four cells.
+  // Every cell is evaluated first so the whole sheet shares one camera fitted
+  // to the union of the variants, which is what makes the cells comparable.
+  // The sheet comes back in `png` and per-cell diagnostics in `cells`.
+  rpc Sweep(SweepRequest) returns (SweepResponse) {
+    option (cadpole.op) = {
+      cli_name: "sweep",
+      idempotent: true,
+      image_field: "png"
+    };
+  }
+
+  // Render an animation a document declares with `animation(name, keyframes,
+  // ...)`: the document is evaluated once per frame with the keyframes'
+  // interpolated parameter values as overrides, through one kernel-op memo,
+  // and every frame is rendered with one camera, fitted once to everything
+  // the keyframes show and moved only by a keyframe's `view(...)`. The
+  // result comes back in `data` as an APNG (the default) or a GIF, or as
+  // one PNG per frame in `frames`; the caller decides where to write it.
+  // `list` asks only what the document declares. Rendering a hundred frames
+  // of a heavy model takes minutes: an assistant should ask for `preview`,
+  // a small `size` or fewer `frames` first.
+  rpc Animate(AnimateRequest) returns (AnimateResponse) {
+    option (cadpole.op) = {
+      cli_name: "animate",
+      idempotent: true
+    };
+  }
+
+  // Export the visible bodies of a document: a mesh (stl, obj, 3mf), a
+  // scene for viewers and DCC tools (glb, gltf: named nodes, materials,
+  // one node per display layer, metres), exact surfaces (step), or a
+  // dimensioned hidden-line drawing (svg, pdf, dxf). Bodies on a hidden
+  // display layer are left out unless `include_hidden_layers` is set.
+  // The bytes come back in `data`; the caller decides where to write them.
+  // A Bambu Studio project (`flavor: "bambu"`) with `plate_images` set also
+  // renders one image per plate and a contact sheet of them, which comes
+  // back in `plate_sheet` as the picture to look at.
+  rpc Export(ExportRequest) returns (ExportResponse) {
+    option (cadpole.op) = {
+      cli_name: "export",
+      idempotent: true,
+      image_field: "plate_sheet"
+    };
+  }
+
+  // Check whether a model can actually be printed, and say where the problems
+  // are. Five checks on the tessellated bodies, each reporting positions
+  // rather than a yes/no: the surface is closed, consistently oriented and
+  // does not run through itself; no wall is thinner than the perimeters that
+  // have to fit in it; nothing overhangs past the support angle; and the part
+  // fits the build volume. Set `orient` to also be told which way up to print
+  // it and why. Printing checks are advice: this never fails because a model
+  // is unprintable, it reports.
+  rpc PrintCheck(PrintCheckRequest) returns (PrintCheckResponse) {
+    option (cadpole.op) = {
+      cli_name: "check",
+      idempotent: true,
+      alias: "print_check"
+    };
+  }
+
+  // Inspect the geometry a document produces, body by body, and say what the
+  // geometry kernel decided while making it. Use this when a model looks
+  // wrong, renders with artefacts, has lost its face names, or when a
+  // boolean produced far more faces than expected -- before reaching for the
+  // kernel's own debugging.
+  //
+  // For every body: which kernel made it (`brep`, exact surfaces, or `mesh`,
+  // triangles), how many faces, edges and triangles it has and how many
+  // faces are only one or two triangles (a face per triangle means a mesh
+  // boolean lost its provenance), its bounding box, volume and area, the
+  // solid validator's verdict with every failing check counted and located,
+  // the folds it carries (two adjacent triangles facing opposite ways -- a
+  // zero-thickness fin that is not a hole but makes the mesh kernel's
+  // self-intersection test fire), the thinnest triangle, and manifold's own
+  // self-intersection verdict beside ours, since the two disagree by design.
+  //
+  // Then the evaluation's diagnostics grouped by feature, including the
+  // kernel's notes: a boolean that ran on the engine that keeps no face
+  // provenance, a cleanup that stopped early, a tessellation that closed only
+  // at a different tolerance. Each says what happened and what it means.
+  //
+  // Read-only and deterministic: the same document gives the same report.
+  rpc Inspect(InspectRequest) returns (InspectResponse) {
+    option (cadpole.op) = {
+      cli_name: "inspect",
+      idempotent: true
+    };
+  }
+
+  // Draw a document as a 2D engineering drawing and return the file bytes.
+  //
+  // This is the drawing pipeline, not the renderer: the output is vector line
+  // work with real dimensions on it, not a picture. `view="three-view"` gives
+  // the classic sheet - front, top and right in third-angle projection plus an
+  // isometric - with hidden edges dashed and the overall sizes figured. A
+  // single view name gives just that view, and `section:z=40` cuts the model
+  // with a plane and hatches the cut face. When the script builds a drawing
+  // set with `sheet_set()`, `view="sheet:A2.0"` is that one sheet exactly as
+  // `export(set, "set.pdf")` draws it, and `view="sheets"` with
+  // `format="pdf"` is the whole set. `look="color"` with `section="z=1700"`
+  // is a floor plan the way a section render shows it, as vectors: surfaces
+  // filled in their colours, the cut filled, the script's text labels and a
+  // title, legend, scale bar and north arrow as real text.
+  //
+  // Use this when someone asks for a drawing, a plan, a dimensioned view, or a
+  // DXF or PDF to send to a shop. Use `Render` when they want to see what the
+  // model looks like.
+  rpc Drawing(DrawingRequest) returns (DrawingResponse) {
+    option (cadpole.op) = {
+      cli_name: "drawing",
+      idempotent: true,
+      alias: "draw"
+    };
+  }
+
+  // Run the tests a script declares with `test(name, fn, ...)`. Each function
+  // runs after the model is built, with its bodies and parameters in scope,
+  // and fails by raising: `assert_solid`, `assert_volume`, `assert_bbox`,
+  // `assert_printable`, `assert_close`, `assert_true`, or any script error. A
+  // test declared with `sweep={"blades": [3, 5, 7]}` runs once per value, the
+  // document re-evaluated at that value, and its result names the value that
+  // failed. `ok` is false when any result failed or the document itself did
+  // not build. Nothing here changes the document.
+  rpc RunTests(RunTestsRequest) returns (RunTestsResponse) {
+    option (cadpole.op) = {
+      cli_name: "test",
+      idempotent: true
+    };
+  }
+
+  // The Starlark API reference: every global function and type with its
+  // parameters, defaults and documentation. Read this before writing a script
+  // rather than guessing function names.
+  rpc ApiDoc(ApiDocRequest) returns (ApiDocResponse) {
+    option (cadpole.op) = {
+      cli_name: "doc",
+      idempotent: true,
+      alias: "get_api_doc"
+    };
+  }
+
+  // The live session of a running `cadpole serve`: the document and its script
+  // text, the parameter overrides, what the user has selected, the recent
+  // messages and the current `revision`. Read this before any write; the
+  // `revision` is what `SetScript` needs as its `base_revision`.
+  rpc GetSession(GetSessionRequest) returns (Session) {
+    option (cadpole.op) = {
+      cli_name: "session",
+      idempotent: true,
+      needs_session: true,
+      alias: "get_session"
+    };
+  }
+
+  // What the user is pointing at, resolved against the current model: for each
+  // selected reference a status (ok / moved / stale), the geometry it resolves
+  // to (face normal, centroid and area; edge endpoints and length) and the
+  // feature and source span that produced it. This is how an assistant turns
+  // "make this thicker" into a concrete edit.
+  rpc GetSelection(GetSelectionRequest) returns (GetSelectionResponse) {
+    option (cadpole.op) = {
+      cli_name: "selection",
+      idempotent: true,
+      needs_session: true,
+      alias: "get_selection"
+    };
+  }
+
+  // Replace one script file in the session, whole. Use this to create a file
+  // or to rewrite one from scratch; to change part of an existing file use
+  // `EditScript`. `base_revision` must equal the revision you last read; if the
+  // session has moved on the call fails with `conflict` set and the current
+  // revision and source returned, so you can rebase instead of clobbering.
+  // The server parses the script before storing it, so a syntax error is
+  // reported here rather than saved.
+  rpc SetScript(SetScriptRequest) returns (SetScriptResponse) {
+    option (cadpole.op) = {
+      cli_name: "set-script",
+      needs_session: true,
+      alias: "set_script"
+    };
+  }
+
+  // Set or clear parameter overrides on the session's document. Overrides are
+  // last-writer-wins and cheap to redo, so there is no base revision here.
+  // Prefer this over editing numbers in the script when you are exploring.
+  rpc SetParams(SetParamsRequest) returns (SetParamsResponse) {
+    option (cadpole.op) = {
+      cli_name: "set-params",
+      needs_session: true,
+      alias: "set_params"
+    };
+  }
+
+  // Replace what is selected in the UI, e.g. to point the user at the face you
+  // are talking about. Selection never bumps the document revision.
+  rpc SetSelection(SetSelectionRequest) returns (SetSelectionResponse) {
+    option (cadpole.op) = {
+      cli_name: "set-selection",
+      needs_session: true,
+      alias: "set_selection"
+    };
+  }
+
+  // Post a message to the user in the Cadpole UI, as the assistant. Short, please:
+  // it appears inline in the session's message list, not in a terminal.
+  rpc Reply(ReplyRequest) returns (ReplyResponse) {
+    option (cadpole.op) = {
+      cli_name: "reply",
+      needs_session: true,
+      alias: "msg"
+    };
+  }
+
+  // Post a message to the user as the assistant while it is still being
+  // written: the first call (with `seq` 0) starts the message, each later
+  // call appends text to it or changes its one-line `activity`, and a call
+  // with `finish` set ends it as done or failed. The UI shows the message
+  // growing. This is what a program that relays a model's output calls; an
+  // assistant that has its whole answer uses `Reply`, so this operation is
+  // hidden from `tools/list` and `GET /api/ops`.
+  //
+  // The rules, all enforced by the server. Text is only ever appended. Only
+  // the client that started a message may continue it (the token's role and
+  // the `X-Cadpole-Client` id of the call). Once a message is done or failed
+  // nothing changes it. The server sets `from` to "assistant". The text is
+  // capped at the message size limit and `activity` at 120 bytes; calls
+  // beyond a short burst are answered `throttled` and change nothing, so
+  // send a few updates a second and send the same text again after a
+  // throttled answer. A client has one message in progress at a time:
+  // starting another ends the earlier one as failed. A message that gets no
+  // call for 30 seconds, or is still open after 30 minutes, is ended as
+  // failed by the server, so send an empty call every few seconds while
+  // there is nothing to append.
+  //
+  // Updates are not session events: `WaitEvents` and `cadpole listen` see one
+  // `message` event, when the message ends, carrying the final text.
+  rpc StreamReply(StreamReplyRequest) returns (StreamReplyResponse) {
+    option (cadpole.op) = {
+      cli_name: "stream-reply",
+      needs_session: true,
+      hidden: true,
+      alias: "stream_reply"
+    };
+  }
+
+  // Post a message to the session **as the user**, with the screenshots the
+  // user attached to it. This is the human's own client speaking -- the web
+  // UI's message box -- and it is hidden from `tools/list` and `GET /api/ops`
+  // for exactly that reason: an assistant that could post as the user could
+  // answer its own questions. An assistant speaks with `Reply`, where the
+  // server sets `from` itself.
+  rpc PostMessage(PostMessageRequest) returns (PostMessageResponse) {
+    option (cadpole.op) = {
+      cli_name: "post-message",
+      needs_session: true,
+      hidden: true,
+      alias: "post_message"
+    };
+  }
+
+  // Write the session's document to the file `cadpole serve` was started with,
+  // the way the UI's Save button does. The path is the server's, fixed when it
+  // started: this operation takes no path and can write nowhere else. Fails
+  // when the server has no save path (it was given a bare script, or nothing).
+  rpc Save(SaveRequest) returns (SaveResponse) {
+    option (cadpole.op) = {
+      cli_name: "save",
+      needs_session: true
+    };
+  }
+
+  // Read session events after a cursor, once. Returns immediately if there
+  // are events with `seq > after`, otherwise waits up to `timeout_ms` and then
+  // returns an empty list. The returned `cursor` is what to pass as `after`
+  // next time; delivery is at-least-once, so dedupe by `seq`.
+  //
+  // Use it for one read: catching up on a session you have just joined,
+  // reading back `client_failure` events, or a short wait for the result of
+  // something you started. It is not to be called in a loop to wait for the
+  // user: for an assistant every call is a model turn, also when it returns
+  // nothing. To wait for the user, run `cadpole listen --next` as a
+  // background command instead; it prints nothing until there is a message
+  // to act on, prints it and exits.
+  rpc WaitEvents(WaitEventsRequest) returns (WaitEventsResponse) {
+    option (cadpole.op) = {
+      cli_name: "listen",
+      idempotent: true,
+      needs_session: true,
+      alias: "wait_event"
+    };
+  }
+
+  // Explain what an entity reference *is* and what made it: the feature that
+  // produced it, the source span of the script call, and the lineage back
+  // through the booleans and patterns that contributed to it, ending at the
+  // sketch that generated the shape. This is the op behind "what made this
+  // face"; `chain` is newest first, so `chain[0].span` is what you edit. With
+  // no reference given it explains the session's first selected entity.
+  rpc ExplainRef(ExplainRefRequest) returns (ExplainRefResponse) {
+    option (cadpole.op) = {
+      cli_name: "explain-ref",
+      idempotent: true,
+      alias: "explain_ref"
+    };
+  }
+
+  // Edit part of a script file instead of resending the whole thing. Each
+  // edit either replaces an exact, unique piece of text (`old_str` ->
+  // `new_str`), replaces a line range, or replaces the argument list of a
+  // named feature's call. Edits apply in order, under the same
+  // `base_revision` optimistic concurrency `SetScript` uses; the result is
+  // parsed before it is stored; and the response carries a unified diff plus
+  // the diagnostics from re-evaluating, so one call is edit *and* feedback.
+  // Prefer this over `SetScript` for changing an existing file.
+  rpc EditScript(EditScriptRequest) returns (EditScriptResponse) {
+    option (cadpole.op) = {
+      cli_name: "edit-script",
+      needs_session: true,
+      alias: "edit_script"
+    };
+  }
+
+  // Fetch the image a user attached to a message (a viewport screenshot).
+  // The bytes are kept out of the event stream and out of `GetSession`, so
+  // this is the only way to see the picture the user was pointing at.
+  rpc GetAttachment(GetAttachmentRequest) returns (GetAttachmentResponse) {
+    option (cadpole.op) = {
+      cli_name: "attachment",
+      idempotent: true,
+      needs_session: true,
+      image_field: "png",
+      alias: "get_attachment"
+    };
+  }
+
+  // Record how far this client has consumed the event log, server-side. The
+  // cursor outlives the client, so a reconnecting assistant resumes from it
+  // instead of losing whatever was sent while it was down. Pass the same
+  // `client` id you send in the `X-Cadpole-Client` header; `WaitEvents` with
+  // `after: 0` and that id then continues where you left off.
+  rpc Ack(AckRequest) returns (AckResponse) {
+    option (cadpole.op) = {
+      cli_name: "ack",
+      needs_session: true
+    };
+  }
+
+  // The document's asset table: the external files (an SVG to import, a
+  // floor-plan DXF, a font) that scripts reach with `asset("name")`. Bytes
+  // are not returned; read one with `GetAsset`.
+  rpc ListAssets(ListAssetsRequest) returns (ListAssetsResponse) {
+    option (cadpole.op) = {
+      cli_name: "assets-list",
+      idempotent: true,
+      alias: "list_assets"
+    };
+  }
+
+  // Add (or replace) one named asset in the session's document, so a file the
+  // user dropped becomes usable from the script as `asset("name")`. The kind
+  // is sniffed from the bytes; a declared MIME type is never trusted.
+  rpc AddAsset(AddAssetRequest) returns (AddAssetResponse) {
+    option (cadpole.op) = {
+      cli_name: "assets-add",
+      needs_session: true,
+      alias: "add_asset"
+    };
+  }
+
+  // One asset's record and, unless `metadata_only` is set, its bytes.
+  rpc GetAsset(GetAssetRequest) returns (GetAssetResponse) {
+    option (cadpole.op) = {
+      cli_name: "assets-get",
+      idempotent: true,
+      alias: "get_asset"
+    };
+  }
+
+  // Report that the front end crashed or failed, so the failure reaches the
+  // session event log at the moment the user sees it instead of being retyped
+  // into a chat message an hour later.
+  //
+  // This is what a *client* calls about itself: the web UI, an Apple app, or
+  // anything else driving the engine. Three things it exists for: a wasm panic
+  // (`CLIENT_FAILURE_KIND_WASM_PANIC`, whose `message` and `location` come
+  // from the engine's panic hook and are worth far more than the
+  // `RuntimeError: unreachable` JavaScript sees), an uncaught exception or
+  // unhandled promise rejection, and an operation that came back as an error
+  // the UI would otherwise show only in a status line. One report becomes one
+  // `client_failure` event, so `cadpole listen` and an attached assistant see it
+  // live, and it can be read back afterwards with
+  // `WaitEvents(after: 0, kinds: ["client_failure"])`.
+  //
+  // Send the user's own model and the code's own state, and nothing else: no
+  // page URL, no storage, no user agent, no script text beyond
+  // `script_digest`. Everything here is size-capped and rate-limited per
+  // session, and the response says when a report was refused or shortened
+  // rather than dropping it silently.
+  rpc ReportClientFailure(ReportClientFailureRequest) returns (ReportClientFailureResponse) {
+    option (cadpole.op) = {
+      cli_name: "report-failure",
+      needs_session: true,
+      alias: "report_client_failure"
+    };
+  }
+
+  // Run a document's pending optimisation solves as jobs, and evaluate it
+  // again as they land. A solve too long for one evaluation's
+  // budget -- or one written `solve(job=True)` -- comes back from `evaluate`
+  // with status "pending", naming a job. This starts every such solve of the
+  // document as a job (its own `cadpole` process, several at once, each with a
+  // time and memory limit), waits up to `wait_ms` for them, evaluates the
+  // document again -- which reads their answers from the solution cache and
+  // may start the next ones, for a chain of solves -- and repeats until
+  // nothing is pending or the wait is over. Jobs keep running when it
+  // returns; `list_jobs` and `wait_jobs` follow them, and a `solve_finished`
+  // event says when each lands. Never changes the document or the answer:
+  // a job's answer is the one an evaluation with time enough would get.
+  rpc Solve(SolveRequest) returns (SolveResponse) {
+    option (cadpole.op) = {
+      cli_name: "solve"
+    };
+  }
+
+  // The optimisation solve jobs on this machine: each one's id (what
+  // a pending solve names), state ("queued", "running", "done", "failed",
+  // "cancelled"), the problem and line it answers, its owner, its limits and,
+  // once it ends, the solver's status, objective and gap. Also where the
+  // solution cache is and how full. Running and queued jobs, and those that
+  // ended in the last hour, unless `all`.
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse) {
+    option (cadpole.op) = {
+      cli_name: "jobs",
+      idempotent: true,
+      alias: "list_jobs"
+    };
+  }
+
+  // Wait until optimisation solve jobs end, or `timeout_ms` passes,
+  // and return their records. With no ids, every job running or queued when
+  // the call begins. Evaluate the document afterwards to read the answers
+  // (`cadpole serve` has already done so for its own document).
+  rpc WaitJobs(WaitJobsRequest) returns (WaitJobsResponse) {
+    option (cadpole.op) = {
+      cli_name: "jobs-wait",
+      idempotent: true,
+      alias: "wait_jobs"
+    };
+  }
+
+  // Stop optimisation solve jobs: a queued one never starts, a running
+  // one is terminated, and each is recorded "cancelled", which the next
+  // evaluation reports as an error rather than starting the job again. With
+  // `forget`, the records go too, so the next evaluation runs those solves
+  // afresh -- which is also how to rerun one that failed.
+  rpc CancelJobs(CancelJobsRequest) returns (CancelJobsResponse) {
+    option (cadpole.op) = {
+      cli_name: "jobs-cancel",
+      alias: "cancel_jobs"
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sweeps. Evaluate + render a parameter grid into one contact sheet.
+// ---------------------------------------------------------------------------
+
+// The values one parameter takes across a sweep. proto3 maps cannot hold a
+// repeated value directly, hence this one-field wrapper.
+message ParamValues {
+  // In sweep order: these become the columns (first parameter) or rows.
+  repeated ParamValue values = 1;
+}
+
+message SweepRequest {
+  option (cadpole.type) = {title: "Render a parameter sweep as one contact sheet"};
+
+  // The document to sweep. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+
+  // Parameter name to the values it should take, e.g.
+  // `{"wall": {"values": [{"number": 1.6}, {"number": 2.4}]}}`. Every
+  // combination is rendered as one cell; a parameter with a single value is
+  // simply applied to every cell. Iteration order is the map's key order, and
+  // the first parameter varies fastest (it becomes the columns).
+  map<string, ParamValues> params = 2 [(cadpole.field) = {
+    flag: "param",
+    example: "wall=1.6,2.4"
+  }];
+
+  // Width of one cell in pixels (0 = 320).
+  uint32 width = 3 [(cadpole.field) = {example: "320"}];
+
+  // Height of one cell in pixels (0 = 240).
+  uint32 height = 4 [(cadpole.field) = {example: "240"}];
+
+  // Camera for every cell. Presets are fitted once to the union of all the
+  // variants' bounding boxes so the cells are directly comparable.
+  Camera camera = 5;
+
+  // Cells per row (0 = the number of values of the first parameter, which puts
+  // that parameter along the top and the second one down the side).
+  uint32 cols = 6 [(cadpole.field) = {example: "3"}];
+
+  // Anti-aliasing samples per cell (0 = draft quality: 1 sample, no ambient
+  // occlusion, no contact shadow). Sweeps trade quality for speed by default.
+  uint32 samples = 7;
+
+  // Raster worker threads (0 = auto). Never changes the image.
+  uint32 threads = 8;
+
+  // Tessellation tolerance in mm (0 = engine default).
+  double tolerance = 9;
+
+  // Refuse the sweep above this many cells (0 = 400). Sweeps are meant to be
+  // quick; a big study belongs in a job.
+  uint32 max_cells = 10;
+
+  // Turn feature edges off in every cell (see `RenderRequest.no_edges`).
+  bool no_edges = 12;
+  // Turn the ground grid off in every cell.
+  bool no_grid = 13;
+  // Disable screen-space ambient occlusion (off already in draft quality).
+  bool no_ambient_occlusion = 14;
+  // Disable the ground contact shadow (off already in draft quality).
+  bool no_contact_shadow = 15;
+  // Disable silhouette lines.
+  bool no_silhouettes = 16;
+  // Exposure multiplier applied before the tonemap (0 = default 1.0).
+  double exposure = 17;
+  // Force draft quality even when `samples` is set.
+  bool draft = 18;
+
+  // Which parameter varies along the columns, then the rows, and so on.
+  // proto3 maps are unordered, so without this the sheet's axes would depend
+  // on the caller's map iteration; names not listed here follow in sorted
+  // order, which keeps a sweep reproducible. Names not in `params` are
+  // ignored.
+  repeated string param_order = 11;
+
+  // Boolean (kernel) tolerance in mm (0 = engine default).
+  double boolean_tolerance = 19;
+  // Minimum dihedral angle in degrees for an edge to be drawn (0 = 30).
+  double edge_crease_degrees = 20;
+  // Which static edges to draw in every cell (unset = EDGE_MODE_CREASES).
+  EdgeMode edge_mode = 21;
+  // Ground grid style in every cell (unset = GRID_MODE_INFINITE).
+  GridMode grid_mode = 22;
+  // Draw every body translucent so interiors and overlaps are visible.
+  bool xray = 23;
+  // Feature-edge width in pixels (0 = the default 1.15).
+  double edge_width_px = 24;
+  // Colour of the pixels the model does not cover, in every cell, linear
+  // RGB in 0..1 (unset = the default dark grey).
+  Color background = 25;
+  // Show the studio's environment gradient behind the model instead of
+  // `background` (see `RenderRequest.show_environment`). Only a path-traced
+  // cell can show it; the rasterizer ignores it.
+  bool show_environment = 26;
+  // The light rig for every cell: "studio" (default) or "product" (see
+  // `RenderRequest.lighting`).
+  string lighting = 27 [(cadpole.field) = {example: "product"}];
+  // The surround for every cell: "studio", "white", "black" or "#rrggbb"
+  // (see `RenderRequest.backdrop`); empty keeps the defaults.
+  string backdrop = 28 [(cadpole.field) = {example: "studio"}];
+  // The floor's finish for a path-traced cell: "matte" (default), "gloss"
+  // or "none" (see `RenderRequest.floor`).
+  string floor = 29 [(cadpole.field) = {example: "gloss"}];
+  // The tone curve: "aces" (default), "neutral" or "none" (see
+  // `RenderRequest.tonemap`).
+  string tonemap = 30 [(cadpole.field) = {example: "neutral"}];
+  // The sun: a directional light with sharp shadows added to the
+  // rig. `lat,lon,YYYY-MM-DD,HH:MM[,tz]` computes it for a place, a date
+  // and a local clock time (NOAA's algorithm, to half a degree; the zone
+  // defaults to the longitude's standard zone with no daylight saving), or
+  // `az=<deg>,el=<deg>` places it by compass azimuth (0 north, 90 east,
+  // clockwise) and elevation above the horizon. Empty is no sun of the
+  // request's own: the document's `render_defaults(sun=)` if it declares
+  // one, else the rig alone. A sun below the horizon lights nothing.
+  string sun = 31 [(cadpole.field) = {example: "38,-121,2026-12-21,12:00,-8"}];
+  // Where north is in model space, in degrees clockwise from +y seen from
+  // above: 0 means +y is north (the default), 90 means +x is north. 0
+  // defers to the document's `render_defaults(north=)`, if any.
+  double north_degrees = 32 [(cadpole.field) = {flag: "north"}];
+  // Leave the backdrop out of every cell and of the sheet between them:
+  // alpha is coverage, as `RenderRequest.transparent`. The labels stay
+  // opaque.
+  bool transparent = 33;
+  // With `transparent`: keep the model's ground shadow as alpha (see
+  // `RenderRequest.shadow_catcher`).
+  bool shadow_catcher = 34;
+  // Render each cell at this many times its size and filter down (1 to 4;
+  // see `RenderRequest.supersample`).
+  uint32 supersample = 35;
+
+  // Display layers for every cell, as `RenderRequest.layers`:
+  // `envelope=off`, `terrain=0.4`.
+  repeated LayerState layers = 50 [(cadpole.field) = {flag: "layer", example: "envelope=off"}];
+}
+
+message AnimateRequest {
+  option (cadpole.type) = {title: "Render an animation a document declares"};
+
+  // The document to animate. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Which animation, by the name given to `animation(...)`. Empty means the
+  // document's only animation; with several declared the request is
+  // refused and the names are listed.
+  string name = 2 [(cadpole.field) = {example: "assemble_and_turn"}];
+  // Only list the animations the document declares (`animations`) and
+  // render nothing.
+  bool list = 3;
+  // "apng" (the default: lossless, every browser plays it, the first frame
+  // is an ordinary PNG), "gif" (a 256-colour palette over every frame,
+  // dithered; plays anywhere) or "frames" (one PNG per frame in `frames`,
+  // for ffmpeg or a viewer).
+  string format = 4 [(cadpole.field) = {example: "gif"}];
+  // Image width in pixels (0 = 800).
+  uint32 width = 5 [(cadpole.field) = {example: "800"}];
+  // Image height in pixels (0 = 600).
+  uint32 height = 6 [(cadpole.field) = {example: "600"}];
+  // The camera every frame is drawn with when no keyframe moves it: a
+  // preset or an angle pair (see `Camera.preset`), fitted once to the union
+  // of the scenes at every keyframe so nothing jumps between frames. A
+  // keyframe's `view(...)` turns the camera from this framing.
+  Camera camera = 7;
+  RenderBackend backend = 8;
+  // Raster: anti-aliasing samples per pixel (0 = default 4). Path tracing:
+  // paths per pixel (0 = 64, or 16 with `draft`).
+  uint32 samples = 9;
+  // Worker threads for each frame's render (0 = auto). Never changes the
+  // frames.
+  uint32 threads = 10;
+  // Fast preview quality: 1 sample, no ambient occlusion, no contact
+  // shadow.
+  bool draft = 11;
+  // Frame rate, overriding the animation's `fps` (0 = the declared rate).
+  double fps = 12;
+  // Render exactly this many frames over the animation's duration instead
+  // of one per 1/fps (0 = by rate). A quick look at a long animation.
+  uint32 frames = 13 [(cadpole.field) = {example: "24"}];
+  // Evaluate every frame as a drag preview: a fuse or boolean whose
+  // inputs a keyframe moves is skipped and its operands shown unfused, so an
+  // animation of a parameter that reaches into a boolean plays at the cost
+  // of the lofts alone. An animation that only poses instances is exact
+  // either way.
+  bool preview = 14;
+  // Tessellation tolerance in mm (0 = engine default).
+  double tolerance = 15;
+  // Boolean (kernel) tolerance in mm (0 = engine default).
+  double boolean_tolerance = 16;
+  // Param overrides applied to every frame, under the keyframes' values.
+  map<string, ParamValue> param_overrides = 17 [(cadpole.field) = {
+    flag: "param",
+    example: "print_layout=false"
+  }];
+  // Body ids to render; empty for all visible bodies.
+  repeated string body_ids = 18;
+
+  // The look, as `RenderRequest` takes it.
+  bool no_edges = 20;
+  bool no_grid = 21;
+  bool no_ambient_occlusion = 22;
+  bool no_contact_shadow = 23;
+  bool no_silhouettes = 24;
+  // Exposure multiplier applied before the tonemap (0 = default 1.0).
+  double exposure = 25;
+  // Colour of the pixels the model does not cover, linear RGB in 0..1.
+  Color background = 26;
+  // Path tracing: show the studio's environment gradient behind the model.
+  bool show_environment = 27;
+  // The light rig: "studio" (default) or "product" (see
+  // `RenderRequest.lighting`).
+  string lighting = 28 [(cadpole.field) = {example: "product"}];
+  // The surround: "studio", "white", "black" or "#rrggbb" (see
+  // `RenderRequest.backdrop`); empty keeps the defaults.
+  string backdrop = 29 [(cadpole.field) = {example: "studio"}];
+  // The floor's finish for a path-traced frame: "matte" (default), "gloss"
+  // or "none".
+  string floor = 30 [(cadpole.field) = {example: "gloss"}];
+  // The tone curve: "aces" (default), "neutral" or "none".
+  string tonemap = 31 [(cadpole.field) = {example: "neutral"}];
+  // Path tracing: thin-lens depth of field at this f-number (0 = pinhole).
+  double dof_f_number = 32 [(cadpole.field) = {flag: "dof"}];
+  // Bloom on highlights over display white.
+  bool bloom = 33;
+  // Path tracing: shade every crease as an edge break of this radius in mm.
+  double edge_break_mm = 34 [(cadpole.field) = {flag: "edge-break"}];
+  // Path tracing: denoise each finished frame.
+  bool denoise = 35;
+  // Path tracing: maximum scattering events per path (0 = 8).
+  uint32 max_bounces = 36;
+  // Which static edges to draw (unset = EDGE_MODE_CREASES).
+  EdgeMode edge_mode = 37;
+  // Ground grid style (unset = GRID_MODE_INFINITE).
+  GridMode grid_mode = 38;
+  // Minimum dihedral angle in degrees for an edge to be drawn (0 = 30).
+  double edge_crease_degrees = 39;
+  // Feature-edge width in pixels (0 = the default 1.15).
+  double edge_width_px = 40;
+  // Draw every body translucent.
+  bool xray = 41;
+  // The sun: a directional light with sharp shadows added to the
+  // rig. `lat,lon,YYYY-MM-DD,HH:MM[,tz]` computes it for a place, a date
+  // and a local clock time (NOAA's algorithm, to half a degree; the zone
+  // defaults to the longitude's standard zone with no daylight saving), or
+  // `az=<deg>,el=<deg>` places it by compass azimuth (0 north, 90 east,
+  // clockwise) and elevation above the horizon. Empty is no sun of the
+  // request's own: the document's `render_defaults(sun=)` if it declares
+  // one, else the rig alone. A sun below the horizon lights nothing.
+  string sun = 42 [(cadpole.field) = {example: "38,-121,2026-12-21,12:00,-8"}];
+  // Where north is in model space, in degrees clockwise from +y seen from
+  // above: 0 means +y is north (the default), 90 means +x is north. 0
+  // defers to the document's `render_defaults(north=)`, if any.
+  double north_degrees = 43 [(cadpole.field) = {flag: "north"}];
+  // Cut every body by a plane for this image only, with the cut capped:
+  // `x=22` removes everything on the +x side of x = 22 (`y=`, `z=`
+  // likewise), and `-x=22` removes the -x side instead. A body the mesh
+  // kernel cannot cut (not watertight) is drawn whole, with a warning.
+  // Empty renders the bodies whole.
+  string section = 44 [(cadpole.field) = {example: "z=40"}];
+  // Leave the backdrop out of every frame: alpha is coverage, as
+  // `RenderRequest.transparent`. An APNG and `frames` carry it; a GIF has
+  // one bit of transparency and no partial coverage, so `gif` with
+  // `transparent` is refused.
+  bool transparent = 45;
+  // With `transparent`: keep the model's ground shadow as alpha (see
+  // `RenderRequest.shadow_catcher`).
+  bool shadow_catcher = 46;
+  // Render each frame at this many times its size and filter down (1 to
+  // 4; see `RenderRequest.supersample`).
+  uint32 supersample = 47;
+
+  // Display layers for every frame, as `RenderRequest.layers`:
+  // `envelope=off`, `terrain=0.4`. A keyframe's `view(layers=)` writes over
+  // these from its time on.
+  repeated LayerState layers = 50 [(cadpole.field) = {flag: "layer", example: "envelope=off"}];
+}
+
+message AnimateResponse {
+  // The encoded animation: an APNG or a GIF, per `format`. Empty for
+  // `format = "frames"` and for `list`.
+  bytes data = 1;
+  // "apng", "gif" or "frames".
+  string format = 2;
+  // `<document>_<animation>.apng` / `.gif`, or `<document>_<animation>` as
+  // a directory stem for frames.
+  string suggested_filename = 3;
+  // One PNG per frame, in time order, for `format = "frames"`. Empty
+  // otherwise: an APNG or a GIF already carries every frame.
+  repeated AnimationFrame frames = 4;
+  uint32 width = 5;
+  uint32 height = 6;
+  // How many frames were rendered, over how many seconds, at what rate.
+  uint32 frame_count = 7;
+  double duration_s = 8;
+  double fps = 9;
+  // Whether the encoded animation loops.
+  bool loop = 10;
+  // The size of `data` in bytes (0 for frames).
+  uint64 bytes = 11;
+  // Where the time went, and what each frame cost the engine.
+  AnimationTimings timings = 12;
+  // Per frame: its time, what its evaluation ran and what its render took.
+  // The claim an animation of poses makes -- zero kernel ops and zero
+  // tessellations after the first frame -- is read off these.
+  repeated AnimationFrameStat frame_stats = 13;
+  // The kernel-op memo's account of the last frame: the shared
+  // memo's entries and bytes after the whole animation.
+  MemoReport memo = 14;
+  // The animations the document declares, always; the whole answer for
+  // `list`.
+  repeated AnimationInfo animations = 15;
+  // Diagnostics: the request's clamps, and the document's from the first
+  // frame's evaluation. An error diagnostic means nothing was rendered.
+  repeated Diagnostic diagnostics = 16;
+  // The camera the frames were rendered with, when no keyframe moved it;
+  // otherwise the first frame's.
+  Camera camera = 17;
+  // Every frame's camera, in frame order: matrices, the ground plane and
+  // the scene's box on the image (see `CameraInfo`).
+  repeated CameraInfo cameras = 18;
+}
+
+// One frame of `format = "frames"`.
+message AnimationFrame {
+  // Seconds from the start of the animation.
+  double t = 1;
+  // The frame's index, from 0.
+  uint32 index = 2;
+  bytes png = 3;
+}
+
+// What one frame cost.
+message AnimationFrameStat {
+  double t = 1;
+  double eval_ms = 2;
+  double render_ms = 3;
+  // Kernel ops that ran in this frame's evaluation (not memo hits).
+  uint32 ops_run = 4;
+  // Kernel ops served from the memo.
+  uint32 ops_hit = 5;
+  // Display tessellations made in this frame's evaluation.
+  uint32 tessellations = 6;
+  // Rigid bakes of instance bodies (a pose re-expresses the part's solid
+  // where the instance sits; no kernel op, no triangulation).
+  uint32 bakes = 7;
+}
+
+// Where an animation's time went, in milliseconds.
+message AnimationTimings {
+  double total_ms = 1;
+  // The first frame's evaluation: the one that fills the memo.
+  double first_eval_ms = 2;
+  // Every later frame's evaluation, added up.
+  double later_eval_ms = 3;
+  // Every frame's render, added up.
+  double render_ms = 4;
+  // Encoding the APNG or GIF (0 for frames).
+  double encode_ms = 5;
+  // Fitting the camera: the keyframes' evaluations.
+  double fit_ms = 6;
+}
+
+message SweepResponse {
+  // The contact sheet, PNG encoded.
+  bytes png = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  // Cells per row actually used.
+  uint32 cols = 4;
+  // One entry per cell, in sheet order (left to right, top to bottom).
+  repeated SweepCell cells = 5;
+  // Warnings about the request itself, e.g. that the cell size or the number
+  // of cells was clamped to the server's limits (docs/security.md "Render and
+  // sweep limits"). Per-cell script diagnostics are in `cells`.
+  repeated Diagnostic diagnostics = 6;
+}
+
+message SweepCell {
+  // The parameter values this cell was rendered with.
+  map<string, ParamValue> params = 1;
+  // The label drawn under the cell, e.g. "wall=1.6 height=80".
+  string label = 2;
+  // Bounding box of the variant, or unset when it produced no geometry.
+  BBox bbox = 3;
+  // Diagnostics from evaluating this variant. A cell with an error diagnostic
+  // is drawn empty.
+  repeated Diagnostic diagnostics = 4;
+  // False when the variant had an error diagnostic.
+  bool ok = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Session. `Session` mirrors the JSON the server returns from
+// `GET /api/session` field for field, so the two can never disagree.
+// ---------------------------------------------------------------------------
+
+message GetSessionRequest {}
+
+message Session {
+  option (cadpole.type) = {title: "The live session of a running `cadpole serve`"};
+
+  // Random id of this session, regenerated when the server restarts.
+  string id = 1;
+  // Monotonic counter over *content* changes (script files and parameter
+  // overrides). Selection, view state and messages do not bump it. Pass it to
+  // SetScript as `base_revision`.
+  uint64 revision = 2;
+  SessionDocument document = 3;
+  SessionSelection selection = 4;
+  // Chat between the user and the assistant, oldest first, truncated to the
+  // last 500.
+  repeated SessionMessage messages = 5;
+  // Number of connected UIs (SSE streams).
+  uint32 clients = 6;
+  // Sequence number of the newest event; a good `after` for WaitEvents.
+  uint64 last_event_seq = 7;
+  // The UI's "Listen" toggle: whether UI events are forwarded to an attached
+  // assistant. Off means the user does not want to be followed around.
+  bool assistant_listening = 8;
+  // How many front-end crashes this session has recorded (see
+  // `ReportClientFailure`). Anything but 0 means a client failed while the
+  // user was working: read them back with
+  // `WaitEvents(after: 0, kinds: ["client_failure"])` before trusting that
+  // what is on the screen is what the script says.
+  uint64 client_failures = 9;
+  // Fingerprint of the web bundle this server is currently serving.
+  //
+  // A page records it on load and compares it to every `build_changed` event,
+  // which is what makes live reload survive a server restart. A sequence
+  // number cannot: the event log restarts at 1, so a page that kept a
+  // watermark from the previous run ignores every event of the new one, and a
+  // page that kept none reloads on the replayed backlog for ever. The build is
+  // the only thing that means the same on both sides of a restart. Empty when
+  // no web directory is being served.
+  string web_build = 10;
+}
+
+message SessionDocument {
+  string id = 1;
+  string name = 2;
+  // "mm", "cm", "m", "in" or "ft".
+  string display_unit = 3;
+  // The Starlark program. `main.star` is the entry point.
+  repeated ScriptFile scripts = 4;
+  // Parameter overrides currently in force, keyed by parameter name.
+  map<string, ParamValue> param_overrides = 5;
+  // The names of the document's assets, never their bytes. A client
+  // that holds no bytes -- the browser never does -- evaluates a document
+  // that has any on the server, whose Evaluate supplies its own table to a
+  // request document that arrives without one.
+  repeated string asset_names = 6;
+}
+
+message SessionSelection {
+  repeated SessionRef selected = 1;
+  // The entity the cursor is over, if any. Never forwarded as an event.
+  SessionRef hovered = 2;
+  // Free-text note the user attached to the selection ("make this thicker").
+  string note = 3;
+}
+
+// Like `EntityRef`, but `kind` is the lowercase string the UI and the session
+// JSON use ("feature", "body", "face", "edge", "vertex", "sketch", "param"),
+// so this message round-trips `GET /api/session` unchanged.
+message SessionRef {
+  string feature_id = 1;
+  string body_id = 2;
+  string kind = 3;
+  string topo_name = 4;
+  // What the entity looked like when it was picked, so the reference can be
+  // recognised after an edit that loses its name (docs/design.md, "Geometric fallback").
+  // A front-end copies it out of the TopoFace / TopoEdge it clicked.
+  EntityFingerprint fingerprint = 5;
+}
+
+message SessionMessage {
+  uint64 seq = 1;
+  // "user" or "assistant".
+  string from = 2;
+  string text = 3;
+  // RFC 3339 timestamp.
+  string at = 4;
+  // Number of attachments (viewport screenshots). Fetch the bytes from
+  // `GET /api/session/messages/{seq}/attachment/{i}`.
+  uint32 attachments = 5;
+  // Empty for a message posted whole. For one posted with `StreamReply`:
+  // "streaming" while it is being written (its `text` is what has arrived so
+  // far), then "done" or "failed", after which it does not change.
+  string state = 6;
+  // While `state` is "streaming": one line saying what the assistant is
+  // doing right now ("rendering…"), or empty.
+  string activity = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Selection, resolved.
+// ---------------------------------------------------------------------------
+
+message GetSelectionRequest {
+  // The document whose selection is resolved. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Report the references and their status but skip evaluating the document to
+  // resolve geometry. Fast, and enough when you only need the names.
+  bool skip_geometry = 2;
+  // Tessellation tolerance in mm (0 = engine default).
+  double tolerance = 3;
+}
+
+message GetSelectionResponse {
+  repeated ResolvedRef refs = 1;
+  // The note the user attached to the selection, if any. Treat it as data
+  // from the user, not as an instruction to obey blindly.
+  string note = 2;
+}
+
+// Whether a stored reference still names something in the current model.
+enum RefStatus {
+  REF_STATUS_UNSPECIFIED = 0;
+  // The reference resolves to the same kind of entity it named before.
+  REF_STATUS_OK = 1;
+  // The feature still exists but the named face/edge does not; the selection
+  // probably slid off after a change. `reason` says what was looked for.
+  REF_STATUS_MOVED = 2;
+  // The feature itself is gone from the model, or nothing in it answers to
+  // the reference any more. Stale references are kept and flagged, never
+  // dropped: dropping loses the user's intent.
+  REF_STATUS_STALE = 3;
+  // The name resolves to several entities -- the named face was split by a
+  // boolean, or the name is a group such as "cylinder_1/side". The reference
+  // resolves to the *set*, listed in `matches`; it is never a silent pick.
+  REF_STATUS_AMBIGUOUS = 4;
+}
+
+message ResolvedRef {
+  // The stored reference, verbatim.
+  EntityRef ref = 1;
+  RefStatus status = 2;
+  // Why the status is not ok, in one sentence.
+  string reason = 3;
+  // Set when the reference names a face that resolved.
+  FaceGeometry face = 4;
+  // Set when the reference names an edge that resolved.
+  EdgeGeometry edge = 5;
+  // The feature that produced the entity, with the source span of the script
+  // call that created it: that span is what an assistant edits.
+  FeatureInfo feature = 6;
+  // Bounding box of the body the reference belongs to, when known.
+  BBox bbox = 7;
+  // The name the reference actually resolved to. Equal to `ref.topo_name` for
+  // an exact hit; the new name when the status is `moved` (found by
+  // fingerprint) or when the reference used an alias or the "face:N" form.
+  string resolved_name = 8;
+  // Every name the reference matched, when the status is `ambiguous`.
+  repeated string matches = 9;
+}
+
+message FaceGeometry {
+  // "plane", "cylinder", "cone", "sphere", "torus" or "nurbs".
+  string surface_kind = 1;
+  Vec3 centroid = 2;
+  Vec3 normal = 3;
+  // Square millimetres.
+  double area = 4;
+  // Names of the edges bounding this face.
+  repeated string edges = 5;
+}
+
+message EdgeGeometry {
+  // "line", "circle", "arc" or "nurbs".
+  string curve_kind = 1;
+  Vec3 start = 2;
+  Vec3 end = 3;
+  // Millimetres.
+  double length = 4;
+  // Names of the faces meeting at this edge.
+  repeated string faces = 5;
+}
+
+message FeatureInfo {
+  string id = 1;
+  // e.g. "sketch", "extrude", "revolve", "union", "fillet".
+  string kind = 2;
+  string name = 3;
+  // The call's arguments, stringified.
+  map<string, string> args = 4;
+  // Where in the script the call is.
+  SourceSpan span = 5;
+  // Ids of the features this one consumes.
+  repeated string inputs = 6;
+}
+
+// ---------------------------------------------------------------------------
+// ExplainRef: "what made this face".
+// ---------------------------------------------------------------------------
+
+message ExplainRefRequest {
+  option (cadpole.type) = {title: "Explain what an entity is and what made it"};
+
+  // The document the reference is resolved against. Supplied by the
+  // front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Id of the feature the entity belongs to, as it appears in a selection or
+  // in `Evaluate`'s model. Leave empty to explain whatever the session has
+  // selected.
+  string feature_id = 2 [(cadpole.field) = {positional: true, example: "lid"}];
+  // Topological name inside the body, e.g. "face:3". Empty explains the
+  // feature itself.
+  string topo_name = 3 [(cadpole.field) = {example: "face:3"}];
+  // "feature", "body", "face", "edge", "vertex", "sketch" or "param".
+  // Empty is inferred from `topo_name` ("face:3" is a face).
+  string kind = 4 [(cadpole.field) = {example: "face"}];
+  // Body the entity is in, e.g. "lid#0". Empty picks the feature's first body.
+  string body_id = 5;
+  // Tessellation tolerance in mm (0 = engine default).
+  double tolerance = 6;
+}
+
+message ExplainRefResponse {
+  // The reference that was explained, after defaults were filled in.
+  EntityRef ref = 1;
+  RefStatus status = 2;
+  // Why the status is not ok, in one sentence.
+  string reason = 3;
+  // The lineage, newest first: the feature that yielded the entity, then the
+  // features it consumed, and so on back to the generator. Follow
+  // `chain[0].span` to the line of script that made the thing the user
+  // clicked.
+  repeated Provenance chain = 4;
+  // The sketch element the chain bottoms out at, when there is one.
+  Generator generator = 5;
+  // Feature ids that contributed to the entity but are not on the direct
+  // path, e.g. the tool bodies of the booleans along the way.
+  repeated string contributors = 6;
+  // One paragraph a person (or an assistant) can read out loud. Assembled
+  // from the fields above; nothing is in here that is not also structured.
+  string summary = 7;
+  // Geometry, when the reference named a face or an edge that resolved.
+  FaceGeometry face = 8;
+  EdgeGeometry edge = 9;
+}
+
+// One step of a lineage: a feature that contributed to the entity, and how.
+message Provenance {
+  string feature_id = 1;
+  // e.g. "sketch", "extrude", "subtract", "pattern".
+  string kind = 2;
+  // How this feature contributed to the entity below it in the chain:
+  // "new" (this feature produced the entity), "merged" (a boolean combined
+  // this input into it), "copied" (a pattern or mirror repeated it) or
+  // "kept" (the entity passed through unchanged).
+  string role = 3;
+  // Where in the script this feature's call is.
+  SourceSpan span = 4;
+  // Ids of the features this one consumes.
+  repeated string inputs = 5;
+  // The call's arguments, stringified.
+  map<string, string> args = 6;
+  // The feature's user-facing name, when it has one.
+  string name = 7;
+}
+
+// The sketch element a chain bottoms out at: where the shape was drawn.
+message Generator {
+  string feature_id = 1;
+  // The name the script gave it, when it has one.
+  string local_name = 2;
+  string sketch_id = 3;
+  // Which closed loop of the sketch, and which segment of that loop. Both are
+  // always 0: per-segment provenance is not implemented. The span is exact.
+  uint32 loop = 4;
+  uint32 seg = 5;
+  SourceSpan span = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Session writes.
+// ---------------------------------------------------------------------------
+
+message SetScriptRequest {
+  option (cadpole.type) = {title: "Replace one script file in the session"};
+
+  // Bare file name inside the document, e.g. "main.star". No directories.
+  string path = 1 [(cadpole.field) = {positional: true, example: "main.star"}];
+  // The complete new source. This replaces the file. To change part of an
+  // existing file use `EditScript` instead: it is cheaper, and a whole-file
+  // rewrite is the most common way an assistant loses someone else's edit.
+  string source = 2 [(cadpole.field) = {required: true}];
+  // The `revision` you last read from GetSession. The write is refused if the
+  // session has moved on since (optimistic concurrency).
+  uint64 base_revision = 3 [(cadpole.field) = {required: true}];
+}
+
+message SetScriptResponse {
+  // The new session revision, when the write was accepted.
+  uint64 revision = 1;
+  // Diagnostics from evaluating the document after the write. An empty list
+  // means the script is clean.
+  repeated Diagnostic diagnostics = 2;
+  // Feature ids in the new model, so you can see what the edit produced.
+  repeated string features = 3;
+  // True when the write was refused because `base_revision` was stale.
+  bool conflict = 4;
+  // On conflict: the revision and source the session actually has now. Rebase
+  // your edit onto these and try again.
+  uint64 current_revision = 5;
+  string current_source = 6;
+}
+
+// One targeted change to a script file. Exactly one of the three forms is
+// used, checked in this order: `old_str`, then `start_line`, then `feature`.
+message ScriptEdit {
+  // The exact text to replace, copied from the file. It must occur exactly
+  // once unless `replace_all` is set; if it occurs zero times or more than
+  // once the whole call is refused and nothing is written, so widen the
+  // snippet until it is unique rather than guessing.
+  string old_str = 1 [(cadpole.field) = {example: "height = 10"}];
+  // What to put there. Empty deletes the text.
+  string new_str = 2 [(cadpole.field) = {example: "height = 20"}];
+  // Replace every occurrence of `old_str` instead of requiring exactly one.
+  bool replace_all = 3;
+  // Line-range form: first line to replace, 1-based and inclusive. `new_str`
+  // is the replacement text (it may be any number of lines, or empty to
+  // delete them).
+  uint32 start_line = 4 [(cadpole.field) = {example: "12"}];
+  // Last line to replace, 1-based and inclusive. 0 means `start_line`.
+  uint32 end_line = 5 [(cadpole.field) = {example: "14"}];
+  // Feature form: the id of a feature (`name=` in the script, or the
+  // generated `extrude_2`). `new_str` replaces that call's whole argument
+  // list, i.e. what is between its parentheses. Read the span from
+  // `ExplainRef` or `GetSelection` first.
+  string feature = 6 [(cadpole.field) = {example: "lid"}];
+}
+
+message EditScriptRequest {
+  option (cadpole.type) = {title: "Edit part of a script file in the session"};
+
+  // Bare file name inside the document, e.g. "main.star". No directories.
+  string path = 1 [(cadpole.field) = {positional: true, example: "main.star"}];
+  // The edits, applied in order to the file as it is now. If any of them
+  // does not apply, nothing is written and the error says which one.
+  repeated ScriptEdit edits = 2 [(cadpole.field) = {
+    flag: "edit",
+    required: true,
+    example: "{\"old_str\": \"height = 10\", \"new_str\": \"height = 20\"}"
+  }];
+  // The `revision` you last read from GetSession. The write is refused if the
+  // session has moved on since (optimistic concurrency).
+  uint64 base_revision = 3 [(cadpole.field) = {required: true}];
+}
+
+message EditScriptResponse {
+  // The new session revision, when the write was accepted.
+  uint64 revision = 1;
+  // Diagnostics from evaluating the document after the edit. An empty list
+  // means the script is clean.
+  repeated Diagnostic diagnostics = 2;
+  // Feature ids in the new model, so you can see what the edit produced.
+  repeated string features = 3;
+  // True when the write was refused because `base_revision` was stale.
+  bool conflict = 4;
+  // On conflict: the revision and source the session actually has now. Rebase
+  // your edits onto these and try again; `diff` is then the difference
+  // between the source you edited against and the current one.
+  uint64 current_revision = 5;
+  string current_source = 6;
+  // Unified diff of what changed (or, on a conflict, of what changed under
+  // you). Truncated to 200 lines.
+  string diff = 7;
+  // How many edits were applied.
+  uint32 applied = 8;
+}
+
+message SetParamsRequest {
+  option (cadpole.type) = {title: "Set or clear parameter overrides"};
+
+  // Overrides to set, keyed by parameter name. Names not mentioned keep their
+  // current override.
+  map<string, ParamValue> overrides = 1 [(cadpole.field) = {
+    flag: "param",
+    example: "wall=2.4"
+  }];
+  // Parameter names whose override should be removed, so the script's own
+  // default applies again.
+  repeated string clear = 2;
+}
+
+message SetParamsResponse {
+  uint64 revision = 1;
+  // Every override in force after the write.
+  map<string, ParamValue> param_overrides = 2;
+}
+
+message SetSelectionRequest {
+  option (cadpole.type) = {title: "Point the user at something in the viewport"};
+
+  repeated SessionRef selected = 1;
+  SessionRef hovered = 2;
+  // Replaces the user's note. Usually left empty by an assistant.
+  string note = 3;
+}
+
+message SetSelectionResponse {
+  uint64 revision = 1;
+  uint32 selected = 2;
+}
+
+message ReplyRequest {
+  // The message text, shown to the user in the Cadpole UI.
+  string text = 1 [(cadpole.field) = {positional: true, required: true}];
+}
+
+message ReplyResponse {
+  // Sequence number of the posted message.
+  uint64 seq = 1;
+}
+
+// How a `StreamReply` call leaves the message.
+enum ReplyFinish {
+  // The message stays in progress.
+  REPLY_FINISH_UNSPECIFIED = 0;
+  // The message is complete.
+  REPLY_FINISH_DONE = 1;
+  // The message ends here because something went wrong; put the one line
+  // that says what in `append`.
+  REPLY_FINISH_FAILED = 2;
+}
+
+message StreamReplyRequest {
+  option (cadpole.type) = {title: "Post a message as the assistant, a piece at a time"};
+
+  // The message to continue: the `seq` the first call returned. 0 starts a
+  // new message.
+  uint64 seq = 1 [(cadpole.field) = {flag: "seq"}];
+  // Text to add to the end of the message. May be empty.
+  string append = 2 [(cadpole.field) = {positional: true}];
+  // Replaces the message's activity line: a few plain words about what is
+  // happening now, such as "rendering…". Empty clears it. One line, at most
+  // 120 bytes. Dropped when the message ends.
+  string activity = 3;
+  // Set on the last call: `REPLY_FINISH_DONE` or `REPLY_FINISH_FAILED`.
+  ReplyFinish finish = 4;
+}
+
+message StreamReplyResponse {
+  // The message's sequence number: pass it as `seq` in the next call.
+  uint64 seq = 1;
+  // "streaming", "done" or "failed".
+  string state = 2;
+  // The size of the message's text after this call, in bytes of UTF-8.
+  uint64 length = 3;
+  // True when the call came too soon after the previous ones and changed
+  // nothing. Wait a moment and send the same `append` again.
+  bool throttled = 4;
+}
+
+message PostMessageRequest {
+  option (cadpole.type) = {title: "Post a message as the user"};
+
+  // The message text, as the user typed it.
+  string text = 1 [(cadpole.field) = {positional: true, required: true}];
+  // Viewport screenshots the user attached to this message. Hidden from the
+  // CLI and the JSON Schema: image bytes are not something a caller types.
+  repeated MessageAttachment attachments = 2 [(cadpole.field) = {hidden: true}];
+}
+
+// A viewport screenshot travelling with a message.
+//
+// The PNG is `bytes` here, not base64: the wire format is binary, so the
+// third of the payload base64 costs buys nothing. The server keeps the image
+// out of the event stream and out of `GetSession`; it comes back through
+// `GetAttachment`.
+message MessageAttachment {
+  // What the attachment is. "screenshot" is the only kind so far.
+  string kind = 1;
+  // The image itself, PNG-encoded.
+  bytes png = 2;
+  // The camera the screenshot was taken with, as a `cadpole.v1.ViewState`-shaped
+  // object, so a render can reproduce the same view.
+  google.protobuf.Struct camera = 3;
+  // Whether selection labels were drawn into the image.
+  bool annotated = 4;
+}
+
+message PostMessageResponse {
+  // The message as stored: its `seq`, `from` ("user") and timestamp, and the
+  // *number* of attachments. The bytes are not echoed back.
+  SessionMessage message = 1;
+}
+
+message SaveRequest {
+  option (cadpole.type) = {title: "Write the session's document to disk"};
+}
+
+message SaveResponse {
+  // The file that was written.
+  string path = 1;
+}
+
+
+// ---------------------------------------------------------------------------
+// Printing checks (docs/design.md, "3D-printing checks"; docs/views.md).
+// ---------------------------------------------------------------------------
+
+message RunTestsRequest {
+  option (cadpole.type) = {title: "Run a document's tests"};
+
+  // The document to test. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Run only these tests, by the name given to `test(...)`. Empty means every
+  // test the document declares. A name nothing declares is reported as a
+  // failed result, so a run that matched nothing cannot pass.
+  repeated string names = 2 [(cadpole.field) = {flag: "name", example: "fits the shelf"}];
+  // Tessellation tolerance in mm (0 = engine default). Volumes, bounding boxes
+  // and print checks are measured on the triangles.
+  double tolerance = 3;
+  // Boolean (kernel) tolerance in mm (0 = engine default).
+  double boolean_tolerance = 4;
+  // Sweep points evaluated at once (0 = the machine's cores, up to 8). Never
+  // changes the result.
+  uint32 threads = 5;
+}
+
+message RunTestsResponse {
+  // One per test without a sweep, one per point of a swept test, plus one
+  // verdict per failed `monotone=` claim, in declaration order.
+  repeated TestResult results = 1;
+  // Diagnostics from evaluating the document at its defaults (with any
+  // overrides). An error here means the model did not build and no test ran.
+  repeated Diagnostic diagnostics = 2;
+  // True when the document evaluated and every result passed.
+  bool ok = 3;
+  uint32 passed = 4;
+  uint32 failed = 5;
+  // How many `test(...)` calls the document declares, before sweeps expand.
+  uint32 declared = 6;
+}
+
+// One result of `RunTests`: a test, or one sweep point of a swept test.
+message TestResult {
+  // The name given to `test(...)`.
+  string name = 1;
+  bool ok = 2;
+  // Why it failed: the assertion's message, the script error, or the error the
+  // model raised at this sweep point. Empty on a pass.
+  string message = 3;
+  // Where: the call that raised, or the `test(...)` declaration.
+  SourceSpan span = 4;
+  // The parameter values this result was measured at. Empty for a test
+  // without a sweep.
+  map<string, ParamValue> params = 5;
+  // The same point as one string, `blades=5 wall=2`, in the order the sweep
+  // declared its parameters. Empty for a test without a sweep.
+  string label = 6;
+  // What the test function returned, when that was a number: what a
+  // `monotone=` claim is checked over.
+  optional double value = 7;
+  // How long this point's evaluation took, in ms; 0 for a test that ran in
+  // the base evaluation, whose time is the document's.
+  double eval_ms = 8;
+}
+
+message PrintCheckRequest {
+  option (cadpole.type) = {title: "Check a model for printability"};
+
+  // The document to check. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Which bodies to check, by id (`feature#n`) or by name. Empty (with
+  // `layer_names` empty too) means every visible body that is not on a
+  // hidden display layer. A body named here is checked whatever its layer.
+  repeated string body_ids = 2;
+  // Which printer to judge the model against, by name: "bambu_h2d",
+  // "bambu_h2c", "bambu_h2s", "bambu_x1c", "bambu_x1e", "bambu_p1s",
+  // "bambu_p2s", "bambu_a1", "bambu_a1_mini", "prusa_mk4" or "ender3" (short
+  // forms such as "h2d", "x1c" and "mk4" work too). The profile supplies the
+  // build volume, the nozzle, the layer height and the material; anything set
+  // below overrides it. Empty means Cadpole's defaults: a 256 mm cube, a 0.4 mm
+  // nozzle, 0.2 mm layers and PLA.
+  string printer = 12 [(cadpole.field) = {example: "bambu_a1"}];
+  // Minimum acceptable wall thickness in mm. 0 means `nozzle * perimeters`,
+  // i.e. 0.8 mm for a 0.4 mm nozzle printing two perimeters.
+  double min_wall = 3 [(cadpole.field) = {example: "0.8"}];
+  // Nozzle diameter in mm (0 = 0.4).
+  double nozzle = 4 [(cadpole.field) = {example: "0.4"}];
+  // Perimeters the slicer will print, used to derive `min_wall` (0 = 2).
+  double perimeters = 5 [(cadpole.field) = {example: "2"}];
+  // Overhang angle from vertical, in degrees, past which a surface needs
+  // support (0 = 45). A vertical wall is 0 degrees and a flat ceiling is 90.
+  double max_overhang_degrees = 6 [(cadpole.field) = {flag: "max-overhang", example: "45"}];
+  // Build volume in mm as X, Y, Z. Empty means a 256 mm cube.
+  repeated double bed = 7 [(cadpole.field) = {example: "256"}];
+  // Which way is up, as X, Y, Z. Empty means +Z.
+  repeated double build_direction = 8 [(cadpole.field) = {hidden: true}];
+  // Also score build orientations and report the best one with its reasoning.
+  bool orient = 9;
+  // Tessellation tolerance in mm (0 = engine default). Checks are run on the
+  // triangles, so a coarse tolerance measures a coarse model.
+  double tolerance = 10;
+  // Boolean (kernel) tolerance in mm (0 = engine default).
+  double boolean_tolerance = 11;
+  // Layer height in mm (0 = the printer profile's, or 0.2). Reported, and
+  // used to count how many layers tall the part is; nothing is refused for it.
+  double layer_height = 13 [(cadpole.field) = {example: "0.2"}];
+  // Filament, for the mass estimate: "PLA", "PETG", "ABS", "ASA", "TPU",
+  // "PA" or "PC". Empty means the printer profile's, or PLA.
+  string material = 14 [(cadpole.field) = {example: "PETG"}];
+  // Build plate shape: "rectangular" (the default) or "circular" for a delta,
+  // where `bed[0]` is the plate diameter.
+  string bed_shape = 15 [(cadpole.field) = {example: "circular"}];
+  // Check only the visible bodies on these display layers, by the
+  // name `layer(...)` declared; "other" is the bodies on no layer. Adds to
+  // `body_ids` rather than narrowing it. A layer the script declares hidden
+  // is checked when it is named here. An unknown name is an error listing
+  // the declared layers.
+  repeated string layer_names = 16 [(cadpole.field) = {flag: "layer", example: "walls"}];
+  // Also check the bodies on display layers the script declares hidden
+  // (`layer(..., visible=False)`). By default they are left out, as a
+  // whole-document export leaves them out: the neighbours,
+  // the building being replaced, a reference scan.
+  bool include_hidden_layers = 17;
+  // Overhang only: the longest span in mm a flat downward face may
+  // bridge between two supports and still count as a bridge, which a slicer
+  // prints without support, rather than as an overhang that needs it. 0
+  // means Cadpole's default, 10 mm (Bambu Studio's documented "max bridge
+  // length"). A negative number turns bridging off: every downward face past
+  // the overhang angle needs support.
+  double max_bridge = 18 [(cadpole.field) = {example: "10"}];
+}
+
+message PrintCheckResponse {
+  // One entry per body checked, in model order.
+  repeated BodyPrintReport bodies = 1;
+  // Diagnostics from evaluating the document. Printing findings are in each
+  // body's `issues`, not here.
+  repeated Diagnostic diagnostics = 2;
+  // False when any body has an error-severity finding.
+  bool ok = 3;
+}
+
+// Everything the checks measured and found on one body.
+message BodyPrintReport {
+  // `feature#n`.
+  string body_id = 1;
+  string name = 2;
+  uint32 triangles = 3;
+  // Enclosed volume in mm3; negative when the surface is inside out.
+  double volume_mm3 = 4;
+  double area_mm2 = 5;
+  BBox bbox = 6;
+
+  // Closed, orientable and consistently oriented.
+  bool watertight = 7;
+  // Edges belonging to only one triangle.
+  uint32 boundary_edges = 8;
+  // The rims those edges form, biggest first.
+  repeated PrintHole holes = 9;
+  // Edges where three or more triangles meet.
+  uint32 non_manifold_edges = 10;
+  // Edges whose two triangles are wound the same way.
+  uint32 flipped_edges = 11;
+  // Every normal points into the solid.
+  bool inverted_normals = 12;
+  // Pairs of triangles that pass through each other.
+  uint32 self_intersections = 13;
+  // Triangles with no area.
+  uint32 degenerate_triangles = 14;
+
+  // Thinnest wall measured, in mm.
+  double min_wall_mm = 15;
+  // Surface area over a wall thinner than the minimum, in mm2.
+  double thin_area_mm2 = 16;
+
+  // Area past the overhang threshold and not resting on the bed, in mm2.
+  double unsupported_area_mm2 = 17;
+  // Steepest overhang that is not on the bed, in degrees from vertical.
+  double max_overhang_degrees = 18;
+  // Area lying flat on the build plate, in mm2.
+  double bed_contact_area_mm2 = 19;
+
+  // Extent across the plate and along the build direction, in mm.
+  Vec3 size_mm = 20;
+  bool fits_bed = 21;
+  // Fits once turned 90 degrees on the plate.
+  bool fits_bed_rotated = 22;
+  // How far over the build volume it is on each axis, in mm.
+  Vec3 bed_excess_mm = 23;
+
+  // Everything found, worst first, each with the place to look.
+  repeated PrintIssue issues = 24;
+  // Set when `orient` was asked for.
+  PrintOrientation orientation = 25;
+  // False when any finding is an error.
+  bool ok = 26;
+  // One line for a chat reply or a CLI.
+  string summary = 27;
+
+  // The printer profile the checks judged this against, or "default".
+  string profile = 28;
+  // Solid mass in grams at the profile's material density. An upper bound:
+  // infill and perimeters make the real print lighter.
+  double mass_g = 29;
+  // How many layers tall the part is at the profile's layer height.
+  uint32 layers = 30;
+  // How to cut the part so it fits the build volume. Unset when it fits.
+  PrintSplit split = 31;
+
+  // A solid by every test `cadpole check` runs: closed, consistently oriented,
+  // and free of crossings and doubled faces. False comes with an error under
+  // check "solid" that says why.
+  bool solid = 32;
+  // Pairs of coplanar triangles lying on top of each other: a face emitted
+  // twice, or the wall two fused parts still share.
+  uint32 internal_faces = 33;
+  // Separate closed shells: 1 for a plain part, 2 for one with a cavity.
+  uint32 components = 34;
+  // Genus of the surface (0 for a ball, 1 for a ring), or -1 when the
+  // surface is not closed and has none.
+  int32 genus = 35;
+  // Set when this entry is one object of a Bambu project export made with
+  // `export(..., name=)`, checked as the one piece a slicer prints its parts
+  // as: the parts fused -- touching and overlapping parts joined,
+  // axis-aligned boxes exactly -- and every check run on the result. These
+  // are the parts' body ids, in the export's order; `body_id` is then
+  // `<export path>:<object name>` and `name` the object's name. Empty for an
+  // ordinary body.
+  repeated string fused_body_ids = 36;
+  // Area in mm2 of flat downward faces held up at both ends over a span no
+  // longer than `max_bridge_mm` -- window and door heads, lintels -- which a
+  // slicer bridges without support, so they are not in
+  // `unsupported_area_mm2`.
+  double bridge_area_mm2 = 37;
+  // The longest of those spans, in mm; 0 when there is none.
+  double longest_bridge_mm = 38;
+  // How many separate flat regions hold a bridge.
+  uint32 bridges = 39;
+  // The longest bridge the overhangs were judged against, in mm; 0 when
+  // bridging was turned off.
+  double max_bridge_mm = 40;
+}
+
+// Where to cut a part that does not fit the build volume, ready to be written
+// as a `split()` call in the script.
+message PrintSplit {
+  // The model axis to cut across: "x", "y" or "z".
+  string axis = 1;
+  // Where to cut, in model coordinates along that axis. One entry per cut.
+  repeated double cuts = 2;
+  // How many pieces the cuts make: `cuts` + 1.
+  uint32 pieces = 3;
+  // The Starlark that does it, e.g.
+  // `split(body, plane(origin=(0, 0, 128), normal=(0, 0, 1)))`.
+  string call = 4;
+}
+
+message PrintIssue {
+  // Which check found it: "solid", "watertight", "non_manifold",
+  // "orientation", "self_intersection", "internal_face", "fold",
+  // "degenerate", "thickness", "overhang", "bed_fit".
+  string check = 1;
+  // "info", "warning" or "error".
+  string severity = 2;
+  // One line, with its numbers already in it.
+  string message = 3;
+  // Where in model space to look. Unset for findings about the whole model.
+  Vec3 at = 4;
+  // The number the message quotes: mm, degrees, mm2 or a count.
+  double value = 5;
+}
+
+// A boundary loop: the rim of a hole in the surface.
+message PrintHole {
+  Vec3 center = 1;
+  double perimeter_mm = 2;
+  uint32 edges = 3;
+  BBox bbox = 4;
+}
+
+// The build orientation the scoring chose.
+message PrintOrientation {
+  // The model-space direction that should face the bed.
+  Vec3 down = 1;
+  // Where the candidate came from, e.g. "the 800 mm2 flat face".
+  string label = 2;
+  // True when this is not the orientation the script modelled.
+  bool changed = 3;
+  double unsupported_area_mm2 = 4;
+  double bed_contact_area_mm2 = 5;
+  double height_mm = 6;
+  // What it optimised and what it gave up, in one paragraph.
+  string reasoning = 7;
+}
+
+// ---------------------------------------------------------------------------
+// Inspect: what the geometry is, and what the kernel did to make it.
+// ---------------------------------------------------------------------------
+
+message InspectRequest {
+  option (cadpole.type) = {title: "Inspect the bodies of a document"};
+
+  // The document to inspect. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Which bodies to report on, by id (`feature#n`). Empty means every visible
+  // body.
+  repeated string body_ids = 2 [(cadpole.field) = {flag: "body", example: "extrude_1#0"}];
+  // Parameter overrides applied on top of the document's own, e.g. to inspect
+  // the variant that misbehaves.
+  map<string, ParamValue> param_overrides = 3 [(cadpole.field) = {
+    flag: "param",
+    example: "wall=2.4"
+  }];
+  // Tessellation tolerance in mm (0 = engine default, 0.05). The counts and
+  // the checks are measured on the triangles, so this is the accuracy they
+  // are reported to.
+  double tolerance = 4;
+  // Boolean (kernel) tolerance in mm (0 = engine default).
+  double boolean_tolerance = 5;
+}
+
+message InspectResponse {
+  // One entry per body inspected, in model order.
+  repeated BodyInspection bodies = 1;
+  // Every diagnostic the evaluation produced -- script errors and warnings,
+  // the kernel's routing infos, and the kernel's notes about what it decided
+  // -- grouped by the feature each belongs to. Diagnostics with no feature
+  // (a script error before any feature, a document-level warning) come first
+  // under an empty `feature_id`.
+  repeated FeatureDiagnostics features = 2;
+  // False when any diagnostic is an error; the bodies are then whatever was
+  // built before it.
+  bool ok = 3;
+  // The document's instances: which part each one places, where,
+  // and the posed bodies that appear under `bodies` above. Empty for a
+  // document with no assemblies.
+  repeated Instance instances = 4;
+  // The document's display convention, when the script declared one
+  // with `units(...)`: what `cadpole inspect` writes its lengths in. Every
+  // number in this message is still a millimetre.
+  DisplayUnits display_units = 5;
+}
+
+// The diagnostics of one feature, in the order they were raised.
+message FeatureDiagnostics {
+  // The feature's id (`lid`, `subtract_3`), or empty for document-level
+  // diagnostics.
+  string feature_id = 1;
+  // The feature's kind (`extrude`, `subtract`, ...); empty when `feature_id` is.
+  string kind = 2;
+  // Where in the script the feature was made.
+  SourceSpan span = 3;
+  repeated Diagnostic diagnostics = 4;
+}
+
+// Everything `Inspect` measured on one body.
+message BodyInspection {
+  // `feature#n`.
+  string body_id = 1;
+  string name = 2;
+  // The feature that made this body.
+  string feature_id = 3;
+  // "brep" (exact surfaces from the B-rep kernel) or "mesh" (triangles from
+  // the mesh kernel, or imported). A body that should be exact but reads
+  // "mesh" went through a mesh boolean; STEP export will refuse it.
+  string kind = 4;
+  // Topology faces, as named for selection. On a mesh body from the robust
+  // boolean engine this is one per triangle.
+  uint32 faces = 5;
+  uint32 edges = 6;
+  uint32 triangles = 7;
+  // Faces made of one or two triangles. A few are normal (a small planar
+  // face is two triangles); faces roughly equal to triangles means the body
+  // has lost its face provenance.
+  uint32 thin_faces = 8;
+  BBox bbox = 9;
+  // Enclosed volume in mm3, by the divergence theorem over the triangles;
+  // negative when the surface is inside out.
+  double volume_mm3 = 10;
+  double area_mm2 = 11;
+  // The solid validator's report.
+  SolidVerdict solid = 12;
+  // Smallest altitude of any triangle in mm: the width of the thinnest
+  // sliver. Below the tessellation tolerance means the cleanup left one.
+  double min_altitude_mm = 13;
+  // Where that thinnest triangle is (its centroid).
+  Vec3 min_altitude_at = 14;
+  // manifold's own answer to "does this mesh intersect itself?", the verdict
+  // its automatic engine choice routes on. It counts a fold and a micron-long
+  // crossing as self-intersection; Cadpole's validator does not. `true` here
+  // with `solid.is_solid` true and folds present is exactly the case where a
+  // boolean on this body would lose its face names.
+  bool manifold_self_intersecting = 15;
+  // False when manifold could not judge the mesh at all (not watertight
+  // after welding, or refused on import); `manifold_self_intersecting` is
+  // then meaningless.
+  bool manifold_verdict_known = 16;
+  // One line for a chat reply or a CLI.
+  string summary = 17;
+  // Faces by the analytic surface they were recognised as, in the order
+  // plane, cylinder, cone, sphere, torus, other; a class with no face is left
+  // out. "other" is a free-form surface, or every face group of a mesh body.
+  // A cylinder here is one to within a micron (cadpole_core::surface_class).
+  repeated SurfaceClassCount surfaces = 18;
+  // The chordal tolerance in mm the body's mesh was tessellated to, and
+  // where it came from: "body", "call" or "document".
+  double tolerance = 19;
+  string tolerance_source = 20;
+  // The tolerance the mesh was made at: always `tolerance`.
+  double tessellated_at = 21;
+  // The largest measured distance between a triangle and the exact surface
+  // it stands for, in mm, and the face it is on. Unset for a mesh body,
+  // whose triangles are the geometry.
+  optional double chord_error = 22;
+  string chord_error_face = 23;
+  // Where `chord_error` was found: the mesh point that sits farthest from
+  // the exact surface.
+  Vec3 chord_error_at = 24;
+}
+
+// How many of a body's faces lie on one class of analytic surface.
+message SurfaceClassCount {
+  // "plane", "cylinder", "cone", "sphere", "torus" or "other".
+  string kind = 1;
+  uint32 faces = 2;
+}
+
+// `cadpole_core::solid::SolidReport`, summarised: the verdict, what fails and
+// where, and the folds.
+message SolidVerdict {
+  // Closed, consistently oriented and embedded. Folds do not decide it.
+  bool is_solid = 1;
+  // The validator's one-line summary, warnings included.
+  string summary = 2;
+  // Every failing check with its count and the first place it was found.
+  repeated SolidCheck failing = 3;
+  // Adjacent triangle pairs facing opposite ways.
+  uint32 folds = 4;
+  // The most exactly antiparallel fold, when there is one.
+  FoldReport worst_fold = 5;
+  // The pairwise search (crossings, doubled faces) was skipped because the
+  // mesh is over the validator's pair limit; those two counts are then
+  // unknown rather than zero.
+  bool pairs_skipped = 6;
+  // Separate closed shells: 1 for a plain part, 2 for one with a cavity.
+  uint32 components = 7;
+  // Genus of the surface (0 for a ball, 1 for a ring), or -1 when the
+  // surface is not closed and has none.
+  int32 genus = 8;
+  // Triangles with no area after welding.
+  uint32 degenerate = 9;
+}
+
+// One failing property of the solid validator.
+message SolidCheck {
+  // "empty", "holes", "non-manifold", "flipped", "inside-out", "crossings"
+  // or "internal-faces": the names `cadpole check`'s allowlist keys on.
+  string check = 1;
+  // How many edges or triangle pairs fail it.
+  uint32 count = 2;
+  // The first one found, in model space. Unset for "empty" and "inside-out",
+  // which are about the whole surface.
+  Vec3 at = 3;
+  // The validator's sentence for it.
+  string message = 4;
+}
+
+// One fold: two triangles on one edge facing opposite ways.
+message FoldReport {
+  // Midpoint of the shared edge.
+  Vec3 at = 1;
+  // Distance between the two free corners in mm: 0 for an exact fin, a hair
+  // for the fin a grazing cut leaves, more for a real pleat.
+  double tip_gap_mm = 2;
+  // Dot product of the two unit normals: -1 is exactly antiparallel.
+  double dot = 3;
+  // The names of the faces the two triangles belong to.
+  string face_a = 4;
+  string face_b = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Attachments and cursors.
+// ---------------------------------------------------------------------------
+
+message GetAttachmentRequest {
+  option (cadpole.type) = {title: "Fetch a message's screenshot"};
+
+  // `seq` of the message, as it appears in `Session.messages` or in a
+  // `message` event.
+  uint64 seq = 1 [(cadpole.field) = {positional: true, required: true, example: "3"}];
+  // Which attachment of that message; 0 is the first and usually the only one.
+  uint32 index = 2 [(cadpole.field) = {example: "0"}];
+}
+
+message GetAttachmentResponse {
+  // The image itself. Front-ends hand this over as an image block (MCP) or
+  // write it to `--out` (the CLI); it is never printed as base64.
+  bytes png = 1;
+  // "screenshot" today.
+  string kind = 2;
+  // True when the user's selection was drawn onto the screenshot.
+  bool annotated = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  // The camera the screenshot was taken with, as the UI reported it. Pass it
+  // back to `Render` to reproduce the same view.
+  google.protobuf.Struct camera = 6;
+}
+
+message AckRequest {
+  option (cadpole.type) = {title: "Advance this client's event cursor"};
+
+  // Stable id of this client, the same one it sends as `X-Cadpole-Client`, e.g.
+  // "mcp:4711". Cursors are per client id, so a restarted process that keeps
+  // its id resumes where it stopped.
+  string client = 1 [(cadpole.field) = {positional: true, required: true, example: "mcp:4711"}];
+  // The highest event `seq` this client has fully handled.
+  uint64 cursor = 2 [(cadpole.field) = {required: true, example: "42"}];
+}
+
+message AckResponse {
+  string client = 1;
+  // The cursor the server now holds for this client, after clamping.
+  uint64 cursor = 2;
+  // Newest event `seq` in the log.
+  uint64 last_event_seq = 3;
+  // True when the cursor asked for was beyond the end of the log, which means
+  // the server restarted since (a new epoch). The cursor was clamped to the
+  // log; re-read the session rather than trusting what you had.
+  bool epoch_reset = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Assets: the files a document refers to by name.
+// ---------------------------------------------------------------------------
+
+message ListAssetsRequest {
+  option (cadpole.type) = {title: "List the document's assets"};
+
+  // The document whose table is listed. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+}
+
+message ListAssetsResponse {
+  // One entry per asset, sorted by name. `data` is always empty here.
+  repeated Asset assets = 1;
+  // Total size of the table, in bytes.
+  uint64 total_bytes = 2;
+  // The per-asset and whole-document caps this server enforces, in bytes.
+  uint64 max_asset_bytes = 3;
+  uint64 max_document_bytes = 4;
+}
+
+message AddAssetRequest {
+  option (cadpole.type) = {title: "Add a file to the document's assets"};
+
+  // The name scripts will use: `asset("plan.dxf")`. Replacing an existing
+  // name replaces its bytes. No directories and no "..".
+  string name = 1 [(cadpole.field) = {positional: true, required: true, example: "plan.dxf"}];
+  // The file's bytes, base64 in JSON. Capped at 32 MB per asset.
+  bytes data = 2 [(cadpole.field) = {required: true}];
+  // Where the file came from, for the record. Informational only; nothing
+  // ever reads it back off disk.
+  string source_path = 3;
+  // The `revision` you last read, or 0 to skip the check. Adding an asset
+  // changes the document, so it bumps the revision like a script write.
+  uint64 base_revision = 4;
+}
+
+message AddAssetResponse {
+  // The stored record, with the hash and the sniffed kind.
+  Asset asset = 1;
+  uint64 revision = 2;
+  bool conflict = 3;
+  uint64 current_revision = 4;
+}
+
+message GetAssetRequest {
+  option (cadpole.type) = {title: "Read one asset"};
+
+  // The document the asset belongs to. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  string name = 2 [(cadpole.field) = {positional: true, required: true, example: "plan.dxf"}];
+  // Return the record without the bytes.
+  bool metadata_only = 3;
+}
+
+message GetAssetResponse {
+  Asset asset = 1;
+  // The bytes, unless `metadata_only` was set or the document carries the
+  // record but not the content.
+  bytes data = 2;
+  // Set when the record exists but its bytes are not in this document.
+  bool bytes_missing = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Events.
+// ---------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------
+
+message DrawingRequest {
+  option (cadpole.type) = {title: "Draw a document as a dimensioned 2D drawing"};
+
+  // The document to draw. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // What to draw. "three-view" (the default) lays out front, top and right
+  // plus an isometric on one sheet. A single view name - "front", "back",
+  // "top", "bottom", "left", "right", "iso" - draws just that one.
+  // "section:z=40" (or x=/y=) cuts the model with a plane at that coordinate
+  // and hatches the cut face; the coordinate is millimetres, or any written
+  // length ("1.5in", "12'-6\"", "3.65 m"). "sheet:A2.0" is the sheet numbered
+  // A2.0 of the script's own sheet_set(), title block and all, and "sheets"
+  // every sheet of it as one PDF; of the other fields only `format`,
+  // `tolerance` and the parameters apply to a sheet.
+  string view = 2 [(cadpole.field) = {example: "three-view"}];
+  // "svg" (the default), "pdf" or "dxf".
+  string format = 3 [(cadpole.field) = {example: "svg"}];
+  // Drawing scale, as "1:2", "2:1" or the architectural form
+  // (a quarter inch to the foot). Empty fits the model to the sheet and snaps
+  // to a standard ratio.
+  string scale = 4 [(cadpole.field) = {example: "1:2"}];
+  // Paper size: "A4".."A0", "ARCH_A".."ARCH_E", "ANSI_A", "ANSI_B".
+  string sheet = 5 [(cadpole.field) = {example: "A3"}];
+  // "auto" (the default) figures the overall sizes; "none" draws no
+  // dimensions.
+  string dimensions = 6 [(cadpole.field) = {example: "auto"}];
+  // What to do with edges the solid hides: "dashed" (the default), "omit" or
+  // "solid".
+  string hidden = 7 [(cadpole.field) = {example: "dashed"}];
+  // How lengths are written: "mm" (the default), "cm", "m", "in", "ft" or
+  // "ft-in" for the architectural feet-and-inches form.
+  string units = 8 [(cadpole.field) = {example: "mm"}];
+  // Title-block title. The scale, and the document name as the project, are
+  // filled in for you.
+  string title = 9 [(cadpole.field) = {example: "Bracket"}];
+  // Empty means every visible body.
+  repeated string body_ids = 10 [(cadpole.field) = {example: "extrude_1#0"}];
+  // Tessellation tolerance in mm (0 = engine default). Finer means smoother
+  // curves in the drawing and a slower export.
+  double tolerance = 11;
+  // Parameter overrides, as `name=value`, exactly as `Render` takes them.
+  map<string, ParamValue> param_overrides = 12 [(cadpole.field) = {
+    flag: "param",
+    example: "wall=2.4"
+  }];
+  // A page of one view, when this or `section` is set: "color"
+  // (the default) draws what `Render` with a section shows, as vectors --
+  // every surface the eye sees filled in its body's colour, nearer over
+  // farther, edges as fine lines, the cut faces filled in the colour of
+  // what they cut and outlined, and labels the script made with
+  // `extrude(text(...))` written as text the size they are in the model;
+  // "lines" draws the same view as drafting: the cut hatched, what lies
+  // beyond as hidden-line-removed strokes. Then the title, `subtitle`,
+  // `legend`, a scale bar, a north arrow on a plan, `labels` and `note`
+  // around it, every word real text a PDF reader can select. On a page,
+  // `view` is a direction to look from ("top", the default, or "front",
+  // "north", ...) and `section` the cut; `dimensions` and `hidden` do not
+  // apply. With neither field set the drawing is the one `view` alone
+  // names, as before.
+  string look = 13 [(cadpole.field) = {example: "color"}];
+  // The page's cut, written the way `Render` takes it: "z=1700"
+  // removes everything above z = 1700 and looks down at what is left (a
+  // floor plan); "x=26" removes everything beyond x = 26 and looks toward -x
+  // at the cut; "-x=26" keeps that side instead; "y=" likewise. The value
+  // is model millimetres or any written length ("5'-6\""). Empty draws the
+  // whole model from `view`: a roof plan, an elevation.
+  string section = 14 [(cadpole.field) = {example: "z=1700"}];
+  // A line under the title (a page).
+  string subtitle = 15 [(cadpole.field) = {example: "Ground floor and the deck"}];
+  // A footnote along the bottom of the page.
+  string note = 16 [(cadpole.field) = {example: "North up; the street at the bottom"}];
+  // Legend swatches (a page), each "#rrggbb=what it means", in order.
+  repeated string legend = 17 [(cadpole.field) = {example: "#e39b72=exterior walls"}];
+  // Notes at points of the model (a page), each "x,y,z=text" with the
+  // point in model millimetres: written centred on where the point lands,
+  // on a white ground.
+  repeated string labels = 18 [(cadpole.field) = {flag: "label", example: "2600,4000,530=Family room"}];
+  // Display layers, as `Render` takes them: `envelope=off` hides a
+  // layer, `labels=on` shows one the script declared hidden. A page
+  // draws only what these leave visible.
+  repeated LayerState layers = 19 [(cadpole.field) = {flag: "layer", example: "envelope=off"}];
+  // Where north is, in degrees clockwise from +y seen from above, for a
+  // plan's north arrow (a page); 0 defers to the document's
+  // `render_defaults(north=)`, else +y is north.
+  double north_degrees = 20 [(cadpole.field) = {flag: "north"}];
+  // The part of the view to show (a page): "x0,y0,x1,y1" in model
+  // millimetres of the view's frame -- a plan's is the model's x and y, a
+  // section's the cut plane's own -- the page fitted to it and nothing
+  // outside it drawn. Empty shows the whole view.
+  string crop = 21 [(cadpole.field) = {example: "-2700,-900,16500,22000"}];
+  // What one unit of the script is (a page): "mm" (the default),
+  // "cm", "m", "in" or "ft". A script drawn one unit to the foot is scaled
+  // to millimetres once, here, as `cadpole bake --model-unit` scales it,
+  // so the scale, the scale bar and the label sizes are true; `section`,
+  // `crop` and `labels` are then in the script's units too, and with "ft"
+  // or "in" the page writes feet and inches unless `units` says otherwise.
+  string model_unit = 22 [(cadpole.field) = {example: "ft"}];
+}
+
+message DrawingResponse {
+  // The drawing file.
+  bytes data = 1;
+  // The format actually written.
+  string format = 2;
+  // A filename to offer, derived from the document name and the format.
+  string suggested_filename = 3;
+  // The scale the drawing ended up at, written the way a title block writes
+  // it.
+  string scale = 4;
+  // How many pieces of line work, text runs and filled regions the drawing
+  // holds. A quick sanity check that something was actually drawn.
+  uint32 items = 5;
+  // Things worth knowing about the drawing itself: a dimension that could not
+  // be placed without overlapping, a view that came out empty.
+  repeated string notes = 6;
+  // Diagnostics from evaluating the document. When any of them is an error
+  // nothing is drawn and `data` is empty.
+  repeated Diagnostic diagnostics = 7;
+}
+
+// ---------------------------------------------------------------------------
+
+message WaitEventsRequest {
+  option (cadpole.type) = {title: "Long-poll for session events"};
+
+  // Return events with `seq` greater than this. `Session.last_event_seq`
+  // starts at the tail. 0 replays the whole buffer (the last 10 000 events)
+  // *unless* `client` is set, in which case it resumes from the cursor the
+  // server holds for that id -- see `client` below, which is the field that
+  // decides what 0 means here.
+  uint64 after = 1 [(cadpole.field) = {example: "0"}];
+  // How long to wait when nothing matches yet, in milliseconds
+  // (0 = 30000, capped at 120000). There is no way to say "do not wait": 0 is
+  // taken, so a call with an empty backlog blocks for the default. A caller
+  // draining a backlog it knows is there gets it at once, because a matching
+  // event ends the wait immediately.
+  uint32 timeout_ms = 2 [(cadpole.field) = {example: "30000"}];
+  // Only return events of these kinds; empty for all. The filter decides when
+  // the poll ends as well as what it returns, so waiting for one kind is not
+  // released by traffic of another. The `cursor` in the reply still covers
+  // everything examined, matching or not -- it means "considered up to here",
+  // so changing the filter later needs an explicit `after` to see what an
+  // earlier filter passed over. Kinds are
+  // "script_changed", "params_changed", "selection_changed", "message",
+  // "client_joined", "client_left", "assistant_listening", "asset_changed",
+  // "build_changed" and "client_failure" (a front end crashed; see
+  // `ReportClientFailure`).
+  repeated string kinds = 3 [(cadpole.field) = {example: "message"}];
+  // Stable id of this client. When `after` is 0 the server resumes from the
+  // cursor it holds for this id (see `Ack`) instead of replaying the whole
+  // buffer, and events this client wrote itself are never returned to it.
+  string client = 4 [(cadpole.field) = {example: "mcp:4711"}];
+}
+
+message WaitEventsResponse {
+  repeated Event events = 1;
+  // Pass this as `after` next time. Equals the input `after` when no events
+  // arrived.
+  uint64 cursor = 2;
+  // True when the log had already dropped events at or after the `after` this
+  // call asked for, so what came back begins later than the caller wanted.
+  //
+  // The log is a window, not a history: it keeps the last 10 000 events and
+  // drops from the front. A reader that resumes from a cursor older than the
+  // window must not be served the window silently, which looks exactly like
+  // "nothing happened in between". `spec/eventlog.qnt` states the rule the
+  // reader actually depends on -- a resumer either sees every event since, or
+  // is told it cannot -- and this is the telling. `first_seq` says where the
+  // window now begins, so a reader knows what it has to re-read from scratch.
+  //
+  // Not set for `after: 0`, which is a request for the buffer rather than for
+  // a history and is answered with the buffer; `first_seq` is reported either
+  // way, which is all a reader starting from nothing needs.
+  bool truncated = 3;
+  // The oldest `seq` still in the log, or 0 when the log is empty. Meaningful
+  // whether or not `truncated` is set.
+  uint64 first_seq = 4;
+}
+
+// One thing that happened in the session. Mirrors the JSON on the SSE stream
+// (`GET /api/events`) exactly, so `cadpole listen` prints the same lines whether
+// it polls or streams.
+message Event {
+  // Strictly increasing within a session.
+  uint64 seq = 1;
+  // RFC 3339 timestamp.
+  string at = 2;
+  // "script_changed", "params_changed", "selection_changed", "message",
+  // "client_joined", "client_left", "assistant_listening", "asset_changed",
+  // "build_changed", "client_failure".
+  string kind = 3;
+  // Kind-specific payload, e.g. `{"path": "main.star", "revision": 8}` for
+  // `script_changed` or the message itself for `message`.
+  google.protobuf.Struct data = 4;
+  // Which client caused it, from the writer's `X-Cadpole-Client` header ("ui",
+  // "cli", "mcp:4711"). Empty when the server itself emitted the event. A
+  // client skips events it wrote, which is what makes "changed by someone
+  // else" true.
+  string by = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Front-end failure reports (docs/security.md, "Client failure
+// reports"). A crash in the browser has to arrive here, or nobody learns about
+// it but the person looking at the screen.
+// ---------------------------------------------------------------------------
+
+// How the front end failed. A closed vocabulary on purpose: a client cannot
+// invent a failure kind, so nothing a confused or compromised client sends can
+// masquerade as another sort of event.
+enum ClientFailureKind {
+  CLIENT_FAILURE_KIND_UNSPECIFIED = 0;
+  // A Rust panic inside the wasm engine. `message` and `location` come from
+  // the panic hook, so they say what actually went wrong and where, rather
+  // than the `RuntimeError: unreachable` the JavaScript caller sees.
+  CLIENT_FAILURE_KIND_WASM_PANIC = 1;
+  // An uncaught JavaScript exception (`window.onerror`, or a worker's
+  // `error` event).
+  CLIENT_FAILURE_KIND_EXCEPTION = 2;
+  // A promise rejected with nothing to catch it (`unhandledrejection`).
+  CLIENT_FAILURE_KIND_REJECTION = 3;
+  // An operation came back as an error: an evaluate or render that failed, a
+  // session write that was refused. The UI also shows these in a status line.
+  CLIENT_FAILURE_KIND_OPERATION_ERROR = 4;
+  // The engine could not be loaded or started at all, so the front end is
+  // running on the mock or on nothing.
+  CLIENT_FAILURE_KIND_ENGINE_UNAVAILABLE = 5;
+}
+
+// Which execution context the failure happened in. A worker's failures never
+// reach the page's handlers, so a report has to say which side it came from or
+// the same message means two different bugs.
+enum ClientSurface {
+  CLIENT_SURFACE_UNSPECIFIED = 0;
+  // The main page / document context.
+  CLIENT_SURFACE_PAGE = 1;
+  // A dedicated worker, e.g. the engine worker.
+  CLIENT_SURFACE_WORKER = 2;
+  // The service worker (caching and offline).
+  CLIENT_SURFACE_SERVICE_WORKER = 3;
+  // A front end that is not a browser at all (the iOS and macOS apps).
+  CLIENT_SURFACE_NATIVE = 4;
+}
+
+message ReportClientFailureRequest {
+  option (cadpole.type) = {title: "Report a front-end crash or failure"};
+
+  // What sort of failure this is.
+  ClientFailureKind kind = 1 [(cadpole.field) = {
+    required: true,
+    example: "CLIENT_FAILURE_KIND_WASM_PANIC"
+  }];
+  // One line saying what went wrong, as the front end has it: the panic
+  // payload for a wasm panic, `Error.message` for an exception. Capped at
+  // 2000 bytes, with control characters stripped, so a report cannot forge
+  // extra lines in the server's log.
+  string message = 2 [(cadpole.field) = {
+    required: true,
+    example: "time not implemented on this platform"
+  }];
+  // Where in the source, when the failure names a place: `file:line:column`
+  // from the Rust panic hook, or the filename and line from `window.onerror`.
+  // For a panic this is the single most actionable field in the report.
+  string location = 3 [(cadpole.field) = {example: "src/rust/cadpole-core/src/boolean.rs:412:9"}];
+  // The stack, innermost frame first, if there is one. Capped at 8000 bytes;
+  // `truncated` in the response says when that happened.
+  string stack = 4;
+  // Which execution context it came from.
+  ClientSurface surface = 5 [(cadpole.field) = {example: "CLIENT_SURFACE_PAGE"}];
+  // What the front end was doing: "evaluate", "render", "mesh", "api_doc",
+  // "startup", "save", "selection_sync", or empty when nothing in particular
+  // was running. Free text, because front ends other than the web UI have
+  // their own verbs; it is a label, never a dispatch key.
+  string operation = 6 [(cadpole.field) = {example: "evaluate"}];
+  // The session revision the front end was working from, so the report names
+  // the version of the script that crashed even after the user has edited it.
+  uint64 revision = 7 [(cadpole.field) = {example: "8"}];
+  // The parameter values in effect when it failed: the user's overrides over
+  // the script's own defaults. Without these, a panic that only happens at
+  // `wall=0.4` is not reproducible.
+  map<string, ParamValue> params = 8 [(cadpole.field) = {
+    flag: "param",
+    example: "wall=2.4"
+  }];
+  // The engine build that failed: name, version and profile. Two reports of
+  // the same panic from different builds are different bugs.
+  string engine_build = 9 [(cadpole.field) = {example: "cadpole-wasm 0.1.0 opt"}];
+  // Which engine was running: "wasm", "mock" or "native". A failure under the
+  // mock is a bug in the UI, not in the engine, and that is worth one field.
+  string engine_kind = 10 [(cadpole.field) = {example: "wasm"}];
+  // A short hex digest of the script source as the front end had it. The
+  // revision number only means something on this server and only until the
+  // user edits again; the digest pins the exact text without copying the
+  // script -- which is already in the session -- into every report.
+  string script_digest = 11 [(cadpole.field) = {example: "9f2b1c4d5e6f7a8b"}];
+  // Milliseconds since this page or worker started. Separates "it crashes on
+  // load" from "it crashed after twenty minutes of dragging a slider", which
+  // no server-side timestamp can tell you.
+  uint64 uptime_ms = 12;
+  // How many identical failures the client folded into this one before
+  // sending it. A panic in a render loop fires thousands of times a second;
+  // the client coalesces and says how many, so the count survives even though
+  // the reports do not.
+  uint32 repeat = 13;
+}
+
+message ReportClientFailureResponse {
+  // `seq` of the `client_failure` event this became, or 0 when nothing was
+  // recorded.
+  uint64 seq = 1;
+  // False when a cap refused the report. Never a silent drop: `refused` says
+  // which cap, and the server emits one throttle notice of its own so the
+  // event log shows that reports are being lost.
+  bool accepted = 2;
+  // Which cap refused it, and what to do about it. Empty when accepted.
+  string refused = 3;
+  // How many reports this session has refused so far, this one included.
+  uint64 dropped = 4;
+  // How many more reports this session will accept before the session cap is
+  // reached. A client that sees 0 should stop trying.
+  uint32 remaining = 5;
+  // Field names that were shortened to fit their caps, e.g. "stack". The
+  // report was still recorded; this says what is missing from it.
+  repeated string truncated = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Optimisation solve jobs
+
+message SolveRequest {
+  option (cadpole.type) = {title: "Run a document's pending solves as jobs"};
+
+  // The document; the session's, or the file `cadpole op --doc` names, when
+  // absent.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // How long to wait for the jobs, in milliseconds, evaluating again as they
+  // land. 0 starts them and returns at once. Capped at 120000 by `cadpole
+  // serve`, so a caller that wants longer calls `wait_jobs` (or this) again;
+  // `cadpole solve` waits as long as it takes.
+  uint32 wait_ms = 2 [(cadpole.field) = {example: "60000"}];
+  // Run again the solves whose last job failed, was cancelled, or stopped at
+  // the host's time limit, rather than report how they ended. A job's time
+  // limit is the solve's own `time_limit=` when it gives one (and its job may
+  // then keep a limited answer), else the host's: `cadpole serve
+  // --job-time-limit` (an hour by default), `cadpole solve --time-limit` (none).
+  bool rerun = 3;
+}
+
+message SolveResponse {
+  // Every job the document's solves are waiting on or had, as it now stands.
+  repeated SolveJob jobs = 1;
+  // Solves still pending when the call returned.
+  uint32 pending = 2;
+  // How many times the document was evaluated.
+  uint32 evaluations = 3;
+  // The last evaluation's diagnostics.
+  repeated Diagnostic diagnostics = 4;
+  // True when nothing is pending, no job failed, and the document evaluated
+  // without an error.
+  bool ok = 5;
+}
+
+// One optimisation solve job: a `cadpole` process answering one problem.
+message SolveJob {
+  // Twelve hex digits; what a pending solve's message names.
+  string id = 1;
+  // "queued", "running", "done", "failed" or "cancelled".
+  string state = 2;
+  // The problem's feature id and the line of its `solve()`.
+  string origin = 3;
+  // The solver's status once done: "optimal", "infeasible", "time_limit", ...
+  string status = 4;
+  optional double objective = 5;
+  // A MILP's relative gap at the end.
+  optional double gap = 6;
+  uint64 nodes = 7;
+  // Seconds it has run, or ran.
+  double elapsed_s = 8;
+  // Its time limit, in seconds; 0 for none.
+  double time_limit_s = 9;
+  // Its answer is in the solution cache.
+  bool kept = 10;
+  // How it ended, or what it is waiting for.
+  string message = 11;
+  // Which process started it, e.g. "cadpole serve (pid 812)".
+  string owner = 12;
+  // The job's own process id, while it runs.
+  uint32 pid = 13;
+  // RFC 3339.
+  string queued_at = 14;
+  string finished_at = 15;
+  uint64 variables = 16;
+  uint64 constraints = 17;
+  uint64 nonzeros = 18;
+}
+
+message SolveCache {
+  // The solution cache's directory.
+  string path = 1;
+  uint64 answers = 2;
+  uint64 bytes = 3;
+  // `CADPOLE_OPT_CACHE_MB`, in bytes.
+  uint64 cap_bytes = 4;
+}
+
+message ListJobsRequest {
+  option (cadpole.type) = {title: "List optimisation solve jobs"};
+
+  // Only these jobs; empty for all.
+  repeated string ids = 1 [(cadpole.field) = {example: "3f9a2c1b7e44"}];
+  // Include jobs that ended more than an hour ago (they are kept a week).
+  bool all = 2;
+}
+
+message ListJobsResponse {
+  // Newest first.
+  repeated SolveJob jobs = 1;
+  SolveCache cache = 2;
+}
+
+message WaitJobsRequest {
+  option (cadpole.type) = {title: "Wait for optimisation solve jobs"};
+
+  // The jobs to wait for; empty for every job running or queued now.
+  repeated string ids = 1 [(cadpole.field) = {example: "3f9a2c1b7e44"}];
+  // How long to wait, in milliseconds (0 = 30000, capped at 120000).
+  uint32 timeout_ms = 2 [(cadpole.field) = {example: "30000"}];
+}
+
+message WaitJobsResponse {
+  repeated SolveJob jobs = 1;
+  // True when none of them is still queued or running.
+  bool done = 2;
+}
+
+message CancelJobsRequest {
+  option (cadpole.type) = {title: "Stop optimisation solve jobs"};
+
+  // The jobs to stop.
+  repeated string ids = 1 [(cadpole.field) = {example: "3f9a2c1b7e44"}];
+  // Every job running or queued.
+  bool all = 2;
+  // Delete their records too, so the next evaluation runs those solves again.
+  bool forget = 3;
+}
+
+message CancelJobsResponse {
+  repeated SolveJob jobs = 1;
+}

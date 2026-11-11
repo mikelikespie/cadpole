@@ -1,0 +1,734 @@
+// The engine API. One request/response envelope is used everywhere the engine
+// is embedded: wasm (Uint8Array in, Uint8Array out), the C FFI for iOS/macOS,
+// and the local HTTP server used by the web UI and by assistants.
+syntax = "proto3";
+
+package cadpole.v1;
+
+import "cadpole/v1/document.proto";
+import "cadpole/v1/eval.proto";
+import "cadpole/v1/geometry.proto";
+import "cadpole/v1/options.proto";
+
+message Request {
+  oneof request {
+    EvaluateRequest evaluate = 1;
+    ExportRequest export = 2;
+    ApiDocRequest api_doc = 3;
+    FormatRequest format = 4;
+    RenderRequest render = 5;
+  }
+}
+
+message Response {
+  oneof response {
+    EvaluateResponse evaluate = 1;
+    ExportResponse export = 2;
+    ApiDocResponse api_doc = 3;
+    FormatResponse format = 4;
+    RenderResponse render = 5;
+    // Set when the request itself could not be processed (as opposed to
+    // script errors, which are reported as diagnostics).
+    string error = 15;
+  }
+}
+
+message EvaluateRequest {
+  option (cadpole.type) = {title: "Evaluate a document into a model"};
+
+  // The document to evaluate. Supplied by the front-end (the CLI from --doc,
+  // MCP and the server from the session), so callers never pass it.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Tessellation tolerance in mm. 0 means engine default.
+  double tolerance = 2 [(cadpole.field) = {example: "0.05"}];
+  // Skip meshes (topology only), e.g. for a headless query.
+  bool skip_mesh = 3;
+  // Boolean (kernel) tolerance in mm, separate from `tolerance` because
+  // kernel cost grows sharply as it shrinks. 0 means engine default.
+  double boolean_tolerance = 4 [(cadpole.field) = {example: "0.05"}];
+  // Asset bytes keyed by lowercase hex SHA-256, for documents whose
+  // `assets` table carries names and hashes but no bytes (the session API,
+  // the render host, wasm). Merged over the document's own packed bytes.
+  map<string, bytes> asset_data = 5 [(cadpole.field) = {hidden: true}];
+
+  // Wall-clock budget for this evaluation in milliseconds; 0 means no limit.
+  // A runaway script must not hang an embedding app (docs/security.md's
+  // evaluation `Deadline`).
+  //
+  // The Starlark interpreter checks it: every function call and every loop
+  // back-edge reports forward progress, and the deadline is tested once per
+  // thousand of those, so `for i in range(10**9)` stops with a diagnostic
+  // instead of hanging. Every Cadpole builtin checks it too, before it starts a
+  // kernel operation. What it cannot do is interrupt one already-running
+  // native operation: a single boolean that takes longer than the budget
+  // finishes first, and the deadline fires at the next check. So the bound is
+  // "budget + one kernel operation", not "budget"; `cadpole_call_cancellable`
+  // still releases the *caller* exactly on time.
+  uint64 deadline_ms = 6 [(cadpole.field) = {example: "20000"}];
+
+  // A drag preview: the UI sends this while a parameter slider is
+  // moving. A fuse or boolean whose inputs changed since the session's last
+  // evaluation is skipped and its operands are shown unfused (a union side
+  // by side, a subtract or intersect as its first operand alone), so the
+  // model follows the slider at the cost of the lofts and tessellations
+  // that actually changed. Everything unchanged comes from the session's
+  // kernel-op memo. The evaluation the UI sends when the drag ends has this
+  // false and runs in full; a preview never stores a stand-in in the memo.
+  // Without a session memo (the CLI), a preview defers every fuse.
+  bool preview = 7;
+
+  // Largest Starlark heap this evaluation may use, in bytes (0 = the engine
+  // default of 512 MB). Best-effort: checked periodically during evaluation,
+  // and it does not account for geometry held outside the Starlark heap.
+  uint64 max_heap_bytes = 30;
+
+  // Largest number of "ticks" — function calls plus loop back-edges — this
+  // evaluation may run (0 = the engine default). Deterministic, unlike the
+  // deadline, so it is what a reproducible test asserts on.
+  uint64 max_ticks = 31;
+
+  // Deepest Starlark call stack, in frames (0 = the engine default of 200).
+  uint32 max_callstack = 32;
+}
+
+message EvaluateResponse {
+  Model model = 1;
+}
+
+enum ExportFormat {
+  EXPORT_FORMAT_UNSPECIFIED = 0;
+  EXPORT_FORMAT_STL = 1;
+  EXPORT_FORMAT_OBJ = 2;
+  EXPORT_FORMAT_STEP = 3;
+  // glTF 2.0, binary: the visible bodies as named nodes under one
+  // node per display layer, each with its material, in metres with +Y up,
+  // which web viewers, game engines and DCC tools read.
+  EXPORT_FORMAT_GLB = 4;
+  // 3MF: the slicer format, with per-body and per-face colours.
+  EXPORT_FORMAT_THREEMF = 5;
+  // The 2D formats export a *drawing*, not a mesh: a dimensioned hidden-line
+  // three-view of the visible bodies. `Drawing` gives full control over the
+  // view, the scale and the sheet.
+  EXPORT_FORMAT_SVG = 6;
+  EXPORT_FORMAT_PDF = 7;
+  EXPORT_FORMAT_DXF = 8;
+  // glTF 2.0 as one JSON `.gltf` file, its buffer inline as a `data:` URI:
+  // the same content as EXPORT_FORMAT_GLB, readable as text.
+  EXPORT_FORMAT_GLTF = 9;
+}
+
+message ExportRequest {
+  option (cadpole.type) = {title: "Export bodies to a mesh file"};
+
+  // The document to export. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  ExportFormat format = 2 [(cadpole.field) = {example: "EXPORT_FORMAT_STL"}];
+  // Which bodies to write, by id (`feature#n`) or by name. Empty (with
+  // `layer_names` empty too) means every visible body that is not on a
+  // hidden display layer.
+  repeated string body_ids = 3;
+  double tolerance = 4;
+  // Also run the `export(...)` calls the script itself makes, returning one
+  // entry in `files` per call. `data` still holds the whole-document export,
+  // unless `script_exports_only` is set.
+  bool run_script_exports = 5;
+  // Boolean (kernel) tolerance in mm (0 = engine default).
+  double boolean_tolerance = 6;
+  // 3MF only. Which slicer's conventions to add alongside the 3MF core
+  // specification, so a coloured model opens already coloured:
+  // "core" writes nothing but the standard; "prusa" (the default) adds
+  // PrusaSlicer's namespaced attributes and config parts, which are valid
+  // under the core schema; "bambu" adds Bambu Studio / OrcaSlicer's
+  // `paint_color` attributes and config parts too, which are not namespaced
+  // and therefore outside the schema -- hence opt-in.
+  string slicer = 7 [(cadpole.field) = {example: "bambu"}];
+  // 3MF only. "objects" (the default) writes one 3MF object per body: a plate
+  // of separate parts. "part" merges every body into one object, each body
+  // kept as its own volume with its own filament: one multi-material part.
+  string group = 8 [(cadpole.field) = {example: "part"}];
+  // 3MF only. Which dialect to write: "standard" (the default) is a
+  // plain 3MF with the slicer paint layers above; "bambu" is a Bambu Studio
+  // *project* -- the Production extension's object files, plates in
+  // `Metadata/model_settings.config`, a filament colour list and plate
+  // thumbnails -- which opens in Bambu Studio with its plates, names,
+  // positions and colours intact and is a valid standard 3MF as well.
+  string flavor = 9 [(cadpole.field) = {example: "bambu"}];
+  // Bambu flavor only: the plate (1-based) the whole-document export lands
+  // on. 0 means plate 1. A script's own `export(..., plate=)` calls name
+  // their plates themselves.
+  uint32 plate = 10;
+  // Bambu flavor only: the machine the plate grid is laid out for and the
+  // pieces are fitted to, by the name `PrintCheck` takes ("bambu_h2d",
+  // "bambu_h2c", "bambu_x1c", "bambu_a1_mini", ...). Empty is the X1 Carbon:
+  // a 256 mm bed, 250 mm tall, its 18 x 28 mm cutter corner kept clear.
+  string printer = 11 [(cadpole.field) = {example: "bambu_h2d"}];
+  // Bambu flavor only: also render a standalone, shareable image of every
+  // plate -- the plate's parts in their filament colours standing on a light
+  // bed, from a three-quarter view -- and a contact sheet of every plate side
+  // by side with its name under it. They come back in `plate_images` and
+  // `plate_sheet` (and per script project in `files`), sized by
+  // `plate_image_width` x `plate_image_height`. A script's own
+  // `plate_images("x.3mf", ...)` declaration asks for the same thing for its
+  // project, with its own size and background, and wins over these for it.
+  bool plate_images = 12;
+  // Plate image width in pixels; 0 is 1600.
+  uint32 plate_image_width = 13 [(cadpole.field) = {example: "1600"}];
+  // Plate image height in pixels; 0 is 1200.
+  uint32 plate_image_height = 14 [(cadpole.field) = {example: "1200"}];
+  // What surrounds the plate in a plate image: "transparent" (the default;
+  // every pixel the plate and its parts do not cover has alpha 0), or one of
+  // `RenderRequest.backdrop`'s names -- "studio" (a mid grey), "white",
+  // "black" or "#rrggbb".
+  string plate_image_background = 15 [(cadpole.field) = {example: "studio"}];
+  // Which renderer draws the plate images: the rasterizer (the default,
+  // milliseconds) or the path tracer for a finished shot (seconds to
+  // minutes, real shadows). `RenderRequest.backend`'s values.
+  RenderBackend plate_image_backend = 16;
+  // Write the script's own `export(...)` calls and nothing else (implies
+  // `run_script_exports`): no whole-document export, so `data` and `bodies`
+  // come back empty and no body is meshed or checked for one. A script that
+  // exports a drawing set then meshes nothing it does not draw, and
+  // hears nothing about the chords or the closure of bodies no file holds.
+  // `cadpole export --run-exports` sets it when there is no `--out`.
+  bool script_exports_only = 17;
+  // Also write the bodies on display layers the script declares hidden
+  // (`layer(..., visible=False)`). By default a whole-document export
+  // leaves them out, as a viewer does: the neighbours, the existing
+  // building, the reference scan. A glTF marks each one hidden in its
+  // node's `extras`; a 3MF names the layer in each object's metadata. Bodies
+  // named in `body_ids` are written whatever their layer, and a script's
+  // own `export(...)` calls write what they name.
+  bool include_hidden_layers = 18;
+  // glTF only: what one unit of the script is -- "mm" (the default), "cm",
+  // "m", "in" or "ft". A script drawn in feet (`box(30, 20, 9)` for a
+  // 30 x 20-ft room) is written at its true size in metres; without this a
+  // glTF reads its feet as millimetres. `cadpole bake` takes the same flag.
+  string model_unit = 19 [(cadpole.field) = {example: "ft"}];
+  // glTF only: the display convention recorded in the file
+  // (`asset.extras.cadpole.display_units`): "mm", "cm", "m", "in", "ft" or
+  // "ft-in". Empty is the script's own `units(...)`, else ft-in for a
+  // `model_unit` of ft or in, else mm.
+  string units = 20 [(cadpole.field) = {example: "ft-in"}];
+  // Bambu flavor only: a Bambu Studio project you saved for your printer,
+  // named as one of the document's assets (a file under ./assets next to
+  // the script; `cadpole export --template` adds the file it names). The
+  // project carries that project's printer, process and filament settings
+  // -- start G-code, speeds, temperatures, flush volumes -- with the model's
+  // filament slots mapped onto its filaments, and its plates are laid out on
+  // that printer's bed. Without it the project carries Cadpole's minimal
+  // settings and the slicer fills the rest with its defaults.
+  string template = 21 [(cadpole.field) = {example: "h2d_4_colours.3mf"}];
+  // Bambu flavor only: a custom bed in mm, `[x, y]` or `[x, y, z]`,
+  // replacing the printer's for the plate grid and the fit check.
+  repeated double bed = 22;
+  // Write only the visible bodies on these display layers, by the
+  // name `layer(...)` declared; "other" is the bodies on no layer. Adds to
+  // `body_ids` rather than narrowing it, and a hidden layer named here is
+  // written. An unknown name is an error listing the declared layers.
+  repeated string layer_names = 23 [(cadpole.field) = {flag: "layer", example: "walls"}];
+}
+
+message ExportResponse {
+  bytes data = 1;
+  string suggested_filename = 2;
+  // One entry per `export(...)` call in the script, when
+  // `run_script_exports` was set.
+  repeated ExportFile files = 3;
+  // Diagnostics from evaluating the document. When any of them is an error
+  // nothing is exported and `data` and `files` are empty: a broken script
+  // must not quietly write a half-built mesh. A body whose mesh sits farther
+  // off its exact surfaces than a third of its gap to another body is a
+  // warning here, naming the tolerance to pass.
+  repeated Diagnostic diagnostics = 4;
+  // What went into `data`, body by body: triangles, the tolerance each was
+  // tessellated to and where that came from, and the chord error measured.
+  repeated ExportBodyReport bodies = 5;
+  // The standalone plate images of the Bambu project in `data`, when
+  // `plate_images` asked for them: one per plate that holds anything, in
+  // plate order. Empty otherwise.
+  repeated PlateImage plate_images = 6;
+  // The contact sheet of `plate_images`, PNG: every plate side by side, its
+  // name under it, ceil(sqrt(N)) to a row as Bambu lays plates out. Written as
+  // `<stem>_plates.png` beside the project. This is the one image the JSON
+  // front-ends hand back as a picture (`cadpole op Export --out`, the MCP image
+  // block). Empty when no plate images were asked for.
+  bytes plate_sheet = 7;
+}
+
+// A file produced by an `export(...)` call inside the script.
+message ExportFile {
+  // The path the script asked for, e.g. "out/lid.stl".
+  string path = 1;
+  bytes data = 2;
+  // What went into this file, body by body.
+  repeated ExportBodyReport bodies = 3;
+  // For a Bambu project the script also declared `plate_images(...)` for
+  // (or every project, when the request set `plate_images`): one image per
+  // plate, then the contact sheet of them in `plate_sheet`, exactly as on
+  // `ExportResponse`.
+  repeated PlateImage plate_images = 4;
+  bytes plate_sheet = 5;
+}
+
+// One standalone plate image of a Bambu Studio project: the plate's parts in
+// their filament colours on a light bed, from a three-quarter view.
+message PlateImage {
+  // The file name it is written under, beside the project:
+  // `<stem>_plate_<n>.png`, or `<stem>_plate_<n>_<name>.png` for a named
+  // plate, the name reduced to letters, digits and underscores.
+  string path = 1;
+  // The plate, 1-based.
+  uint32 plate = 2;
+  // The plate's name as the script gave it; empty for a numbered plate.
+  string plate_name = 3;
+  uint32 width = 4;
+  uint32 height = 5;
+  // PNG bytes, RGBA. Alpha is 0 around the plate for the transparent
+  // background.
+  bytes png = 6;
+}
+
+// One body of an export: how many triangles it became, at what tolerance,
+// and how far those triangles sit off the exact surfaces.
+message ExportBodyReport {
+  // `feature#n`.
+  string body_id = 1;
+  string name = 2;
+  // Triangles written for this body (0 for STEP, which writes surfaces).
+  uint32 triangles = 3;
+  // The chordal tolerance in mm the body was tessellated to.
+  double tolerance = 4;
+  // Where `tolerance` came from: "body" (`body.tessellation(tolerance=)`),
+  // "call" (`export(..., tolerance=)`) or "document" (`--tolerance`, or the
+  // 0.05 mm default) -- nearest first.
+  string tolerance_source = 5;
+  // The tolerance the mesh was made at: always `tolerance`; a face
+  // that cannot be meshed at it is refused by name.
+  double tessellated_at = 6;
+  // The largest measured distance between a triangle and the exact surface
+  // it stands for, in mm. Unset for a mesh body, whose triangles are the
+  // geometry, and for STEP.
+  optional double chord_error = 7;
+  // The face that error was found on, by its generated name.
+  string chord_error_face = 8;
+  // True for STEP: the surfaces are written exactly, and no tolerance or
+  // chord error applies.
+  bool exact = 9;
+  // Where `chord_error` was found: the mesh point (a triangle's centroid or
+  // an edge's midpoint) that sits farthest from the exact surface.
+  Vec3 chord_error_at = 10;
+}
+
+// Machine-readable description of the Starlark API, for editors and
+// assistants. The human-readable version lives in docs/starlark-api.md.
+message ApiDocRequest {}
+
+message ApiDocResponse {
+  repeated ApiFunction functions = 1;
+  repeated ApiType types = 2;
+}
+
+message ApiFunction {
+  string name = 1;
+  string doc = 2;
+  // In signature order. Entries named `/` and `*` are separators, not
+  // parameters: Python's markers for "positional-only before this" and
+  // "keyword-only after this".
+  repeated ApiParam params = 3;
+  string returns = 4;
+  // Receiver type when this is a method, else empty.
+  string on_type = 5;
+  // A value, not a callable (`math.pi`, `XY`): read it by name, do not call
+  // it. `params` is empty and `returns` is the value's type.
+  bool constant = 6;
+}
+
+message ApiParam {
+  string name = 1;
+  string type = 2;
+  string doc = 3;
+  bool required = 4;
+  string default_value = 5;
+}
+
+message ApiType {
+  string name = 1;
+  string doc = 2;
+  repeated ApiFunction methods = 3;
+  repeated ApiParam attrs = 4;
+}
+
+message FormatRequest {
+  string source = 1;
+}
+
+message FormatResponse {
+  string source = 1;
+}
+
+// A display-layer override for one render: the layer by name and
+// what to change about it. A field left unset keeps the layer's own default
+// from `layer(...)`. The empty name is the implicit layer of untagged bodies
+// (`cadpole render --layer other=off`, unless the script declares a layer
+// called `other`).
+message LayerState {
+  string name = 1;
+  // Draw the layer's bodies at all.
+  optional bool visible = 2;
+  // Draw them at this opacity, 0..1: below 1 they are ghosted, translucent
+  // the way `material(opacity=)` is, on every backend.
+  optional double opacity = 3;
+}
+
+// Camera for rendering. Either a named preset or explicit eye/target: with
+// `preset` empty and `eye` set the camera stands exactly there and looks at
+// `target` (`cadpole render --eye x,y,z --target x,y,z`) -- a neighbour's
+// window, a point on the sidewalk -- and nothing is fitted to the model.
+// Both empty takes the document's `render_defaults(camera=)`, else `iso`.
+message Camera {
+  // A named direction, an angle pair, or "" when eye/target are given instead.
+  //
+  // Names: "iso", "front", "back", "top", "bottom", "left", "right",
+  // "iso-bottom" (looking up at the underside from a corner, which is how you
+  // inspect a printed base) and "iso-back".
+  //
+  // Angles: "az=<degrees>,el=<degrees>". Azimuth turns from the front view
+  // toward the right; elevation is above the horizon, so negative looks up
+  // from below. Either may be left out. "iso" is "az=45,el=29.5".
+  string preset = 1 [(cadpole.field) = {flag: "view", example: "iso"}];
+  Vec3 eye = 2;
+  Vec3 target = 3;
+  Vec3 up = 4;
+  bool orthographic = 5;
+  double fov_degrees = 6;
+  // Extra padding around the fitted model, as a fraction of its size.
+  double fit_margin = 7;
+}
+
+enum RenderBackend {
+  RENDER_BACKEND_UNSPECIFIED = 0;
+  // Built-in CPU rasterizer: fast, deterministic, runs everywhere (wasm too).
+  RENDER_BACKEND_RASTER = 1;
+  // CPU path tracer for final-quality images (planned).
+  RENDER_BACKEND_PATH_TRACE = 2;
+}
+
+// Render a document, or the model it evaluates to. The same request can be
+// executed locally or sent to a remote `cadpole serve` for offloading.
+message RenderRequest {
+  option (cadpole.type) = {title: "Render one image of a document"};
+
+  // The document to render. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Image width in pixels (0 = 800).
+  uint32 width = 2 [(cadpole.field) = {example: "800"}];
+  // Image height in pixels (0 = 600).
+  uint32 height = 3 [(cadpole.field) = {example: "600"}];
+  Camera camera = 4;
+  RenderBackend backend = 5;
+  // Raster: anti-aliasing samples per pixel (0 = default 4; 1, 4 or 8).
+  // Path tracing: samples per pixel.
+  uint32 samples = 6;
+  // Colour of the pixels the model does not cover, linear RGB in 0..1
+  // (unset = the default dark grey). Written bit-exactly, so a contact sheet
+  // or a page background matches.
+  Color background = 7;
+  bool draw_edges = 8;
+  bool draw_grid = 9;
+  double tolerance = 10;
+  // Body ids to render; empty for all visible bodies.
+  repeated string body_ids = 11 [(cadpole.field) = {example: "extrude_1#0"}];
+  // Param overrides applied on top of the document's, for sweeps.
+  map<string, ParamValue> param_overrides = 12 [(cadpole.field) = {
+    flag: "param",
+    example: "wall=2.4"
+  }];
+  // Draw the document's selection in the highlight colour (annotated
+  // screenshot for an assistant).
+  bool highlight_selection = 13;
+  // Raster worker threads (0 = auto). Never changes the output.
+  uint32 threads = 14;
+  // Fast preview: samples = 1 (unless `samples` is set), no ambient
+  // occlusion, no contact shadow.
+  bool draft = 15;
+  // Minimum angle between the surfaces meeting at an edge, in degrees, for
+  // the raster overlay to draw that edge (0 = the default 30). Tangent seams
+  // between the patches of one smooth surface measure ~0 degrees and are
+  // never drawn.
+  double edge_crease_degrees = 16;
+  // Which static edges to draw (unset = EDGE_MODE_CREASES).
+  EdgeMode edge_mode = 17;
+  // Ground grid style (unset = GRID_MODE_INFINITE). `draw_grid = false`
+  // still turns the grid off.
+  GridMode grid_mode = 18;
+  // Draw every body translucent so interiors and overlaps are visible.
+  bool xray = 19;
+  // Disable screen-space ambient occlusion (CLI `--no-ao`).
+  bool no_ambient_occlusion = 20;
+  // Disable the ground contact shadow (CLI `--no-shadow`).
+  bool no_contact_shadow = 21;
+  // Disable silhouette lines (CLI `--no-silhouettes`).
+  bool no_silhouettes = 22;
+  // Exposure multiplier applied before the tonemap (0 = default 1.0).
+  double exposure = 23;
+  // Turn feature edges off. proto3 cannot tell "false" from "unset", and
+  // `draw_edges`/`draw_grid` both false means "defaults" (both on), so
+  // switching one off explicitly needs its own flag.
+  bool no_edges = 24;
+  // Turn the ground grid off. See `no_edges`.
+  bool no_grid = 25;
+  // Feature-edge width in pixels (0 = the default 1.15), independent of
+  // resolution and of the sample count.
+  double edge_width_px = 26;
+  // Boolean (kernel) tolerance in mm (0 = engine default). Separate from
+  // `tolerance` because kernel cost grows sharply as it shrinks.
+  double boolean_tolerance = 27;
+
+  // Path tracing: maximum surface scattering events per path (0 = the
+  // default 8). Russian roulette usually ends a path well before this.
+  // Ignored by the rasterizer.
+  uint32 max_bounces = 28;
+
+  // Colour-map a measured field over the surface instead of the bodies'
+  // materials, with a legend drawn into the image (docs/views.md, "Analysis
+  // views"). "thickness" is wall thickness against the minimum below;
+  // "overhang" is the angle from vertical against the support threshold.
+  // Empty renders materials normally.
+  string analysis = 29 [(cadpole.field) = {example: "thickness"}];
+  // Minimum wall thickness in mm for `analysis = "thickness"` (0 = two
+  // perimeters of a 0.4 mm nozzle, i.e. 0.8). The ramp is anchored on it:
+  // red below, amber at it, blue well above.
+  double min_wall = 30;
+  // Overhang angle from vertical, in degrees, past which a surface needs
+  // support, for `analysis = "overhang"` (0 = 45).
+  double max_overhang_degrees = 31;
+
+  // Path tracing: where a camera ray hits nothing, show the studio's
+  // environment gradient (the sky the lights and the reflections come from)
+  // instead of the flat `background` colour. Off by default so a path-traced
+  // image and a rasterized one share a backdrop; on, a metal or a glass has
+  // something visible to reflect. Ignored by the rasterizer.
+  bool show_environment = 32;
+
+  // Draw a debug view of the mesh instead of the part (docs/views.md, "Debug
+  // views"): "faces" colours every topology face group, so a boolean that
+  // shattered its faces shows as noise; "normals" paints the shading normal
+  // as RGB, so a surface that should read smooth shows its facets; "defects"
+  // paints the triangles the solid validator flags (crossings red, slivers
+  // orange, folds magenta) over a grey body and reports the counts as an
+  // info diagnostic; "seams" draws feature edges classified by the crease
+  // rule (creases black, smoothed seams blue); "wire" draws every triangle
+  // edge over a faint body. Debug views are flat-lit, opaque and rasterized
+  // at one sample whatever `backend`, `samples` or `xray` say, so nothing
+  // gets between the reading and the eye. Empty renders the part normally;
+  // cannot be combined with `analysis`.
+  string debug = 33 [(cadpole.field) = {example: "faces"}];
+
+  // The light rig (docs/views.md, "The product shot"). "studio" (the
+  // default, and the look of every image before it): a warm key from the
+  // front-left in world space, a cool fill, a rim from behind — the
+  // engineering look, which reads form well but lights a `back` view from
+  // behind. "product": a neutral catalogue rig that turns with the camera —
+  // key 40° to camera-left and 40° up, a large soft fill 55° to the right,
+  // a narrow rim behind — over a brighter grey surround, so a white part
+  // renders white and a glossy face has something to reflect. Both
+  // backends honour it.
+  string lighting = 34 [(cadpole.field) = {example: "product"}];
+  // The surround: "studio" (a grey cyclorama with a soft top light),
+  // "white", "black" or "#rrggbb". Sets the environment the path tracer
+  // shows and reflects, the colour of its floor, and — unless `background`
+  // is given — the rasterizer's background to the same tone, so the two
+  // backends agree. Empty keeps the rig's own gradient, the dark floor and
+  // the default background.
+  string backdrop = 35 [(cadpole.field) = {example: "studio"}];
+  // Path tracing: the floor's finish. "matte" (the default) is the matte
+  // sweep; "gloss" reflects the part faintly, as a slightly glossy table
+  // does in a product photograph; "none" removes the floor.
+  string floor = 36 [(cadpole.field) = {example: "gloss"}];
+  // The tone curve. "aces" (the default) is the ACES fit every image has
+  // had; "neutral" is Khronos PBR Neutral — hue-preserving and exact for
+  // base colours under unit light, the product-shot choice — and "none" a
+  // plain clamp.
+  string tonemap = 37 [(cadpole.field) = {example: "neutral"}];
+  // Path tracing: thin-lens depth of field at this f-number, focused on the
+  // model (a real lens for the field of view: f/8 on a 60 mm part is a
+  // gentle fall-off at the far edge of the floor, f/4 a hero shot). 0 is a
+  // pinhole, the default.
+  double dof_f_number = 38 [(cadpole.field) = {flag: "dof"}];
+  // Bloom: highlights over display white spill a little into their
+  // neighbours, so an LED reads as a light and a specular ping bleeds a
+  // pixel or two. Off by default because the halo crosses the silhouette
+  // and the backdrop next to it stops being bit-exactly `background`.
+  bool bloom = 39;
+  // Path tracing: shade every crease edge as if it carried an edge break of
+  // this radius in mm (0 = none, the default; 0.25 is a typical machined
+  // deburr), so edges catch the light as the narrow bright lines a real
+  // part shows instead of reading razor-sharp. No geometry is changed: the
+  // shading normal near a crease is blended toward the neighbouring face.
+  // A material's own `edge_break` overrides it for that body.
+  double edge_break_mm = 40 [(cadpole.field) = {flag: "edge-break"}];
+  // Path tracing: an edge-aware à-trous denoise of the finished image,
+  // guided by the first hit's normal, albedo and depth. Removes the grain
+  // that remains on glossy metals at a few hundred samples; also softens
+  // fine texture below the noise level, so use it for a still, not for
+  // judging a surface finish. Off by default.
+  bool denoise = 41;
+
+  // The sun: a directional light with sharp shadows added to the
+  // rig. `lat,lon,YYYY-MM-DD,HH:MM[,tz]` computes it for a place, a date
+  // and a local clock time (NOAA's algorithm, to half a degree; the zone
+  // defaults to the longitude's standard zone with no daylight saving), or
+  // `az=<deg>,el=<deg>` places it by compass azimuth (0 north, 90 east,
+  // clockwise) and elevation above the horizon. Empty is no sun of the
+  // request's own: the document's `render_defaults(sun=)` if it declares
+  // one, else the rig alone. A sun below the horizon lights nothing.
+  string sun = 42 [(cadpole.field) = {example: "38,-121,2026-12-21,12:00,-8"}];
+  // Where north is in model space, in degrees clockwise from +y seen from
+  // above: 0 means +y is north (the default), 90 means +x is north. 0
+  // defers to the document's `render_defaults(north=)`, if any.
+  double north_degrees = 43 [(cadpole.field) = {flag: "north"}];
+  // Cut every body by a plane for this image only, with the cut capped:
+  // `x=22` removes everything on the +x side of x = 22 (`y=`, `z=`
+  // likewise), and `-x=22` removes the -x side instead. A body the mesh
+  // kernel cannot cut (not watertight) is drawn whole, with a warning.
+  // Empty renders the bodies whole.
+  string section = 44 [(cadpole.field) = {example: "z=40"}];
+
+  // Leave the backdrop out: pixels the model does not cover are written
+  // with alpha 0, and an edge pixel's alpha is the share of it the model
+  // covers, measured by the same samples as its colour. The PNG is straight
+  // (unpremultiplied) alpha and the colour stored at an edge is the
+  // model's own, so the image composites over any colour without a fringe.
+  // The environment still lights and reflects in the model; `background`,
+  // the floor and (path tracing) `show_environment` are not drawn. Glass
+  // and translucent bodies are partly transparent. The ground grid, when
+  // drawn, is ink at its own alpha.
+  bool transparent = 45;
+  // With `transparent`: keep the shadow the model casts on the ground, as
+  // black at the alpha of the light it blocks, and nothing else of the
+  // ground. Path tracing catches the rig's and the sky's shadow; the
+  // rasterizer its contact shadow.
+  bool shadow_catcher = 46;
+  // Render at this many times the size in each direction and filter down
+  // (1 to 4; 0 = 1). For edges finer than the samples resolve: thin
+  // features, and the rasterizer's fixed 8 positions per pixel. Costs the
+  // square of it in the rasterizer; the path tracer spreads the same
+  // `samples` over the finer grid.
+  uint32 supersample = 47;
+
+  // Display layers for this image: `envelope=off` hides a layer,
+  // `terrain=0.4` ghosts one at 40 % opacity, `envelope=on` shows a layer
+  // the script declared hidden; one entry per `--layer`. A layer not named
+  // here keeps its own `layer(visible=, opacity=)` defaults.
+  repeated LayerState layers = 50 [(cadpole.field) = {flag: "layer", example: "envelope=off"}];
+}
+
+// Which static feature edges the raster overlay draws. Selection highlights
+// are drawn in every mode. See docs/views.md.
+enum EdgeMode {
+  EDGE_MODE_UNSPECIFIED = 0;
+  // No static edges; shading and occlusion carry the form.
+  EDGE_MODE_OFF = 1;
+  // Object outlines only.
+  EDGE_MODE_SILHOUETTE = 2;
+  // Outlines plus edges sharper than `edge_crease_degrees` (the default).
+  EDGE_MODE_CREASES = 3;
+  // Every feature edge, tangent seams included.
+  EDGE_MODE_ALL = 4;
+}
+
+enum GridMode {
+  GRID_MODE_UNSPECIFIED = 0;
+  GRID_MODE_OFF = 1;
+  // A square patch sized to the scene.
+  GRID_MODE_FINITE = 2;
+  // Unbounded plane, minor/major lines and coloured axes, fading with
+  // distance (the default).
+  GRID_MODE_INFINITE = 3;
+}
+
+message RenderResponse {
+  // PNG bytes.
+  bytes png = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  // The evaluated model (meshes omitted). A whole B-rep does not belong in an
+  // assistant's context, so the generated JSON front-ends leave this out and
+  // report `diagnostics` instead; typed callers still get it.
+  Model model = 4 [(cadpole.field) = {hidden: true}];
+  // Per-stage timings, for `cadpole render --stats`.
+  RenderStats stats = 5;
+  // Diagnostics from evaluating the document: the same list `model` carries,
+  // kept here so the front-ends can report them without the model. An image
+  // is still returned when a script only warns.
+  repeated Diagnostic diagnostics = 6;
+  // The camera the image was drawn with, and where the scene is in it.
+  CameraInfo camera = 7;
+}
+
+// The camera one image was drawn with, as numbers a page or a compositor
+// can use to draw in the same perspective: a ground grid under a
+// transparent render, a label pinned to a part.
+//
+// A world point `p` (model units, mm) lands on the image at
+//   clip = projection * view * (p, 1);  ndc = clip.xyz / clip.w
+//   x_px = (ndc.x + 1) / 2 * width;     y_px = (1 - ndc.y) / 2 * height
+// with pixel (0, 0) the top left corner of the image and pixel centres at
+// half-integers. Both matrices are 16 numbers in row-major order; the
+// camera looks down its own -z with +x right and +y up, and `projection`
+// is the OpenGL convention (ndc z in -1..1 between `near` and `far`).
+message CameraInfo {
+  // Frame index within an animation, and its time in seconds (0 for a
+  // still).
+  uint32 index = 1;
+  double t = 2;
+  // Image size in pixels.
+  uint32 width = 3;
+  uint32 height = 4;
+  // Where the camera stands, what it looks at, and its up direction.
+  Vec3 eye = 5;
+  Vec3 target = 6;
+  Vec3 up = 7;
+  // Vertical field of view in degrees.
+  double fov_degrees = 8;
+  bool orthographic = 9;
+  // Orthographic only: the model-space height the image spans.
+  double ortho_height = 10;
+  // World to camera, row-major 4x4.
+  repeated double view = 11;
+  // Camera to clip, row-major 4x4.
+  repeated double projection = 12;
+  double near = 13;
+  double far = 14;
+  // The ground the renderer stands the scene on: the point of it under
+  // the model's origin, its normal, and two unit axes in it (model x and
+  // y), all in model units.
+  Vec3 ground_origin = 15;
+  Vec3 ground_normal = 16;
+  Vec3 ground_u = 17;
+  Vec3 ground_v = 18;
+  // The scene's bounding box in model space.
+  Vec3 bounds_min = 19;
+  Vec3 bounds_max = 20;
+  // That box on the image: the pixel rectangle its eight corners span
+  // (`min_x, min_y, max_x, max_y`; it may reach outside the image). Empty
+  // when a corner is behind the camera.
+  repeated double bounds_px = 21;
+}
+
+// Wall-clock milliseconds spent in each stage of one render. Purely
+// informational; it never affects the image.
+message RenderStats {
+  double total_ms = 1;
+  // Tiled passes the frame was split into.
+  uint32 passes = 2;
+  uint32 threads_used = 3;
+  double geometry_ms = 4;
+  double ssao_ms = 5;
+  double contact_ms = 6;
+  double shade_ms = 7;
+  double oit_ms = 8;
+  double overlay_ms = 9;
+  // Tonemap plus resolve.
+  double resolve_ms = 10;
+}

@@ -1,0 +1,29 @@
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+package(default_visibility = ["//visibility:public"])
+
+# There is no `rustfmt_test`: formatting is not enforced. `rustfmt.toml` is
+# wired into rules_rust in .bazelrc, but rules_rust pins a nightly rustfmt
+# next to a stable compiler, and the tree is not formatted to that nightly's
+# style.
+
+exports_files([
+    "Cargo.toml",
+    "Cargo.lock",
+    "MODULE.bazel.lock",
+    "rustfmt.toml",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+])
+
+# rules_js keeps the pnpm virtual store in the package that owns pnpm-lock.yaml
+# (this one); the web UI's own deps are linked in //src/web.
+npm_link_all_packages(name = "node_modules")
+
+# Convenience aliases so `bazel run //:cadpole -- ...` works from anywhere.
+alias(
+    name = "cadpole",
+    actual = "//src/rust/cadpole-cli:cadpole",
+)

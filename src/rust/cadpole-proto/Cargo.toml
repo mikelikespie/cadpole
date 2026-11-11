@@ -1,0 +1,13 @@
+[package]
+name = "cadpole-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Generated protobuf types for Cadpole (built by Bazel via rules_rust_prost)."
+
+[dependencies]
+prost.workspace = true
+prost-types.workspace = true
+# The prost plugin is listed here so crate_universe makes it available to the
+# Bazel prost toolchain; nothing in this crate uses it directly.
+protoc-gen-prost.workspace = true

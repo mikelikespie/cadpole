@@ -1,0 +1,22 @@
+{
+  "name": "cadpole-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cadpole web UI (TypeScript + three.js WebGPU), built with Bazel (rules_js + rules_ts + rules_esbuild).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e:update": "playwright test -c e2e/playwright.config.ts --update-snapshots"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "2.15.0",
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "@bufbuild/protoc-gen-es": "2.15.0",
+    "@playwright/test": "1.63.0",
+    "@types/three": "0.186.0",
+    "typescript": "5.9.3"
+  }
+}

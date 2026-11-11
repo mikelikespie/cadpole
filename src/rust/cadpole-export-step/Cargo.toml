@@ -1,0 +1,25 @@
+[package]
+name = "cadpole-export-step"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole STEP writer: ISO 10303-21 part 21 text in the AP214 schema, written from truck B-rep solids."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+# The B-rep this crate serialises *is* truck's, so unlike the rest of Cadpole this
+# crate reads truck's geometry and topology directly rather than through
+# `cadpole_core::kernel`.
+truck-base.workspace = true
+truck-geometry.workspace = true
+truck-modeling.workspace = true
+truck-topology.workspace = true
+truck-polymesh.workspace = true
+
+[dev-dependencies]
+# Tests only: truck's own STEP *reader*. It parses what we write back into
+# truck geometry, so the round-trip test compares solids rather than strings.
+# Apache-2.0, and already in the graph (truck-shapeops depends on it), so
+# depending on it here adds no crate to the build.
+truck-stepio.workspace = true
+truck-meshalgo.workspace = true

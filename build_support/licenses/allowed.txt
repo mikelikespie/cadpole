@@ -1,0 +1,54 @@
+# Licence policy for Cadpole (Apache-2.0).
+#
+# A dependency is allowed when at least one of the licence terms it offers
+# appears here. Cadpole ships as Apache-2.0, so every term listed is one we can
+# comply with while doing that: permissive, no source-disclosure obligation,
+# no per-file copyleft.
+#
+# Deliberately NOT allowed, even as one option in a disjunction we could
+# otherwise satisfy is fine (see `r-efi`, which offers MIT OR Apache-2.0 OR
+# LGPL and is therefore allowed): GPL, AGPL, LGPL, MPL, CDDL, EPL, SSPL,
+# CC-BY-SA as the *only* term. MPL-2.0 is file-level copyleft and was how
+# webpki-roots slipped in through ureq's default TLS stack; that is why this
+# file exists.
+Apache-2.0
+MIT
+MIT-0
+BSD-2-Clause
+BSD-3-Clause
+ISC
+Zlib
+0BSD
+Unlicense
+CC0-1.0
+BSL-1.0
+Apache-2.0 WITH LLVM-exception
+# The Unicode licence (v3 and the older DFS variant) is permissive and
+# OSI-approved; it reaches us through the ICU crates behind `idna`.
+Unicode-3.0
+Unicode-DFS-2016
+# The Blue Oak Model License 1.0.0 is OSI-approved and permissive: a copyright
+# and patent grant with no source-disclosure obligation and no notice
+# requirement at all, plus a defensive patent termination of the same shape as
+# Apache-2.0 section 3. It reaches us through `tar` and its dependencies
+# (chownr, minipass, yallist), which the pinned Quint CLI uses to unpack its
+# evaluator.
+BlueOak-1.0.0
+
+# ---------------------------------------------------------------------------
+# Data-only exceptions. A `fonts-only:` term is acceptable for a *font file*
+# and for nothing else: `license_test` checks crates.tsv against the terms
+# above, which exclude these, and fonts.tsv against both lists together. No
+# linked code may ever carry one of these licences.
+#
+# OFL-1.1 (the SIL Open Font License) is here so Cadpole can bundle a real
+# typeface with `text(...)`. The OFL's copyleft-like clause binds the *font*,
+# not what is set in it or what links the renderer: the FAQ is explicit that
+# a font may be bundled with software under any licence (Q1.3), that
+# embedding a font in a document does not change the document's licence
+# (Q1.13), and that embedding in full or as a subset is allowed (Q1.12).
+# Subsetting counts as modification (Q2.6) and requires a rename only when
+# the font declares Reserved Font Names — which is why fonts.tsv records
+# that column and the test insists it be "none". Ship the licence text next
+# to every bundled face.
+fonts-only: OFL-1.1

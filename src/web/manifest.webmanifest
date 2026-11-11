@@ -1,0 +1,27 @@
+{
+  "name": "Cadpole",
+  "short_name": "Cadpole",
+  "description": "Parametric CAD for bots.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1f2023",
+  "theme_color": "#1f2023",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='28' fill='%231f2023'/%3E%3Cg transform='translate(-4.88 3.68) scale(0.95)'%3E%3Cpath d='M72 62C90 62 92 88 106 89c9 1 13-9 19-14-2 11-8 24-20 24-17 0-19-19-37-20Z' fill='%232fbf9f'/%3E%3Ccircle cx='50' cy='58' r='30' fill='%232fbf9f'/%3E%3Ccircle cx='60' cy='49' r='9.5' fill='%23fff'/%3E%3Ccircle cx='62.5' cy='49' r='4.8' fill='%230b2e2a'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' fill='%231f2023'/%3E%3Cg transform='translate(16.15 22.09) scale(0.66)'%3E%3Cpath d='M72 62C90 62 92 88 106 89c9 1 13-9 19-14-2 11-8 24-20 24-17 0-19-19-37-20Z' fill='%232fbf9f'/%3E%3Ccircle cx='50' cy='58' r='30' fill='%232fbf9f'/%3E%3Ccircle cx='60' cy='49' r='9.5' fill='%23fff'/%3E%3Ccircle cx='62.5' cy='49' r='4.8' fill='%230b2e2a'/%3E%3C/g%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

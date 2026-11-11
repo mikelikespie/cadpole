@@ -1,0 +1,18 @@
+[package]
+name = "cadpole-opt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "HiGHS (LP and MILP) behind a safe API, installed as Cadpole's solver. Native only."
+
+# The C++ library is the Bazel module `highs` (MODULE.bazel), linked by
+# //src/rust/cadpole-opt:cadpole_opt. Cargo cannot build this crate on its own, and
+# never needs to: Bazel builds Cadpole, and this file is only the workspace
+# member crate_universe reads.
+
+[lib]
+name = "cadpole_opt"
+path = "src/lib.rs"
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }

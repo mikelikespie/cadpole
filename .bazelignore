@@ -1,0 +1,6 @@
+node_modules
+site/node_modules
+spec/node_modules
+src/web/node_modules
+target
+.claude

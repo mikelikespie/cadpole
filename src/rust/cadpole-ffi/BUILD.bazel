@@ -1,0 +1,82 @@
+load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_rust//rust:defs.bzl", "rust_static_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Keep in step with Cargo.toml's [workspace.package] version and with
+# //src/apple:CadpoleVersion.
+CADPOLE_VERSION = "0.1.0"
+
+# The engine as a static library for Swift to link.
+#
+# rules_rust resolves its toolchain from the target platform, so this same
+# target produces the aarch64-apple-darwin slice under a macOS configuration and
+# the aarch64-apple-ios / -ios-sim slices under an iOS one -- the triples are
+# registered in MODULE.bazel's rust.toolchain(extra_target_triples).
+#
+# `panic = "abort"`: unwinding across `extern "C"` is undefined behaviour
+# (docs/apple-apps.md). Every entry point in src/lib.rs additionally
+# catches unwinding and converts it to CADPOLE_ERR_PANIC, which is what makes the
+# rlib used by :cadpole_ffi_test safe as well; -Cpanic=abort is the belt to that
+# braces for anything statically linked into an app.
+rust_static_library(
+    name = "cadpole_ffi",
+    srcs = glob(["src/**/*.rs"]),
+    rustc_flags = ["-Cpanic=abort"],
+    # CARGO_PKG_VERSION, which is what cadpole_version() reports and what
+    # LocalEngine asserts against (ABI rule 4). rules_rust does not read
+    # Cargo.toml, and its default is "0.0.0" -- which fails the Swift check.
+    version = CADPOLE_VERSION,
+    deps = [
+        "//src/rust/cadpole-engine:cadpole_engine",
+    ],
+)
+
+# Header for Swift/C consumers. Hand-written so we do not depend on cbindgen.
+exports_files([
+    "include/cadpole.h",
+    # //spec:names_test diffs `deadline_of`'s request arms against
+    # spec/lifecycle.qnt's FFI_BOUNDS_TODAY.
+    "src/lib.rs",
+])
+
+# `import CadpoleFFI` from Swift.
+#
+# The module map is hand-written (include/module.modulemap) rather than left to
+# the interop aspect. The generated one lands under bazel-bin and names the
+# header through eight levels of `..` into the source tree; clang cannot
+# resolve that inside a remote action's input root, so an Apple build run as a
+# remote action fails with "header '../../../../../../../../src/rust/
+# cadpole-ffi/include/cadpole.h' not found" while the same target builds fine locally
+# (where the Swift worker runs unsandboxed in the execroot and the path happens
+# to resolve). A module map beside its header has no traversal to get wrong.
+swift_interop_hint(
+    name = "cadpole_ffi_swift",
+    module_map = "include/module.modulemap",
+    module_name = "CadpoleFFI",
+)
+
+cc_library(
+    name = "cadpole_ffi_cc",
+    hdrs = [
+        "include/cadpole.h",
+        "include/module.modulemap",
+    ],
+    aspect_hints = [":cadpole_ffi_swift"],
+    includes = ["include"],
+    deps = [":cadpole_ffi"],
+)
+
+# Same sources as an rlib, so the ABI's own rules -- pointer validation,
+# single-transfer ownership, the cancel/deadline races -- are tested by
+# `bazel test //src/rust/...` with no Apple toolchain in sight.
+rust_test(
+    name = "cadpole_ffi_test",
+    size = "small",  # 0.2 s
+    srcs = glob(["src/**/*.rs"]),
+    version = CADPOLE_VERSION,
+    deps = [
+        "//src/rust/cadpole-engine:cadpole_engine",
+    ],
+)

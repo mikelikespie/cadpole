@@ -1,0 +1,133 @@
+#!/bin/sh
+# Put `cadpole` on PATH.
+#
+#   bin/install                 ~/.local/bin/cadpole -> this checkout's bin/cadpole,
+#                               which rebuilds when the checkout changes
+#   bin/install --prefix DIR    the same in DIR
+#   bin/install --copy          a standalone copy of the built CLI instead, which
+#                               keeps working if the checkout moves or goes away
+#   bin/install --uninstall     remove what either form installed
+#
+# Running it again is harmless: it replaces what it installed before.
+
+set -eu
+
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+CADPOLE_ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
+
+usage() {
+    sed -n '2,12s/^# \{0,1\}//p' "$CADPOLE_ROOT/bin/install"
+}
+
+prefix=${HOME:?HOME is not set}/.local/bin
+mode='link'
+while [ $# -gt 0 ]; do
+    case $1 in
+        --prefix)
+            [ $# -ge 2 ] || { usage >&2; exit 2; }
+            prefix=$2
+            shift 2
+            ;;
+        --prefix=*) prefix=${1#--prefix=}; shift ;;
+        --copy) mode=copy; shift ;;
+        --uninstall) mode=uninstall; shift ;;
+        -h | --help) usage; exit 0 ;;
+        *) echo "install: unknown argument $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+# shellcheck source=lib/preflight.sh
+. "$CADPOLE_ROOT/bin/lib/preflight.sh"
+# shellcheck source=lib/build.sh
+. "$CADPOLE_ROOT/bin/lib/build.sh"
+
+target=$prefix/cadpole
+# A copy keeps the CLI and its runfiles (the web UI) together here, and
+# $target is a two-line launcher: the CLI finds its runfiles beside the path
+# it was started by, so it has to be started by its full path.
+share=${XDG_DATA_HOME:-$HOME/.local/share}/cadpole
+launcher_mark="# cadpole launcher, written by bin/install --copy"
+
+# What is at $target, if this script put it there: "link", "copy" or "".
+installed_kind() {
+    if [ -L "$target" ]; then
+        case $(readlink "$target") in */bin/cadpole) echo link; return ;; esac
+    elif [ -f "$target" ] && grep -q "^$launcher_mark" "$target" 2>/dev/null; then
+        echo copy
+        return
+    fi
+    echo
+}
+
+remove_installed() {
+    case $(installed_kind) in
+        link) rm -f "$target" ;;
+        copy) rm -f "$target"; rm -rf "$share" ;;
+        *) return 1 ;;
+    esac
+}
+
+if [ "$mode" = uninstall ]; then
+    if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+        echo "nothing to remove: $target does not exist" >&2
+        exit 0
+    fi
+    if remove_installed; then
+        echo "removed $target" >&2
+        exit 0
+    fi
+    echo "install: $target was not installed by bin/install; leaving it" >&2
+    exit 1
+fi
+
+preflight || exit 1
+
+if [ -e "$target" ] || [ -L "$target" ]; then
+    if ! remove_installed; then
+        echo "install: $target exists and was not installed by bin/install; move it away first" >&2
+        exit 1
+    fi
+fi
+mkdir -p "$prefix"
+
+if [ "$mode" = link ]; then
+    ln -s "$CADPOLE_ROOT/bin/cadpole" "$target"
+    echo "installed $target -> $CADPOLE_ROOT/bin/cadpole" >&2
+    # Build now, so the first `cadpole` does not.
+    build_cadpole || exit 1
+else
+    build_cadpole || exit 1
+    rm -rf "$share"
+    mkdir -p "$share"
+    cp "$CADPOLE_BIN" "$share/cadpole"
+    # -L: the runfiles tree is symlinks into Bazel's output base.
+    cp -RL "$CADPOLE_BIN.runfiles" "$share/cadpole.runfiles"
+    chmod -R u+w "$share"
+    printf '#!/bin/sh\n%s\nexec "%s/cadpole" "$@"\n' "$launcher_mark" "$share" >"$target"
+    chmod 755 "$target"
+    echo "installed a copy in $share, started by $target" >&2
+fi
+
+prefix_abs=$(cd "$prefix" && pwd -P)
+case ":$PATH:" in
+    *":$prefix:"* | *":$prefix_abs:"*)
+        found=$(command -v cadpole 2>/dev/null || true)
+        if [ -n "$found" ] && [ "$found" != "$target" ] && [ "$found" != "$prefix_abs/cadpole" ]; then
+            echo "note: another cadpole comes first on PATH: $found" >&2
+        fi
+        ;;
+    *)
+        echo "$prefix is not on your PATH. Add it, then open a new shell:" >&2
+        case ${SHELL:-} in
+            */zsh) rc=~/.zshrc ;;
+            */bash) rc=~/.bashrc ;;
+            *) rc=~/.profile ;;
+        esac
+        # shellcheck disable=SC2016 # $PATH is meant literally here.
+        printf '  echo '\''export PATH="%s:$PATH"'\'' >> %s\n' "$prefix" "$rc" >&2
+        ;;
+esac

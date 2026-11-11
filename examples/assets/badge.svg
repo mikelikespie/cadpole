@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="40mm" height="40mm" viewBox="0 0 40 40">
+  <title>Cadpole import fixture: every path command, an arc that stays an arc, and nested subpaths</title>
+
+  <defs>
+    <!-- Reached only through <use>; never drawn where it is defined. -->
+    <circle id="rivet" cx="0" cy="0" r="1.2"/>
+  </defs>
+
+  <g id="badge">
+    <!-- M H V A Z, then a *relative* m h v z subpath that must come back as
+         a hole. The two A commands have equal radii, so they must survive as
+         real circular arcs (centre 20,20 r 16) rather than cubics. -->
+    <path id="plate"
+          d="M 4 4 H 36 V 20 A 16 16 0 0 1 20 36 A 16 16 0 0 1 4 20 Z
+             m 7 5 h 18 v 8 h -18 z"/>
+  </g>
+
+  <g id="marks" transform="translate(20,24)">
+    <use xlink:href="#rivet" x="-10"/>
+    <use xlink:href="#rivet" x="10"/>
+    <!-- C S Q T L Z: the rest of the grammar, as a closed subpath. -->
+    <path id="wave" d="M -6 6 C -4 3 -2 3 0 6 S 4 9 6 6 Q 7 4 6 2 T 4 -1 L -4 -1 Z"/>
+  </g>
+
+  <!-- fill="none": an open construction path, not a face. -->
+  <path id="guide" fill="none" stroke="#888888" stroke-width="0.2" d="M 4 4 L 36 36"/>
+</svg>

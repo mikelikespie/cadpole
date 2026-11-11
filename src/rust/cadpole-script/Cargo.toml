@@ -1,0 +1,32 @@
+[package]
+name = "cadpole-script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Starlark scripting API for Cadpole."
+
+[dependencies]
+cadpole-assets = { path = "../cadpole-assets" }
+cadpole-core = { path = "../cadpole-core" }
+cadpole-field = { path = "../cadpole-field" }
+cadpole-drawing = { path = "../cadpole-drawing" }
+cadpole-drawing-out = { path = "../cadpole-drawing-out" }
+cadpole-font = { path = "../cadpole-font" }
+cadpole-import-2d = { path = "../cadpole-import-2d" }
+cadpole-import = { path = "../cadpole-import" }
+# `export(..., template=)` reads a saved Bambu Studio project with the
+# 3MF crate's template reader; already in the graph behind cadpole-import.
+cadpole-export-3mf = { path = "../cadpole-export-3mf" }
+cadpole-print = { path = "../cadpole-print" }
+cadpole-proto = { path = "../cadpole-proto" }
+cadpole-sketch-solve = { path = "../cadpole-sketch-solve" }
+anyhow.workspace = true
+thiserror.workspace = true
+starlark.workspace = true
+starlark_derive.workspace = true
+allocative.workspace = true
+
+[dev-dependencies]
+# The CLI's solver, installed by the tests. Never a normal dependency:
+# the wasm engine and the FFI compile this crate, and HiGHS is native only.
+cadpole-opt = { path = "../cadpole-opt" }

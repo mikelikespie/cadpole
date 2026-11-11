@@ -1,0 +1,47 @@
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+
+# The cheap test layer (docs/apple-apps.md): the protocol, the wire format, SSE
+# parsing and the coalescing rule, as a plain host binary. Foundation only, so
+# it runs on Linux and in CI on every commit:
+#
+#   bazel test //src/apple/CadpoleKitTests
+#
+# This is the layer that carries the real logic. Keep it that way.
+swift_test(
+    name = "CadpoleKitTests",
+    srcs = glob(["*.swift"]),
+    deps = [
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleProto",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)
+
+# Layer 2: the same sources inside the iOS Simulator. It proves the Simulator
+# path, not business rules -- that is the whole point of keeping it thin.
+# With --config=apple-remote the test ACTION runs on the macOS worker, which
+# boots the Simulator there, so this works from Linux:
+#
+#   bazel test --config=apple-remote --ios_multi_cpus=sim_arm64 \
+#       //src/apple/CadpoleKitTests:SimulatorTests
+#
+# manual, or a plain `bazel test //...` tries to boot a Simulator on Linux.
+ios_unit_test(
+    name = "SimulatorTests",
+    minimum_os_version = "26.0",
+    tags = ["manual"],
+    deps = [":CadpoleKitTestsLib"],
+)
+
+swift_library(
+    name = "CadpoleKitTestsLib",
+    testonly = True,
+    srcs = glob(["*.swift"]),
+    tags = ["manual"],
+    deps = [
+        "//src/apple/CadpoleKit",
+        "//src/apple/CadpoleProto",
+        "@com_github_apple_swift_protobuf//:SwiftProtobuf",
+    ],
+)

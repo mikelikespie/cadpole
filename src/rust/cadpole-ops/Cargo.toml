@@ -1,0 +1,15 @@
+[package]
+name = "cadpole-ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cadpole's operation registry: CadpoleOps reflected out of the embedded descriptor set."
+
+[dependencies]
+cadpole-core = { path = "../cadpole-core" }
+cadpole-engine = { path = "../cadpole-engine" }
+cadpole-proto = { path = "../cadpole-proto" }
+anyhow.workspace = true
+prost.workspace = true
+prost-reflect.workspace = true
+serde_json.workspace = true

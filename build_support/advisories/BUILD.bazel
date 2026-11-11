@@ -1,0 +1,31 @@
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "accepted.tsv",
+    "npm.tsv",
+    "refresh.py",
+    "rustsec.tsv",
+])
+
+# Fails when a crate or npm package Cadpole ships has a known advisory against the
+# exact version the lockfile pins, unless it is accepted in
+# accepted.tsv with a reason. Everything is compiled in, so the test does no
+# I/O and reaches no network: the database is a vendored snapshot refreshed by
+# build_support/advisories/refresh.py.
+rust_test(
+    name = "advisory_test",
+    size = "small",
+    srcs = ["advisory_test.rs"],
+    compile_data = [
+        "accepted.tsv",
+        "npm.tsv",
+        "rustsec.tsv",
+        "//:Cargo.lock",
+        "//:pnpm-lock.yaml",
+    ],
+    crate_root = "advisory_test.rs",
+    edition = "2024",
+    deps = ["//build_support/lockfiles"],
+)

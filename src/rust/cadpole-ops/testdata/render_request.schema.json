@@ -1,0 +1,374 @@
+{
+  "description": "Render a document, or the model it evaluates to. The same request can be\nexecuted locally or sent to a remote `cadpole serve` for offloading.",
+  "properties": {
+    "analysis": {
+      "description": "Colour-map a measured field over the surface instead of the bodies'\nmaterials, with a legend drawn into the image (docs/views.md, \"Analysis\nviews\"). \"thickness\" is wall thickness against the minimum below;\n\"overhang\" is the angle from vertical against the support threshold.\nEmpty renders materials normally.",
+      "examples": [
+        "thickness"
+      ],
+      "type": "string"
+    },
+    "backdrop": {
+      "description": "The surround: \"studio\" (a grey cyclorama with a soft top light),\n\"white\", \"black\" or \"#rrggbb\". Sets the environment the path tracer\nshows and reflects, the colour of its floor, and — unless `background`\nis given — the rasterizer's background to the same tone, so the two\nbackends agree. Empty keeps the rig's own gradient, the dark floor and\nthe default background.",
+      "examples": [
+        "studio"
+      ],
+      "type": "string"
+    },
+    "backend": {
+      "enum": [
+        "RENDER_BACKEND_UNSPECIFIED",
+        "RENDER_BACKEND_RASTER",
+        "RENDER_BACKEND_PATH_TRACE"
+      ],
+      "type": "string"
+    },
+    "background": {
+      "description": "Colour of the pixels the model does not cover, linear RGB in 0..1\n(unset = the default dark grey). Written bit-exactly, so a contact sheet\nor a page background matches.",
+      "properties": {
+        "b": {
+          "type": "number"
+        },
+        "g": {
+          "type": "number"
+        },
+        "r": {
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "bloom": {
+      "description": "Bloom: highlights over display white spill a little into their\nneighbours, so an LED reads as a light and a specular ping bleeds a\npixel or two. Off by default because the halo crosses the silhouette\nand the backdrop next to it stops being bit-exactly `background`.",
+      "type": "boolean"
+    },
+    "body_ids": {
+      "description": "Body ids to render; empty for all visible bodies.",
+      "examples": [
+        "extrude_1#0"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "boolean_tolerance": {
+      "description": "Boolean (kernel) tolerance in mm (0 = engine default). Separate from\n`tolerance` because kernel cost grows sharply as it shrinks.",
+      "type": "number"
+    },
+    "camera": {
+      "description": "Camera for rendering. Either a named preset or explicit eye/target: with\n`preset` empty and `eye` set the camera stands exactly there and looks at\n`target` (`cadpole render --eye x,y,z --target x,y,z`) -- a neighbour's\nwindow, a point on the sidewalk -- and nothing is fitted to the model.\nBoth empty takes the document's `render_defaults(camera=)`, else `iso`.",
+      "properties": {
+        "eye": {
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "fit_margin": {
+          "description": "Extra padding around the fitted model, as a fraction of its size.",
+          "type": "number"
+        },
+        "fov_degrees": {
+          "type": "number"
+        },
+        "orthographic": {
+          "type": "boolean"
+        },
+        "preset": {
+          "description": "A named direction, an angle pair, or \"\" when eye/target are given instead.\n\nNames: \"iso\", \"front\", \"back\", \"top\", \"bottom\", \"left\", \"right\",\n\"iso-bottom\" (looking up at the underside from a corner, which is how you\ninspect a printed base) and \"iso-back\".\n\nAngles: \"az=<degrees>,el=<degrees>\". Azimuth turns from the front view\ntoward the right; elevation is above the horizon, so negative looks up\nfrom below. Either may be left out. \"iso\" is \"az=45,el=29.5\".",
+          "examples": [
+            "iso"
+          ],
+          "type": "string"
+        },
+        "target": {
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "up": {
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "z": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "debug": {
+      "description": "Draw a debug view of the mesh instead of the part (docs/views.md, \"Debug\nviews\"): \"faces\" colours every topology face group, so a boolean that\nshattered its faces shows as noise; \"normals\" paints the shading normal\nas RGB, so a surface that should read smooth shows its facets; \"defects\"\npaints the triangles the solid validator flags (crossings red, slivers\norange, folds magenta) over a grey body and reports the counts as an\ninfo diagnostic; \"seams\" draws feature edges classified by the crease\nrule (creases black, smoothed seams blue); \"wire\" draws every triangle\nedge over a faint body. Debug views are flat-lit, opaque and rasterized\nat one sample whatever `backend`, `samples` or `xray` say, so nothing\ngets between the reading and the eye. Empty renders the part normally;\ncannot be combined with `analysis`.",
+      "examples": [
+        "faces"
+      ],
+      "type": "string"
+    },
+    "denoise": {
+      "description": "Path tracing: an edge-aware à-trous denoise of the finished image,\nguided by the first hit's normal, albedo and depth. Removes the grain\nthat remains on glossy metals at a few hundred samples; also softens\nfine texture below the noise level, so use it for a still, not for\njudging a surface finish. Off by default.",
+      "type": "boolean"
+    },
+    "dof_f_number": {
+      "description": "Path tracing: thin-lens depth of field at this f-number, focused on the\nmodel (a real lens for the field of view: f/8 on a 60 mm part is a\ngentle fall-off at the far edge of the floor, f/4 a hero shot). 0 is a\npinhole, the default.",
+      "type": "number"
+    },
+    "draft": {
+      "description": "Fast preview: samples = 1 (unless `samples` is set), no ambient\nocclusion, no contact shadow.",
+      "type": "boolean"
+    },
+    "draw_edges": {
+      "type": "boolean"
+    },
+    "draw_grid": {
+      "type": "boolean"
+    },
+    "edge_break_mm": {
+      "description": "Path tracing: shade every crease edge as if it carried an edge break of\nthis radius in mm (0 = none, the default; 0.25 is a typical machined\ndeburr), so edges catch the light as the narrow bright lines a real\npart shows instead of reading razor-sharp. No geometry is changed: the\nshading normal near a crease is blended toward the neighbouring face.\nA material's own `edge_break` overrides it for that body.",
+      "type": "number"
+    },
+    "edge_crease_degrees": {
+      "description": "Minimum angle between the surfaces meeting at an edge, in degrees, for\nthe raster overlay to draw that edge (0 = the default 30). Tangent seams\nbetween the patches of one smooth surface measure ~0 degrees and are\nnever drawn.",
+      "type": "number"
+    },
+    "edge_mode": {
+      "description": "Which static edges to draw (unset = EDGE_MODE_CREASES).",
+      "enum": [
+        "EDGE_MODE_UNSPECIFIED",
+        "EDGE_MODE_OFF",
+        "EDGE_MODE_SILHOUETTE",
+        "EDGE_MODE_CREASES",
+        "EDGE_MODE_ALL"
+      ],
+      "type": "string"
+    },
+    "edge_width_px": {
+      "description": "Feature-edge width in pixels (0 = the default 1.15), independent of\nresolution and of the sample count.",
+      "type": "number"
+    },
+    "exposure": {
+      "description": "Exposure multiplier applied before the tonemap (0 = default 1.0).",
+      "type": "number"
+    },
+    "floor": {
+      "description": "Path tracing: the floor's finish. \"matte\" (the default) is the matte\nsweep; \"gloss\" reflects the part faintly, as a slightly glossy table\ndoes in a product photograph; \"none\" removes the floor.",
+      "examples": [
+        "gloss"
+      ],
+      "type": "string"
+    },
+    "grid_mode": {
+      "description": "Ground grid style (unset = GRID_MODE_INFINITE). `draw_grid = false`\nstill turns the grid off.",
+      "enum": [
+        "GRID_MODE_UNSPECIFIED",
+        "GRID_MODE_OFF",
+        "GRID_MODE_FINITE",
+        "GRID_MODE_INFINITE"
+      ],
+      "type": "string"
+    },
+    "height": {
+      "description": "Image height in pixels (0 = 600).",
+      "examples": [
+        "600"
+      ],
+      "minimum": 0,
+      "type": "integer"
+    },
+    "highlight_selection": {
+      "description": "Draw the document's selection in the highlight colour (annotated\nscreenshot for an assistant).",
+      "type": "boolean"
+    },
+    "layers": {
+      "description": "Display layers for this image: `envelope=off` hides a layer,\n`terrain=0.4` ghosts one at 40 % opacity, `envelope=on` shows a layer\nthe script declared hidden; one entry per `--layer`. A layer not named\nhere keeps its own `layer(visible=, opacity=)` defaults.",
+      "examples": [
+        "envelope=off"
+      ],
+      "items": {
+        "description": "A display-layer override for one render: the layer by name and\nwhat to change about it. A field left unset keeps the layer's own default\nfrom `layer(...)`. The empty name is the implicit layer of untagged bodies\n(`cadpole render --layer other=off`, unless the script declares a layer\ncalled `other`).",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "opacity": {
+            "description": "Draw them at this opacity, 0..1: below 1 they are ghosted, translucent\nthe way `material(opacity=)` is, on every backend.",
+            "type": "number"
+          },
+          "visible": {
+            "description": "Draw the layer's bodies at all.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "lighting": {
+      "description": "The light rig (docs/views.md, \"The product shot\"). \"studio\" (the\ndefault, and the look of every image before it): a warm key from the\nfront-left in world space, a cool fill, a rim from behind — the\nengineering look, which reads form well but lights a `back` view from\nbehind. \"product\": a neutral catalogue rig that turns with the camera —\nkey 40° to camera-left and 40° up, a large soft fill 55° to the right,\na narrow rim behind — over a brighter grey surround, so a white part\nrenders white and a glossy face has something to reflect. Both\nbackends honour it.",
+      "examples": [
+        "product"
+      ],
+      "type": "string"
+    },
+    "max_bounces": {
+      "description": "Path tracing: maximum surface scattering events per path (0 = the\ndefault 8). Russian roulette usually ends a path well before this.\nIgnored by the rasterizer.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "max_overhang_degrees": {
+      "description": "Overhang angle from vertical, in degrees, past which a surface needs\nsupport, for `analysis = \"overhang\"` (0 = 45).",
+      "type": "number"
+    },
+    "min_wall": {
+      "description": "Minimum wall thickness in mm for `analysis = \"thickness\"` (0 = two\nperimeters of a 0.4 mm nozzle, i.e. 0.8). The ramp is anchored on it:\nred below, amber at it, blue well above.",
+      "type": "number"
+    },
+    "no_ambient_occlusion": {
+      "description": "Disable screen-space ambient occlusion (CLI `--no-ao`).",
+      "type": "boolean"
+    },
+    "no_contact_shadow": {
+      "description": "Disable the ground contact shadow (CLI `--no-shadow`).",
+      "type": "boolean"
+    },
+    "no_edges": {
+      "description": "Turn feature edges off. proto3 cannot tell \"false\" from \"unset\", and\n`draw_edges`/`draw_grid` both false means \"defaults\" (both on), so\nswitching one off explicitly needs its own flag.",
+      "type": "boolean"
+    },
+    "no_grid": {
+      "description": "Turn the ground grid off. See `no_edges`.",
+      "type": "boolean"
+    },
+    "no_silhouettes": {
+      "description": "Disable silhouette lines (CLI `--no-silhouettes`).",
+      "type": "boolean"
+    },
+    "north_degrees": {
+      "description": "Where north is in model space, in degrees clockwise from +y seen from\nabove: 0 means +y is north (the default), 90 means +x is north. 0\ndefers to the document's `render_defaults(north=)`, if any.",
+      "type": "number"
+    },
+    "param_overrides": {
+      "additionalProperties": {
+        "properties": {
+          "boolean": {
+            "type": "boolean"
+          },
+          "number": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "vector": {
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Param overrides applied on top of the document's, for sweeps.",
+      "examples": [
+        "wall=2.4"
+      ],
+      "type": "object"
+    },
+    "samples": {
+      "description": "Raster: anti-aliasing samples per pixel (0 = default 4; 1, 4 or 8).\nPath tracing: samples per pixel.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "section": {
+      "description": "Cut every body by a plane for this image only, with the cut capped:\n`x=22` removes everything on the +x side of x = 22 (`y=`, `z=`\nlikewise), and `-x=22` removes the -x side instead. A body the mesh\nkernel cannot cut (not watertight) is drawn whole, with a warning.\nEmpty renders the bodies whole.",
+      "examples": [
+        "z=40"
+      ],
+      "type": "string"
+    },
+    "shadow_catcher": {
+      "description": "With `transparent`: keep the shadow the model casts on the ground, as\nblack at the alpha of the light it blocks, and nothing else of the\nground. Path tracing catches the rig's and the sky's shadow; the\nrasterizer its contact shadow.",
+      "type": "boolean"
+    },
+    "show_environment": {
+      "description": "Path tracing: where a camera ray hits nothing, show the studio's\nenvironment gradient (the sky the lights and the reflections come from)\ninstead of the flat `background` colour. Off by default so a path-traced\nimage and a rasterized one share a backdrop; on, a metal or a glass has\nsomething visible to reflect. Ignored by the rasterizer.",
+      "type": "boolean"
+    },
+    "sun": {
+      "description": "The sun: a directional light with sharp shadows added to the\nrig. `lat,lon,YYYY-MM-DD,HH:MM[,tz]` computes it for a place, a date\nand a local clock time (NOAA's algorithm, to half a degree; the zone\ndefaults to the longitude's standard zone with no daylight saving), or\n`az=<deg>,el=<deg>` places it by compass azimuth (0 north, 90 east,\nclockwise) and elevation above the horizon. Empty is no sun of the\nrequest's own: the document's `render_defaults(sun=)` if it declares\none, else the rig alone. A sun below the horizon lights nothing.",
+      "examples": [
+        "38,-121,2026-12-21,12:00,-8"
+      ],
+      "type": "string"
+    },
+    "supersample": {
+      "description": "Render at this many times the size in each direction and filter down\n(1 to 4; 0 = 1). For edges finer than the samples resolve: thin\nfeatures, and the rasterizer's fixed 8 positions per pixel. Costs the\nsquare of it in the rasterizer; the path tracer spreads the same\n`samples` over the finer grid.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "threads": {
+      "description": "Raster worker threads (0 = auto). Never changes the output.",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tolerance": {
+      "type": "number"
+    },
+    "tonemap": {
+      "description": "The tone curve. \"aces\" (the default) is the ACES fit every image has\nhad; \"neutral\" is Khronos PBR Neutral — hue-preserving and exact for\nbase colours under unit light, the product-shot choice — and \"none\" a\nplain clamp.",
+      "examples": [
+        "neutral"
+      ],
+      "type": "string"
+    },
+    "transparent": {
+      "description": "Leave the backdrop out: pixels the model does not cover are written\nwith alpha 0, and an edge pixel's alpha is the share of it the model\ncovers, measured by the same samples as its colour. The PNG is straight\n(unpremultiplied) alpha and the colour stored at an edge is the\nmodel's own, so the image composites over any colour without a fringe.\nThe environment still lights and reflects in the model; `background`,\nthe floor and (path tracing) `show_environment` are not drawn. Glass\nand translucent bodies are partly transparent. The ground grid, when\ndrawn, is ink at its own alpha.",
+      "type": "boolean"
+    },
+    "width": {
+      "description": "Image width in pixels (0 = 800).",
+      "examples": [
+        "800"
+      ],
+      "minimum": 0,
+      "type": "integer"
+    },
+    "xray": {
+      "description": "Draw every body translucent so interiors and overlaps are visible.",
+      "type": "boolean"
+    }
+  },
+  "title": "Render one image of a document",
+  "type": "object"
+}

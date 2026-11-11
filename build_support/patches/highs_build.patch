@@ -1,0 +1,141 @@
+HiGHS 1.15.1 as Cadpole builds it: everything linked in, nothing loaded, no CUDA,
+no zlib. highs_module.patch is the MODULE.bazel half.
+
+The BCR module as published does three things Cadpole cannot ship:
+
+1. It defines HIGHS_SHARED_EXTRAS_LIBRARY (highs/HConfig.h.bazel.in) without
+   building the extras library. HiGHS then dlopen()s "libhighs_extras.so"
+   ("libhighs_extras.dylib" next to the binary on macOS) the first time it asks
+   whether HiPO is available -- which every MIP's analytic-centre step and
+   every option check does -- and uses HiPO's orderings if one is found. What a
+   solve computes would then depend on which shared library the machine
+   happens to have, and the binary would load code nobody linked. Here the two
+   extras files are compiled into the library itself and HIGHS_SHARED_EXTRAS_
+   LIBRARY is left undefined, which is HiGHS's own static mode
+   (BUILD_SHARED_EXTRAS_LIB=OFF). HIPO stays undefined, so amd, metis, rcm and
+   BLAS are neither compiled nor reachable: isAvailable<hipo>() is false on
+   every machine and the IPM path is always IPX. HIGHS_EXTRAS_VERSION is what
+   extern/CMakeLists.txt passes for that file.
+
+2. It depends on rules_cuda 0.3.0 and calls its toolkit extension, which
+   probes the host for a CUDA install at fetch time, and its BUILD loads
+   cuda_library for a GPU PDLP that only a flag nobody sets would select.
+   The dependency, the extension, the cuda_library and the config_setting
+   that reads it are removed; CUPDLP_CPU is the only define. (Bazel applies a
+   patch's MODULE.bazel hunk because Cadpole is the root module.)
+
+3. It links @zlib, but HConfig.h.bazel.in never defines ZLIB_FOUND, so no
+   HiGHS code calls zlib (only reading .mps.gz files would, and Cadpole passes
+   models in memory). The dependency is removed, so the module graph keeps
+   the zlib it had before HiGHS arrived and no zlib code reaches a binary.
+
+Re-check all three when bumping HiGHS: compare the new BCR BUILD.bazel,
+MODULE.bazel and highs/HConfig.h.bazel.in against this patch.
+
+diff --git a/BUILD.bazel b/BUILD.bazel
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -1,7 +1,5 @@
+-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+-load("@rules_cuda//cuda:defs.bzl", "cuda_library", "requires_cuda")
+ 
+ copy_file(
+     name = "highs-config",
+@@ -10,50 +8,23 @@ copy_file(
+     visibility = ["//visibility:public"],
+ )
+ 
+-bool_flag(
+-    name = "cupdlp_gpu",
+-    build_setting_default = False,
+-    visibility = ["//visibility:public"],
+-)
+-
+-config_setting(
+-    name = "cupdlp_gpu_enabled",
+-    flag_values = {
+-        "@rules_cuda//cuda:enable": "True",
+-        "@local_cuda//:valid_toolchain_found": "True",
+-        ":cupdlp_gpu": "True",
+-    },
+-)
+-
+ cc_library(
+     name = "config",
+     srcs = ["HConfig.h"],
+     visibility = ["//visibility:public"],
+ )
+ 
+-cuda_library(
+-    name = "cupdlp",
+-    srcs = glob([
+-        "highs/pdlp/cupdlp/cuda/*.cu",
+-        "highs/pdlp/hipdlp/*.cu",
+-    ]),
+-    hdrs = glob([
+-        "highs/pdlp/cupdlp/cuda/*.cuh",
+-    ]),
+-    defines = ["CUPDLP_GPU"],
+-    target_compatible_with = requires_cuda(),
+-    deps = [
+-        "@local_cuda//:cublas",
+-        "@local_cuda//:cusparse",
+-    ],
+-)
+-
+ cc_library(
+     name = "highs",
+     srcs = [
+         "highs/interfaces/highs_c_api.cpp",
+         "highs/HighsExternalApi.cpp",
+         "highs/HighsExternalDeps.cpp",
++        # Cadpole: HiGHS's "extras" linked in, built without HiPO (no amd, metis,
++        # rcm or BLAS), so nothing is dlopen()ed at run time; see
++        # highs/HConfig.h.bazel.in.
++        "extern/HighsExtrasApi.cpp",
++        "extern/HighsExtrasExternalDeps.cpp",
+     ] + glob([
+         "highs/io/*.cpp",
+         "highs/io/filereaderlp/*.cpp",
+@@ -93,10 +64,8 @@ cc_library(
+             "-Wno-unused-but-set-variable",
+         ],
+     }),
+-    defines = select({
+-        ":cupdlp_gpu_enabled": ["CUPDLP_GPU"],
+-        "//conditions:default": ["CUPDLP_CPU"],
+-    }),
++    defines = ["CUPDLP_CPU"],
++    local_defines = ['HIGHS_EXTRAS_VERSION=\\"1.15.1\\"'],
+     includes = [
+         "extern",
+         "extern/catch",
+@@ -125,13 +94,7 @@ cc_library(
+         "//conditions:default": ["-lpthread"],
+     }),
+     visibility = ["//visibility:public"],
+-    deps = [
+-        "//:config",
+-        "@zlib",
+-    ] + select({
+-        ":cupdlp_gpu_enabled": [":cupdlp"],
+-        "//conditions:default": [],
+-    }),
++    deps = ["//:config"],
+ )
+ 
+ cc_library(
+diff --git a/highs/HConfig.h.bazel.in b/highs/HConfig.h.bazel.in
+--- a/highs/HConfig.h.bazel.in
++++ b/highs/HConfig.h.bazel.in
+@@ -17,7 +17,7 @@
+ #define HIGHS_HAVE_BITSCAN_REVERSE
+ #endif
+ 
+-#define HIGHS_SHARED_EXTRAS_LIBRARY
++/* #undef HIGHS_SHARED_EXTRAS_LIBRARY */
+ #define HIGHS_GITHASH "2c7468d502"
+ #define HIGHS_VERSION_MAJOR 1
+ #define HIGHS_VERSION_MINOR 15

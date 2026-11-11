@@ -1,0 +1,14 @@
+package(default_visibility = ["//visibility:public"])
+
+# The standard library: the `.star` files a script loads with
+# `load("@cadpole/<name>.star", ...)`. They are compiled into `cadpole-script`
+# (`src/stdlib.rs`, `include_str!` through `rustc_env`), so the CLI, `cadpole
+# serve`, the C FFI and the wasm engine all carry the same files at the same
+# version and a document never ships a copy. `*_test.star` files are test
+# documents that load the library; they are not embedded.
+filegroup(
+    name = "star_files",
+    srcs = glob(["*.star"]),
+)
+
+exports_files(glob(["*.star"]))

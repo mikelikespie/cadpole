@@ -1,0 +1,25 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "cadpole_import_2d",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//src/rust/cadpole-core:cadpole_core",
+        "@crates//:dxf",
+        "@crates//:kurbo",
+        "@crates//:roxmltree",
+        "@crates//:svgtypes",
+    ],
+)
+
+rust_test(
+    name = "cadpole_import_2d_test",
+    size = "small",  # under 0.1 s
+    crate = ":cadpole_import_2d",
+    # The fixture files the example scripts import, checked here so they
+    # cannot quietly stop exercising what they are meant to.
+    data = ["//examples:assets"],
+    env = {"CADPOLE_EXAMPLES": "examples"},
+)

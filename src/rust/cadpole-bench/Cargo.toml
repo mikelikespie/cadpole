@@ -1,0 +1,17 @@
+[package]
+name = "cadpole-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Timing harness for Cadpole: evaluate, tessellate and render scripts, print JSON lines."
+
+[[bin]]
+name = "cadpole-bench"
+path = "src/main.rs"
+
+[dependencies]
+cadpole-engine = { path = "../cadpole-engine" }
+# HiGHS, so `opt` scripts solve here as they do in the CLI.
+cadpole-opt = { path = "../cadpole-opt" }
+anyhow.workspace = true
+serde_json.workspace = true

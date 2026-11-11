@@ -1,0 +1,201 @@
+{
+  "properties": {
+    "body_ids": {
+      "description": "Empty means every visible body.",
+      "examples": [
+        "extrude_1#0"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "crop": {
+      "description": "The part of the view to show (a page): \"x0,y0,x1,y1\" in model\nmillimetres of the view's frame -- a plan's is the model's x and y, a\nsection's the cut plane's own -- the page fitted to it and nothing\noutside it drawn. Empty shows the whole view.",
+      "examples": [
+        "-2700,-900,16500,22000"
+      ],
+      "type": "string"
+    },
+    "dimensions": {
+      "description": "\"auto\" (the default) figures the overall sizes; \"none\" draws no\ndimensions.",
+      "examples": [
+        "auto"
+      ],
+      "type": "string"
+    },
+    "format": {
+      "description": "\"svg\" (the default), \"pdf\" or \"dxf\".",
+      "examples": [
+        "svg"
+      ],
+      "type": "string"
+    },
+    "hidden": {
+      "description": "What to do with edges the solid hides: \"dashed\" (the default), \"omit\" or\n\"solid\".",
+      "examples": [
+        "dashed"
+      ],
+      "type": "string"
+    },
+    "labels": {
+      "description": "Notes at points of the model (a page), each \"x,y,z=text\" with the\npoint in model millimetres: written centred on where the point lands,\non a white ground.",
+      "examples": [
+        "2600,4000,530=Family room"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "layers": {
+      "description": "Display layers, as `Render` takes them: `envelope=off` hides a\nlayer, `labels=on` shows one the script declared hidden. A page\ndraws only what these leave visible.",
+      "examples": [
+        "envelope=off"
+      ],
+      "items": {
+        "description": "A display-layer override for one render: the layer by name and\nwhat to change about it. A field left unset keeps the layer's own default\nfrom `layer(...)`. The empty name is the implicit layer of untagged bodies\n(`cadpole render --layer other=off`, unless the script declares a layer\ncalled `other`).",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "opacity": {
+            "description": "Draw them at this opacity, 0..1: below 1 they are ghosted, translucent\nthe way `material(opacity=)` is, on every backend.",
+            "type": "number"
+          },
+          "visible": {
+            "description": "Draw the layer's bodies at all.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "legend": {
+      "description": "Legend swatches (a page), each \"#rrggbb=what it means\", in order.",
+      "examples": [
+        "#e39b72=exterior walls"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "look": {
+      "description": "A page of one view, when this or `section` is set: \"color\"\n(the default) draws what `Render` with a section shows, as vectors --\nevery surface the eye sees filled in its body's colour, nearer over\nfarther, edges as fine lines, the cut faces filled in the colour of\nwhat they cut and outlined, and labels the script made with\n`extrude(text(...))` written as text the size they are in the model;\n\"lines\" draws the same view as drafting: the cut hatched, what lies\nbeyond as hidden-line-removed strokes. Then the title, `subtitle`,\n`legend`, a scale bar, a north arrow on a plan, `labels` and `note`\naround it, every word real text a PDF reader can select. On a page,\n`view` is a direction to look from (\"top\", the default, or \"front\",\n\"north\", ...) and `section` the cut; `dimensions` and `hidden` do not\napply. With neither field set the drawing is the one `view` alone\nnames, as before.",
+      "examples": [
+        "color"
+      ],
+      "type": "string"
+    },
+    "model_unit": {
+      "description": "What one unit of the script is (a page): \"mm\" (the default),\n\"cm\", \"m\", \"in\" or \"ft\". A script drawn one unit to the foot is scaled\nto millimetres once, here, as `cadpole bake --model-unit` scales it,\nso the scale, the scale bar and the label sizes are true; `section`,\n`crop` and `labels` are then in the script's units too, and with \"ft\"\nor \"in\" the page writes feet and inches unless `units` says otherwise.",
+      "examples": [
+        "ft"
+      ],
+      "type": "string"
+    },
+    "north_degrees": {
+      "description": "Where north is, in degrees clockwise from +y seen from above, for a\nplan's north arrow (a page); 0 defers to the document's\n`render_defaults(north=)`, else +y is north.",
+      "type": "number"
+    },
+    "note": {
+      "description": "A footnote along the bottom of the page.",
+      "examples": [
+        "North up; the street at the bottom"
+      ],
+      "type": "string"
+    },
+    "param_overrides": {
+      "additionalProperties": {
+        "properties": {
+          "boolean": {
+            "type": "boolean"
+          },
+          "number": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "vector": {
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Parameter overrides, as `name=value`, exactly as `Render` takes them.",
+      "examples": [
+        "wall=2.4"
+      ],
+      "type": "object"
+    },
+    "scale": {
+      "description": "Drawing scale, as \"1:2\", \"2:1\" or the architectural form\n(a quarter inch to the foot). Empty fits the model to the sheet and snaps\nto a standard ratio.",
+      "examples": [
+        "1:2"
+      ],
+      "type": "string"
+    },
+    "section": {
+      "description": "The page's cut, written the way `Render` takes it: \"z=1700\"\nremoves everything above z = 1700 and looks down at what is left (a\nfloor plan); \"x=26\" removes everything beyond x = 26 and looks toward -x\nat the cut; \"-x=26\" keeps that side instead; \"y=\" likewise. The value\nis model millimetres or any written length (\"5'-6\\\"\"). Empty draws the\nwhole model from `view`: a roof plan, an elevation.",
+      "examples": [
+        "z=1700"
+      ],
+      "type": "string"
+    },
+    "sheet": {
+      "description": "Paper size: \"A4\"..\"A0\", \"ARCH_A\"..\"ARCH_E\", \"ANSI_A\", \"ANSI_B\".",
+      "examples": [
+        "A3"
+      ],
+      "type": "string"
+    },
+    "subtitle": {
+      "description": "A line under the title (a page).",
+      "examples": [
+        "Ground floor and the deck"
+      ],
+      "type": "string"
+    },
+    "title": {
+      "description": "Title-block title. The scale, and the document name as the project, are\nfilled in for you.",
+      "examples": [
+        "Bracket"
+      ],
+      "type": "string"
+    },
+    "tolerance": {
+      "description": "Tessellation tolerance in mm (0 = engine default). Finer means smoother\ncurves in the drawing and a slower export.",
+      "type": "number"
+    },
+    "units": {
+      "description": "How lengths are written: \"mm\" (the default), \"cm\", \"m\", \"in\", \"ft\" or\n\"ft-in\" for the architectural feet-and-inches form.",
+      "examples": [
+        "mm"
+      ],
+      "type": "string"
+    },
+    "view": {
+      "description": "What to draw. \"three-view\" (the default) lays out front, top and right\nplus an isometric on one sheet. A single view name - \"front\", \"back\",\n\"top\", \"bottom\", \"left\", \"right\", \"iso\" - draws just that one.\n\"section:z=40\" (or x=/y=) cuts the model with a plane at that coordinate\nand hatches the cut face; the coordinate is millimetres, or any written\nlength (\"1.5in\", \"12'-6\\\"\", \"3.65 m\"). \"sheet:A2.0\" is the sheet numbered\nA2.0 of the script's own sheet_set(), title block and all, and \"sheets\"\nevery sheet of it as one PDF; of the other fields only `format`,\n`tolerance` and the parameters apply to a sheet.",
+      "examples": [
+        "three-view"
+      ],
+      "type": "string"
+    }
+  },
+  "title": "Draw a document as a dimensioned 2D drawing",
+  "type": "object"
+}

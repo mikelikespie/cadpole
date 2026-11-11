@@ -1,0 +1,99 @@
+load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load(":defs.bzl", "attribution_file")
+load(":native_code.bzl", "native_code_report")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "allowed.txt",
+    "crates.tsv",
+    "defs.bzl",
+    "fonts.tsv",
+    "native.tsv",
+    "npm.tsv",
+    "refresh.py",
+    "texts.tsv",
+])
+
+# The external repositories whose C or C++ libraries a shipped artifact links:
+# what native.tsv must record. Analysis only -- the aspect reads the
+# dependency graph, it builds nothing.
+native_code_report(
+    name = "native_code",
+    targets = [
+        "//src/rust/cadpole-cli:cadpole",
+        "//src/rust/cadpole-ffi:cadpole_ffi",
+        "//src/rust/cadpole-wasm:cadpole_wasm_lib",
+    ],
+)
+
+# Fails when a dependency arrives with a licence Cadpole cannot ship under, or
+# with no recorded licence at all -- crates from Cargo.lock, npm packages from
+# pnpm-lock.yaml, bundled fonts under the data-only exception, and C/C++ code
+# from Bazel modules (native.tsv, checked against MODULE.bazel.lock and the
+# graph). See license_test.rs; advisories are
+# //build_support/advisories:advisory_test.
+rust_test(
+    name = "license_test",
+    size = "small",
+    srcs = ["license_test.rs"],
+    compile_data = [
+        "allowed.txt",
+        "crates.tsv",
+        "fonts.tsv",
+        "native.tsv",
+        "npm.tsv",
+        "texts.tsv",
+        "//:Cargo.lock",
+        "//:MODULE.bazel.lock",
+        "//:pnpm-lock.yaml",
+    ],
+    crate_root = "license_test.rs",
+    data = [":native_code"],
+    edition = "2024",
+    env = {"CADPOLE_NATIVE_CODE": "$(rootpath :native_code)"},
+    deps = ["//build_support/lockfiles"],
+)
+
+# ---------------------------------------------------------------------------
+# Attribution. THIRD-PARTY-NOTICES.md is the one artifact that says what Cadpole
+# ships and under what terms, which Apache-2.0 s4(d) and the MIT/BSD notice
+# clauses oblige a binary distribution to carry.
+
+rust_binary(
+    name = "gen_attribution",
+    srcs = ["gen_attribution.rs"],
+    crate_root = "gen_attribution.rs",
+    edition = "2024",
+    deps = ["//build_support/lockfiles"],
+)
+
+attribution_file(
+    name = "attribution",
+    allowed = "allowed.txt",
+    crates = "crates.tsv",
+    fonts = "fonts.tsv",
+    native = "native.tsv",
+    npm = "npm.tsv",
+    out = "THIRD-PARTY-NOTICES.generated.md",
+    texts = glob(["texts/*.txt"]),
+    texts_index = "texts.tsv",
+)
+
+# The committed copy is still what this would write today.
+diff_test(
+    name = "attribution_test",
+    size = "small",
+    file1 = "//:THIRD-PARTY-NOTICES.md",
+    file2 = ":attribution",
+)
+
+# `bazel run //build_support/licenses:attribution_update` after refresh.py.
+sh_binary(
+    name = "attribution_update",
+    srcs = ["attribution_update.sh"],
+    data = [":attribution"],
+    env = {"CADPOLE_ATTRIBUTION_FILE": "$(rootpath :attribution)"},
+)

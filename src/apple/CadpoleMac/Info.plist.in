@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Cadpole</string>
+	<key>CFBundleDisplayName</key>
+	<string>Cadpole</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Apache-2.0</string>
+	<!-- `cadpole serve` speaks plain HTTP to loopback or a tailnet.
+	     ATS already exempts IP addresses and unqualified names; a full
+	     MagicDNS name (host.<tailnet>.ts.net) needs this exception or every
+	     request fails with -1022. Local networking covers .local names.
+	     Nothing else may use cleartext. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>ts.net</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- The exported document type. The identifier prefix is shared with the
+	     Keychain service, so it must not change after shipping. -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>@DOCUMENT_UTTYPE@</string>
+			<key>UTTypeDescription</key>
+			<string>Cadpole Document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>@DOCUMENT_EXT@</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<!-- Loose .star scripts. The system has no type for the extension, and
+	     the dynamic one it would invent conforms only to public.data, so the
+	     open panel would grey every script out. Imported, not exported:
+	     Starlark is not ours. Must match CadpoleFileTypes.starlark*. -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>net.starlark.script</string>
+			<key>UTTypeDescription</key>
+			<string>Starlark Script</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.script</string>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>star</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Cadpole Document</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>@DOCUMENT_UTTYPE@</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Starlark Script</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>net.starlark.script</string>
+				<string>public.plain-text</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

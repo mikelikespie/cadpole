@@ -1,0 +1,21 @@
+# Advisories that match a version Cadpole ships and that were reviewed and
+# accepted anyway. Every row needs a reason; a row that no longer matches
+# anything is deleted (`no_accepted_row_is_stale` fails until it is).
+#
+# This file is the triage record. The bar for a row is: either the advisory
+# cannot reach anything Cadpole builds, or there is no fixed release and the
+# exposure is understood. "It is only a warning" is not a reason.
+#
+# Enforced by: bazel test //build_support/advisories:advisory_test
+id	package	reviewed	reason
+RUSTSEC-2022-0048	xml-rs	2026-09-14	Unmaintained, not a vulnerability, and there is no fixed release because there is nothing to fix. Reaches us as xml-rs <- xmltree <- dxf <- cadpole-import-2d, so it does see untrusted input; if a real parsing advisory ever lands against it the DXF reader changes, not this row.
+RUSTSEC-2023-0089	atomic-polyfill	2026-09-14	Unmaintained, not a vulnerability, no fixed release. Transitive only: heapless <- postcard <- pagable <- starlark. No Cadpole code names it and nothing reaches it with user data.
+RUSTSEC-2024-0370	proc-macro-error	2026-09-14	Unmaintained, not a vulnerability. A proc-macro crate: it runs inside rustc at build time through ruststep-derive and truck-derivers, and none of its code is linked into any Cadpole binary.
+RUSTSEC-2024-0388	derivative	2026-09-14	Unmaintained, not a vulnerability. A proc-macro crate from starlark and starlark_syntax: build time only, nothing of it is linked into a Cadpole binary.
+RUSTSEC-2024-0436	paste	2026-09-14	Unmaintained by the author's deliberate choice, not a vulnerability. A proc-macro crate from starlark: build time only, nothing of it is linked into a Cadpole binary.
+RUSTSEC-2025-0057	fxhash	2026-09-14	Unmaintained, not a vulnerability, no fixed release. It is starlark_map's hash function; the worst case is HashDoS against Starlark's own interned maps, which already run under cadpole-script's tick, heap and deadline limits (docs/security.md).
+RUSTSEC-2026-0041	lz4_flex	2026-09-14	Real and unpatched at 0.7.5, linked but unreachable: it arrives with vtkio, which truck-meshalgo pulls in through its default `vtk` feature. Cadpole never constructs a VTK reader -- `vtk` appears nowhere in src/ -- so no input path reaches the decompressor. It cannot be switched off from our Cargo.toml: truck-shapeops depends on truck-meshalgo with default features, so resolver-2 unification re-enables `vtk` whatever cadpole-core asks for. Revisit when truck-shapeops sets default-features = false, or vendor a patch.
+RUSTSEC-2026-0194	quick-xml	2026-09-14	Real and unpatched at 0.22.0 (fixed in 0.41.0), linked but unreachable: same vtkio <- truck-meshalgo `vtk` path as RUSTSEC-2026-0041, and the same reason it cannot be turned off here. Cadpole parses XML with roxmltree, never with quick-xml.
+RUSTSEC-2026-0195	quick-xml	2026-09-14	Real and unpatched at 0.22.0 (fixed in 0.41.0), linked but unreachable: same vtkio <- truck-meshalgo `vtk` path as RUSTSEC-2026-0041, and the same reason it cannot be turned off here. Cadpole parses XML with roxmltree, never with quick-xml.
+RUSTSEC-2026-0196	cgmath	2026-09-14	Unmaintained, not a vulnerability, no fixed release. cgmath is truck-base's linear algebra and therefore sits under the whole B-rep kernel; replacing it means replacing the kernel, which is a design decision and not a dependency bump.
+RUSTSEC-2026-0197	cgmath	2026-09-14	Unsound: Matrix{2,3,4}::swap_columns(i, i) is UB when the indices are identical. No fixed release. Cadpole never calls swap_columns -- it appears nowhere in src/ -- and truck's public API does not route script input to it.

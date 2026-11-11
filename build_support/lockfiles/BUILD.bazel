@@ -1,0 +1,27 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+package(default_visibility = ["//visibility:public"])
+
+# Lockfile parsing and the semver algebra the advisory database is written in.
+# Shared by the licence test, the advisory test and the attribution generator.
+# No dependencies, on purpose: the checker that enforces the dependency policy
+# must not be able to violate it.
+rust_library(
+    name = "lockfiles",
+    srcs = ["lib.rs"],
+    crate_root = "lib.rs",
+    edition = "2024",
+)
+
+rust_test(
+    name = "lockfiles_test",
+    size = "small",
+    srcs = ["lockfiles_test.rs"],
+    compile_data = [
+        "//:Cargo.lock",
+        "//:pnpm-lock.yaml",
+    ],
+    crate_root = "lockfiles_test.rs",
+    edition = "2024",
+    deps = [":lockfiles"],
+)

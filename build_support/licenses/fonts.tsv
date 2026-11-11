@@ -1,0 +1,12 @@
+# Font *data* bundled with Cadpole. Fonts are not linked code, so they are
+# reviewed here rather than in crates.tsv, under the `fonts-only:` terms of
+# allowed.txt (see the note there).
+#
+# reserved_font_names must be "none": Cadpole reserves the right to subset a
+# bundled face, and under the OFL a subset of a font that declares Reserved
+# Font Names has to be renamed. Recording it keeps that decision explicit.
+#
+# `license_path` must ship next to the font, which the OFL requires.
+# Enforced by: bazel test //build_support/licenses:license_test
+name	version	license	reserved_font_names	path	license_path	source
+Inter	4.1	OFL-1.1	none	assets/fonts/Inter.ttf	assets/fonts/Inter-OFL.txt	https://github.com/google/fonts/tree/main/ofl/inter (upstream https://github.com/rsms/inter)

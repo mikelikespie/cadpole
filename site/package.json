@@ -1,0 +1,11 @@
+{
+  "name": "cadpole-site",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Cadpole project site: a static page built with Bazel from the examples, the web app and the CLI.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
