@@ -113,6 +113,9 @@ details.more > summary { list-style: none; cursor: pointer; display: flex; align
 details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary::after { content: "+"; margin-left: auto; font: 400 22px/1 var(--mono); }
 details.more[open] > summary::after { content: "\2212"; }
+.vfig details.more > summary, .plan-code details.more > summary { padding: 0 2px; }
+.more-body { display: grid; gap: 10px; padding-top: 6px; min-width: 0; }
+.plan-code details.more { margin-bottom: 10px; }
 .copy { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--muted); border-radius: 10px; cursor: pointer; font: 600 13px/1 var(--sans); padding: 0 10px; }
 .copy.done { color: var(--brand-2); }
 
@@ -542,7 +545,6 @@ a[data-full] { position: relative; }
 .agent-steps li { counter-increment: s; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 9px 10px; border-radius: 10px; color: var(--muted); font-size: 15.5px; line-height: 1.4; transition: background .2s, color .2s; }
 .agent-steps li::before { content: counter(s); width: 24px; height: 24px; }
 .agent-steps li.on { background: rgba(160, 220, 200, .09); color: var(--fg); }
-.agent-steps.narrow { display: none; }
 .agent-how { margin: 4px 0 0; padding: 0; list-style: none; counter-reset: h; display: grid; gap: 0; }
 .agent-how > li { counter-increment: h; display: grid; gap: 10px; min-width: 0; padding: 16px 0; border-top: 1px solid var(--line); }
 .agent-how > li:last-child { border-bottom: 1px solid var(--line); }
@@ -555,15 +557,12 @@ a[data-full] { position: relative; }
 .how-alt summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 14px; color: var(--brand-2); }
 .how-alt .cmd { margin-top: 4px; }
 .how-lead { margin: 0 0 10px; }
+.agent-more { margin: 4px 0 0; font-size: 15px; }
+.agent-more a { display: inline-flex; align-items: center; min-height: 44px; color: var(--brand-2); }
 .cmds + .how-lead { margin-top: 18px; }
 .how-foot { margin: 12px 0 0; font-size: 13.5px; }
 .how-foot + .how-foot { margin-top: 4px; }
 @media (min-width: 900px) { .agent-how > li { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 24px; align-items: start; } }
-@media (max-width: 699.9px) and (orientation: portrait) {
-  .agent-vid { aspect-ratio: 390 / 844; width: min(100%, calc(74svh * 390 / 844)); margin: 0 auto; }
-  .agent-steps.wide { display: none; }
-  .agent-steps.narrow { display: grid; }
-}
 @media (min-width: 1000px) {
   .agent { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 36px; align-items: center; }
 }

@@ -25,28 +25,6 @@
    "text": "It says what it did."
   }
  ],
- "steps_phone": [
-  {
-   "t": 1.2,
-   "text": "Open Chat, turn Listen on and type a request."
-  },
-  {
-   "t": 9.8,
-   "text": "The bracket gets 1 in wider, with two holes in the base."
-  },
-  {
-   "t": 12.4,
-   "text": "The reply streams in under it."
-  },
-  {
-   "t": 16.3,
-   "text": "Tap a face, then ask about \"this face\"."
-  },
-  {
-   "t": 23.5,
-   "text": "The agent puts holes through the selected face."
-  }
- ],
  "setup": [
   {
    "text": "Have Claude Code installed. Cadpole uses your own install and ships no agent of its own.",

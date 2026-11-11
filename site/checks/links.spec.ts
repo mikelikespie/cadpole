@@ -19,7 +19,7 @@ test("every local address has a file", () => {
     if (!(existsSync(p) && (statSync(p).isFile() || existsSync(join(p, "index.html"))))) missing.push(u);
   }
   expect([...new Set(missing)]).toEqual([]);
-  for (const base of attrs(/data-video(?:-phone)?="([^"]+)"/g)) {
+  for (const base of attrs(/data-video="([^"]+)"/g)) {
     expect(existsSync(join(root, `${base}-poster.webp`)), `${base}-poster.webp`).toBe(true);
     if (whole) for (const ext of ["mp4", "webm"]) expect(existsSync(join(root, `${base}.${ext}`)), `${base}.${ext}`).toBe(true);
   }
@@ -60,8 +60,14 @@ test("outside links: the repository, and the two installers the text names", () 
 });
 
 test("the words the page does not use", () => {
-  const a = html.indexOf('id="agent"'), b = html.indexOf("</section>", a);
-  const agent = html.slice(a, b), rest = html.slice(0, a) + html.slice(b);
+  // The agent section and its setup further down are the one place the product is named.
+  let agent = "", rest = html;
+  for (const id of ["agent", "connect"]) {
+    const a = rest.indexOf(`id="${id}"`), b = rest.indexOf("</section>", a);
+    expect(a, `#${id}`).toBeGreaterThan(0);
+    agent += rest.slice(a, b);
+    rest = rest.slice(0, a) + rest.slice(b);
+  }
   for (const w of [/claude/i, /formal(ly)? verif/i, /model.check/i, /\binvariant/i, /supply.chain/i, /licen[cs]e (check|scan|audit)/i, /advisor/i, /\/home\//, /\/Users\//, /localhost|127\.0\.0\.1:\d+\/[a-z]/]) expect(rest).not.toMatch(w);
   // The one product the section is about, named where the steps need it and not as a maker or a backer.
   expect((agent.match(/Claude/g) ?? []).length).toBeLessThanOrEqual(6);

@@ -49,7 +49,7 @@ ENCODE = {
 }
 
 # A screen recording of the web app: not something a script renders.
-RECORDING = ["agent/agent.mp4", "agent/agent.webm", "agent/agent-phone.mp4", "agent/agent-phone.webm"]
+RECORDING = ["agent/agent.mp4", "agent/agent.webm"]
 
 # static/draw/<name>.*: the file as the CLI writes it (<name>.raw.svg, and the other
 # `formats`) and the copy the page sets inline (<name>.svg). `frame`: the square of

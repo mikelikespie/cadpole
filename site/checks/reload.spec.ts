@@ -45,6 +45,8 @@ test("back at the top, the address drops the section it named; a reload stays at
   await p.goto(site + "?noauto=1", { waitUntil: "load" });
   await p.locator('.top nav a[href="#play"]').click();
   await expect.poll(() => p.evaluate(() => location.hash)).toBe("#play");
+  // The link glides there; arrived, the visitor goes back up.
+  await expect.poll(() => p.evaluate(() => document.documentElement.dataset["gliding"] ?? "")).toBe("");
   await p.waitForTimeout(600);
   await p.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
   await p.mouse.wheel(0, -50);

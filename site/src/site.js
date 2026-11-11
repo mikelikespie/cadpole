@@ -592,12 +592,27 @@ function zoomPair(box) {
   });
 }
 
+// ---- links within the page: a smooth scroll to the section ----
+document.addEventListener("click", (e) => {
+  const a = e.target.closest?.('a[href^="#"]');
+  if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const id = a.getAttribute("href").slice(1), t = id && !id.startsWith("f-") && document.getElementById(id);
+  if (!t) return;
+  e.preventDefault();
+  history.pushState(null, "", `#${id}`);
+  // Until the glide ends, the address keeps the section it names (see "where a reload lands").
+  html.dataset.gliding = "1";
+  const done = () => { delete html.dataset.gliding; removeEventListener("scrollend", done); clearTimeout(cap); };
+  const cap = setTimeout(done, 2000);
+  addEventListener("scrollend", done);
+  t.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" });
+});
+
 // ---- agent recording: made only when wanted, plays only while it is on screen ----
 {
   const box = $(".agent-vid");
   if (box) {
     const btn = $("[data-vplay]", box.parentElement), cap = $(".agent-cap", box.parentElement);
-    const narrow = matchMedia("(max-width: 699.9px) and (orientation: portrait)");
     let video = null, list = [], wanted = false;
     const sync = () => {
       let cur = null;
@@ -606,13 +621,13 @@ function zoomPair(box) {
       cap.textContent = cur ? cur.textContent : "";
     };
     const make = () => {
-      const base = narrow.matches ? box.dataset.videoPhone : box.dataset.video;
-      list = $$(`.agent-steps.${narrow.matches ? "narrow" : "wide"} li`);
+      const base = box.dataset.video;
+      list = $$(".agent-steps li");
       video = document.createElement("video");
       video.muted = true; video.playsInline = true; video.loop = true; video.preload = "auto";
       video.setAttribute("muted", ""); video.setAttribute("playsinline", ""); video.setAttribute("aria-label", "Screen recording of the Cadpole web app while an agent edits the script");
       // Each address carries the recording's digest, so a browser never plays a copy it kept from before.
-      const v = narrow.matches ? box.dataset.vPhone : box.dataset.v;
+      const v = box.dataset.v;
       video.poster = $("picture img", box)?.currentSrc || `${base}-poster.webp`;
       video.innerHTML = `<source src="${base}.webm?v=${v}" type="video/webm"><source src="${base}.mp4?v=${v}" type="video/mp4">`;
       video.addEventListener("timeupdate", sync);
@@ -967,7 +982,7 @@ setupPlay();
   // Back at the top, the address names no section: a reload then stays at the top. (replaceState only,
   // so scrolling adds nothing to the history; a card's #f- address belongs to its open lightbox.)
   addEventListener("scroll", () => {
-    if (location.hash && !/^#f-/.test(location.hash) && scrollY < innerHeight * 0.5) history.replaceState(null, "", location.pathname + location.search);
+    if (location.hash && !html.dataset.gliding && !/^#f-/.test(location.hash) && scrollY < innerHeight * 0.5) history.replaceState(null, "", location.pathname + location.search);
   }, { passive: true });
   for (const ev of ["scroll", "load", "resize"]) addEventListener(ev, note, { passive: true });
   const save = () => { try { if (last) sessionStorage.setItem(KEY, JSON.stringify(last)); } catch {} };

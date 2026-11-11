@@ -323,7 +323,7 @@ function floorplan() {
 </div>
 </div>
 </div>
-<div class="plan-code"><div class="code"><div class="code-head"><span>cabin_plan.star</span><button class="copy" type="button" data-copy="#code-cabin">Copy</button></div><pre id="code-cabin">${hlLines(planLines().join("\n"))}</pre></div>
+<div class="plan-code"><details class="more"><summary>More</summary><div class="more-body"><div class="code"><div class="code-head"><span>cabin_plan.star</span><button class="copy" type="button" data-copy="#code-cabin">Copy</button></div><pre id="code-cabin">${hlLines(planLines().join("\n"))}</pre></div></div></details>
 ${actRow({ download: fileSet("plan") })}</div>
 </section>`;
 }
@@ -386,8 +386,8 @@ function building(b) {
 <div class="head"><p class="eyebrow">Buildings and plans · ${b.eyebrow}</p><h2>${b.title}</h2>
 <p class="lede">${b.lede}</p></div>
 <figure class="vfig bld"><div class="bld-pic" style="aspect-ratio:${w}/${h}">${pic}</div>
-<figcaption><h3>${b.sub}</h3><p>${b.body}</p>${facts(b.facts)}${b.rules ? `<div class="code"><div class="code-head"><span>${b.script}</span></div><pre tabindex="0" aria-label="${E(b.script)}">${hl(b.rules.join("\n"))}</pre></div>` : ""}
-${cmdBlock(b.command)}${b.model ? acts(b.model, b.name, b.view, b.script) : actRow({ open: [scriptPill(b.script)] })}</figcaption></figure>
+<figcaption><h3>${b.sub}</h3><p>${b.body}</p><details class="more"><summary>More</summary><div class="more-body">${facts(b.facts)}${b.rules ? `<div class="code"><div class="code-head"><span>${b.script}</span></div><pre tabindex="0" aria-label="${E(b.script)}">${hl(b.rules.join("\n"))}</pre></div>` : ""}${cmdBlock(b.command)}</div></details>
+${b.model ? acts(b.model, b.name, b.view, b.script) : actRow({ open: [scriptPill(b.script)] })}</figcaption></figure>
 </section>`;
 }
 
@@ -399,25 +399,21 @@ function sheets() {
 <div class="head"><p class="eyebrow">Buildings and plans · drawing sets</p><h2>${b.title}</h2>
 <p class="lede">${b.lede}</p></div>
 <figure class="vfig vsheet">${drawBtn(svg, draw(`${b.id}.svg`), b.alt, b.name, `Vector drawing · ${kb(size(draw(`${b.id}.raw.svg`)))} as SVG`)}
-<figcaption><h3>${b.sub}</h3><p>${b.body}</p>${facts(b.facts)}${cmdBlock(b.command)}
+<figcaption><h3>${b.sub}</h3><p>${b.body}</p><details class="more"><summary>More</summary><div class="more-body">${facts(b.facts)}${cmdBlock(b.command)}</div></details>
 ${actRow({ download: [dlPill(`draw/${b.id}.raw.svg`, "Sheet SVG", size(draw(`${b.id}.raw.svg`))), dlPill("draw/house_set.pdf", "Set PDF", size(draw("house_set.pdf")))], open: [scriptPill("house_set.star")] })}</figcaption></figure>
 </section>`;
 }
 
 // ---- work with an agent ------------------------------------------------------
+/** A command or a prompt to copy; JSON is shown indented. */
+const agentCode = (c, cls = "") => {
+  const isJson = c.startsWith("{");
+  if (isJson) c = JSON.stringify(JSON.parse(c), null, 2);
+  return `<div class="cmd multi${isJson ? " json" : ""}${cls}"><code>${E(c)}</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div>`;
+};
+
 function agent() {
   const caps = (steps) => steps.map((s) => `<li data-t="${s.t}">${E(s.text)}</li>`).join("");
-  const code = (c, cls = "") => {
-    const isJson = c.startsWith("{");
-    if (isJson) c = JSON.stringify(JSON.parse(c), null, 2);
-    return `<div class="cmd multi${isJson ? " json" : ""}${cls}"><code>${E(c)}</code><button class="copy" type="button" data-copy aria-label="Copy">Copy</button></div>`;
-  };
-  // One numbered list, top to bottom: the sentence, then what to run or type under it
-  // (beside it on a wide screen, on the same row).
-  const how = AGENT.setup.map((s) => {
-    const right = [s.command ? code(s.command) : "", s.prompt ? `<p class="how-say">Then ask it:</p>${code(s.prompt, " prompt")}` : "", s.alt ? `<details class="how-alt"><summary>${E(s.alt.summary)}</summary>${code(s.alt.command)}</details>` : ""].join("");
-    return `<li><div class="how-t"><p>${E(s.text)}</p>${s.note ? `<p class="cmd-note">${s.note}</p>` : ""}</div>${right ? `<div class="how-c">${right}</div>` : ""}</li>`;
-  });
   return `
 <section class="block wrap" id="agent">
 <div class="head"><p class="eyebrow">Work with an agent</p><h2>Ask for a change. Watch the part follow.</h2>
@@ -425,18 +421,31 @@ function agent() {
 <ul class="agent-can">${AGENT.can.map(([t, b]) => `<li><b>${t}</b><span>${b}</span></li>`).join("")}</ul>
 <div class="agent">
 <div class="agent-main">
-<div class="agent-vid" data-video="agent/agent" data-video-phone="agent/agent-phone" data-v="${LOCK.files["agent/agent.mp4"].sha256.slice(0, 10)}" data-v-phone="${LOCK.files["agent/agent-phone.mp4"].sha256.slice(0, 10)}">
-<picture><source media="(max-width: 699.9px) and (orientation: portrait)" srcset="agent/agent-phone-poster.webp?v=${fileHash(join(STATIC, "agent", "agent-phone-poster.webp"))}" width="390" height="844"><img src="agent/agent-poster.webp?v=${fileHash(join(STATIC, "agent", "agent-poster.webp"))}" width="1920" height="1200" alt="The Cadpole web app with a bracket model and a Messages panel where a request to an agent is typed" loading="lazy" decoding="async"></picture>
+<div class="agent-vid" data-video="agent/agent" data-v="${LOCK.files["agent/agent.mp4"].sha256.slice(0, 10)}">
+<picture><img src="agent/agent-poster.webp?v=${fileHash(join(STATIC, "agent", "agent-poster.webp"))}" width="1920" height="1200" alt="The Cadpole web app with a bracket model and a Messages panel where a request to an agent is typed" loading="lazy" decoding="async"></picture>
 </div>
 <div class="agent-ctl"><button class="btn small primary" type="button" data-vplay aria-pressed="false">Play</button><p class="agent-cap" aria-live="off"></p></div>
 </div>
 <div class="agent-side">
-<ol class="agent-steps wide" aria-label="What happens in the recording">${caps(AGENT.steps)}</ol>
-<ol class="agent-steps narrow" aria-label="What happens in the recording">${caps(AGENT.steps_phone)}</ol>
+<ol class="agent-steps" aria-label="What happens in the recording">${caps(AGENT.steps)}</ol>
 <p class="cmd-note">Real session, sped up. No sound.</p>
 </div>
 </div>
-<h3 class="sub">Set it up</h3>
+<p class="agent-more"><a href="#connect">Set it up ↓</a></p>
+</section>`;
+}
+
+function connect() {
+  const code = agentCode;
+  // One numbered list, top to bottom: the sentence, then what to run or type under it
+  // (beside it on a wide screen, on the same row).
+  const how = AGENT.setup.map((s) => {
+    const right = [s.command ? code(s.command) : "", s.prompt ? `<p class="how-say">Then ask it:</p>${code(s.prompt, " prompt")}` : "", s.alt ? `<details class="how-alt"><summary>${E(s.alt.summary)}</summary>${code(s.alt.command)}</details>` : ""].join("");
+    return `<li><div class="how-t"><p>${E(s.text)}</p>${s.note ? `<p class="cmd-note">${s.note}</p>` : ""}</div>${right ? `<div class="how-c">${right}</div>` : ""}</li>`;
+  });
+  return `
+<section class="block wrap" id="connect">
+<div class="head"><p class="eyebrow">Work with an agent · set it up</p><h2>Connect your coding agent.</h2></div>
 <p class="cmd-note how-lead">Let your agent do it: paste this, and it goes through the steps below with you.</p>
 <div class="cmds">${code(AGENT.setup_agent, " prompt")}</div>
 <p class="cmd-note how-lead">Or step by step:</p>
@@ -474,7 +483,7 @@ function start() {
 <div class="cmds">${one(`git clone ${GH}.git && cd cadpole`)}${one("./bin/install", "Checks your machine, builds, and puts <code>cadpole</code> on your <code>PATH</code>. The first build compiles everything and takes a while (about 12 minutes on 8 cores, 25 GB of disk); later ones take seconds. Without installing, <code>./bin/cadpole …</code> works from the checkout.")}</div></li>
 <li><h4>Run a first example</h4>
 <div class="cmds">${CMDS.map(([c, n]) => one(c, n)).join("")}</div>
-<p class="cmd-note">To have your coding agent change the model while you watch, register Cadpole's MCP server: the steps are under <a href="#agent">Work with an agent</a>.</p></li>
+<p class="cmd-note">To have your coding agent change the model while you watch, register Cadpole's MCP server: the steps are under <a href="#connect">Connect your coding agent</a>.</p></li>
 </ol>
 <p class="cmd-note">Apache-2.0. <a href="${GH}">Source</a>, <a href="${GH}/blob/main/docs/getting-started.md">getting started</a>, the guides to <a href="${GH}/blob/main/docs/parts.md">parts and assemblies</a> and to <a href="${GH}/blob/main/docs/buildings.md">buildings and plans</a>, and the <a href="${GH}/blob/main/docs/starlark-api.md">scripting reference</a> they share are on GitHub. Windows is not supported.</p>
 </section>`;
@@ -534,8 +543,9 @@ ${group("shared", BLD.groups.shared)}
 ${features()}
 ${drawings()}
 ${outputs()}
-${tools()}
 ${gallery()}
+${tools()}
+${connect()}
 ${start()}
 </main>
 <footer class="wrap"><span>Cadpole is open source under Apache-2.0.</span><a href="${GH}">github.com/mikelikespie/cadpole</a></footer>
@@ -599,8 +609,13 @@ function checkLinks(doc) {
 
 /** Words the page never uses, and the one place a product name may appear. */
 function checkWords(doc) {
-  const a = doc.indexOf('<section class="block wrap" id="agent">'), b = doc.indexOf("</section>", a);
-  const agentPart = doc.slice(a, b), rest = doc.slice(0, a) + doc.slice(b);
+  // The agent section and its setup, further down: the one place the product is named.
+  let agentPart = "", rest = doc;
+  for (const id of ["agent", "connect"]) {
+    const a = rest.indexOf(`<section class="block wrap" id="${id}">`), b = rest.indexOf("</section>", a);
+    agentPart += rest.slice(a, b);
+    rest = rest.slice(0, a) + rest.slice(b);
+  }
   const bad = [];
   if (/(made|built|endorsed|sponsored|powered|official)[^.]{0,40}Claude/i.test(agentPart.replace(/not affiliated with or endorsed by the maker of Claude Code/, ""))) bad.push("a claim about Claude");
   if ((agentPart.match(/Claude/g) ?? []).length > 6) bad.push("Claude named more than the section needs");
