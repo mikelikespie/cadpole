@@ -49,9 +49,16 @@ bounding boxes come within `joint_gap` (1 mm by default):
 | relation | test | result |
 | --- | --- | --- |
 | overlap | `clearance::distance` reports shared material | **fused**: one piece, printed as one multi-material object |
-| skin or inlay | they touch, and at least 10% of the smaller body's surface lies on the other (a ray cast a hair along each triangle's normal finds the other body) | **fused** |
-| print-in-place | the gap is under `joint_gap` and the pair is **captive**: neither can be slid away from the other in any of 26 directions (the axes, face and corner diagonals) without colliding | **print-in-place**: one piece, never pulled apart or turned relative to each other |
+| skin or inlay | they touch, at least 10% of the smaller body's surface lies on the other (a ray cast a hair along each triangle's normal finds the other body), and the smaller is *thin* there: its volume over the contact area under a quarter of its size | **fused** |
+| print-in-place | the gap is under `joint_gap`, at least half of `min_gap`, and the pair is **captive**: neither can be slid away from the other in any of 26 directions (the axes, face and corner diagonals) without colliding | **print-in-place**: one piece, never pulled apart or turned relative to each other |
+| held but tight | captive, but under half of `min_gap` clear: a nut on its screw, a lid snapped onto its base. The gap would fuse | separate pieces, with a note |
 | anything else | a lid resting on its base, a wheel beside a car | separate pieces |
+
+The thinness test is what tells a stripe from a figure standing on its
+plinth: both touch over a good share of the smaller body, but the stripe is
+0.6 mm thick over its contact and the figure is its whole height. The gap
+test is what tells a print-in-place wheel (0.35-0.4 mm clear) from a nut
+threaded on its screw (0.1 mm): both are captive, only one prints that way.
 
 Captivity is the non-directional blocking test from assembly planning:
 body A is free to leave B along `d` when no ray from A's sample points
@@ -72,9 +79,10 @@ work on a script that never heard of plating); colour as the signal
 ## Orientation
 
 Each piece's candidates are: as modelled, upside down, the four sides,
-and the outward normals of its eight largest flat regions -- the same
-list `orient_for_print` uses, so each has a name a person recognises
-("the 1200 mm² flat face"). Each is scored by a **cost in mm² of support
+the outward normals of its eight largest flat regions -- the list
+`orient_for_print` uses, so each has a name a person recognises ("the
+1200 mm² flat face") -- and the six largest facets of its convex hull,
+which is what a part with no flat face of its own rests on. Each is scored by a **cost in mm² of support
 equivalent**, absolute rather than normalised against the other
 candidates, so a number in the report means the same thing for every
 part:
@@ -123,6 +131,15 @@ relative to the other candidates cannot be compared between parts or
 explained in mm²); scoring with the whole `print_check` (wall thickness
 and manifoldness do not change with orientation and are the expensive
 half).
+
+**Judging a hand-made layout.** The same scoring answers "is this part
+placed well?": `assert_orientation_optimal` (and `cadpole check
+--orientation`) compares a part as it stands with the best candidate and
+fails, or warns, past a tolerance in the same mm² units, naming the better
+orientation and the saving. `cadpole plate` reports the script's own
+hand-placed print layout the same way, beside its plan. The golden tests
+use it to hold the plan to the examples' own layouts: never more support,
+never more plates.
 
 ## Orientation and packing together
 
@@ -201,6 +218,17 @@ plate 1 "Colour 1" (bambu_h2c, 300 x 320 mm reach): 3 pieces, 2 filaments, ~410 
 
 It is returned as text and as data (`plan["pieces"]`, `plan["plates"]`),
 printed by `cadpole plate`, and returned by the `Plate` operation.
+
+## Settings without anybody's project
+
+Plating never needs a saved slicer project. The written project's printer,
+plate, filament and process scaffolding is generated from Cadpole's own
+printer table (`cadpole_print::printers`): the bed, the nozzle reach, the
+excluded corners, the stock preset names, the filament colours. A
+`template=` is an optional *settings source* and nothing more: the
+writer reads its `project_settings.config` and the version that saved it,
+and no object, plate picture, cut information or per-plate file of it ever
+reaches the output (`a_template_brings_its_settings_and_none_of_its_objects_or_pictures`).
 
 ## Follow-ups
 

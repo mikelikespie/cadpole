@@ -3163,6 +3163,65 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         Ok(NoneType)
     }
 
+    /// Fail unless every piece of `body` (a Body, or a list: the pieces
+    /// `print_plan` would find in it) stands for printing within `tolerance`
+    /// of the best orientation `print_plan` finds for it, in mm² of support
+    /// equivalent (5 by default). For a script's hand-placed print layer:
+    /// a wheel left standing on its tread, a lid the right way up, a tall
+    /// bracket on its end. The cost is `print_plan`'s: support area, islands,
+    /// ledges, wide round holes, footing, height and, with `along=`, the
+    /// strength axis across the layers. A print-in-place group in the list
+    /// stays one piece and is not judged, since it keeps its modelled pose.
+    /// The failure names each piece, what it needs as placed and the better
+    /// orientation with its cost and the saving.
+    fn assert_orientation_optimal<'v>(
+        #[starlark(require = pos)] body: Value<'v>,
+        #[starlark(require = named)] printer: Option<&str>,
+        #[starlark(require = named)] tolerance: Option<UnpackFloat>,
+        #[starlark(require = named)] along: Option<Value<'v>>,
+        #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
+        #[starlark(require = named)] msg: Option<&str>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> anyhow::Result<NoneType> {
+        let what = "assert_orientation_optimal";
+        let ids: Vec<BodyId> = collect_bodies(&[body], eval.heap(), what)?.iter().map(|b| b.body_id()).collect();
+        if ids.is_empty() {
+            anyhow::bail!("{what}: the list of bodies is empty");
+        }
+        let tol = opt_num(&tolerance, &format!("{what}: tolerance"))?
+            .unwrap_or(cadpole_print::plate::score::DEFAULT_ORIENTATION_TOLERANCE);
+        if !(tol >= 0.0) {
+            anyhow::bail!("{what}: tolerance is mm² of support equivalent, 0 or more, got {tol}");
+        }
+        let along = along.filter(|v| !v.is_none()).map(|v| direction_arg(v, &format!("{what}: along"))).transpose()?;
+        let mut req = crate::plating::PlateRequest { max_bridge: bridge_limit(max_bridge, what)?, ..Default::default() };
+        if let Some(p) = printer {
+            req.printer = cadpole_print::printers::printer(p)
+                .ok_or_else(|| anyhow::anyhow!("{what}: unknown printer {p:?}; Cadpole knows {}", cadpole_print::printer_list()))?
+                .id
+                .to_owned();
+        }
+        let st = store(eval)?;
+        let mut ctx = st.ctx.borrow_mut();
+        let judged = crate::plating::judge_orientation(&mut ctx, &ids, &req, along)?;
+        let why: Vec<String> = judged
+            .iter()
+            .filter(|j| j.worse(tol))
+            .map(|j| format!("{}: {}", j.name, j.verdict.words()))
+            .collect();
+        if !why.is_empty() {
+            anyhow::bail!(
+                "{what} failed{}: {} piece{} placed worse than the best orientation by more than {} mm²\n  - {}",
+                msg.map(|m| format!(" ({m})")).unwrap_or_default(),
+                why.len(),
+                if why.len() == 1 { " is" } else { "s are" },
+                tol,
+                why.join("\n  - ")
+            );
+        }
+        Ok(NoneType)
+    }
+
     /// Declare a test of the model. `fn` runs after the whole script has
     /// built the model, with every body and parameter still in scope, and
     /// fails by raising: `assert_*`, `fail()`, or any script error. Nothing

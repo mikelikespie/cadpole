@@ -692,6 +692,11 @@ fn handle(m: &MethodInfo, bytes: &[u8], host: &dyn Host) -> anyhow::Result<Vec<u
             fill_document(&mut r.document, host)?;
             cadpole_engine::print_check(&r)?.encode_to_vec()
         }
+        "Plate" => {
+            let mut r = pb::PlateRequest::decode(bytes).with_context(ctx)?;
+            fill_document(&mut r.document, host)?;
+            cadpole_engine::plate(&r)?.encode_to_vec()
+        }
         "Inspect" => {
             let mut r = pb::InspectRequest::decode(bytes).with_context(ctx)?;
             fill_document(&mut r.document, host)?;

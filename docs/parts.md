@@ -68,6 +68,7 @@ cadpole animate examples/gear_toy.star -o toy.gif        # the script's animatio
 cadpole test examples/planter.star                       # the script's test(...) declarations
 cadpole inspect examples/impeller.star                   # per body: counts, solid verdict, kernel decisions
 cadpole check examples/print_ready.star                  # printability
+cadpole plate examples/print_plan.star --printer bambu_h2c -o plates.3mf   # print-ready plates (starlark-api.md §6.5)
 cadpole export examples/bracket.star -o bracket.step     # STL, OBJ, 3MF, STEP, glTF by extension
 cadpole export examples/drawing_sheet.star --run-exports --out-dir .   # dimensioned SVG, PDF and DXF drawings
 cadpole serve examples/bracket.star                      # the web UI

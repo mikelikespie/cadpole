@@ -1082,6 +1082,7 @@ request.
 | `Animate` | `animate` | |
 | `Export` | `export` | |
 | `PrintCheck` | `check` | |
+| `Plate` | `plate` | |
 | `Inspect` | `inspect` | |
 | `Drawing` | `drawing` | |
 | `RunTests` | `test` | |

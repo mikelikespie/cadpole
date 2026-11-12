@@ -388,6 +388,10 @@ pub enum Check {
     /// The first layer is small for the part's height: it may tip or come
     /// off the plate ([`support`]). Always a warning.
     BedContact,
+    /// The part is placed for printing in a clearly worse orientation than
+    /// the best the planner finds ([`plate::score::judge`]). Always a
+    /// warning.
+    PrintOrientation,
 }
 
 impl Check {
@@ -414,6 +418,7 @@ impl Check {
             Check::HorizontalHole => "horizontal_hole",
             Check::Slender => "slender",
             Check::BedContact => "bed_contact",
+            Check::PrintOrientation => "print_orientation",
         }
     }
 
@@ -444,7 +449,7 @@ pub struct Issue {
 }
 
 impl Issue {
-    fn new(check: Check, severity: Severity, message: impl Into<String>, at: Option<Vec3>, value: f64) -> Issue {
+    pub fn new(check: Check, severity: Severity, message: impl Into<String>, at: Option<Vec3>, value: f64) -> Issue {
         Issue { check, severity, message: message.into(), at, value }
     }
 }

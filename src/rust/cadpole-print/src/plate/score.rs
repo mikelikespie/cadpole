@@ -103,6 +103,12 @@ pub fn orient(
         for (n, area) in orient::flat_regions(mesh) {
             orient::push_unique(&mut dirs, n, format!("on the {} mm² flat face", num(area)));
         }
+        // What it can rest on: the largest facets of its convex hull, which
+        // a part with no flat face of its own (a tyre's tread, a dome)
+        // still stands on.
+        for (n, area) in hull_facets(mesh) {
+            orient::push_unique(&mut dirs, n, format!("resting on a {} mm² hull facet", num(area)));
+        }
         for (d, name) in [
             (up, "upside down"),
             (Vec3::X, "on its +x side"),
@@ -355,3 +361,90 @@ fn rules_tippy(s: &Scored, opts: &Options) -> bool {
     let r = &opts.profile.support;
     r.max_height_to_base > 0.0 && s.height_to_base > r.max_height_to_base
 }
+
+/// Hull facets considered.
+const HULL_FACETS: usize = 6;
+/// Vertices the hull is taken over, at most.
+const HULL_POINTS: usize = 4000;
+
+/// The largest facets of the mesh's convex hull, outward normal and area,
+/// largest first; facets within 5° are one.
+pub fn hull_facets(mesh: &Mesh) -> Vec<(Vec3, f64)> {
+    let n = mesh.vertex_count();
+    if n < 4 {
+        return Vec::new();
+    }
+    let stride = n.div_ceil(HULL_POINTS).max(1);
+    let pts: Vec<Vec3> = (0..n)
+        .step_by(stride)
+        .map(|i| Vec3::new(mesh.positions[3 * i] as f64, mesh.positions[3 * i + 1] as f64, mesh.positions[3 * i + 2] as f64))
+        .collect();
+    match cadpole_core::primitives::hull_of_points(&pts, "hull", 1e-3) {
+        Ok((h, _)) => {
+            let mut f = orient::flat_regions(&h);
+            f.truncate(HULL_FACETS);
+            f
+        }
+        Err(_) => Vec::new(),
+    }
+}
+
+/// How a part as placed compares with the best orientation found.
+#[derive(Clone, Debug)]
+pub struct Verdict {
+    /// As placed (as modelled), fully measured.
+    pub placed: Scored,
+    /// The best candidate.
+    pub best: Scored,
+    /// `placed.cost - best.cost`: what the turn would save, in mm² of
+    /// support equivalent.
+    pub delta: f64,
+}
+
+/// Judge a part as it stands: every candidate scored as for plating, with
+/// `pin`'s `along=` if any, and the one as placed compared with the best.
+pub fn judge(mesh: &Mesh, topo: Option<&Topology>, pin: &Pin, opts: &Options) -> Verdict {
+    let free = Pin { along: pin.along, ..Pin::default() };
+    let (c, chosen, baseline, _) = orient(mesh, topo, &free, false, opts);
+    let placed = c[baseline.unwrap_or(chosen)].clone();
+    let best = c[chosen].clone();
+    let delta = (placed.cost - best.cost).max(0.0);
+    Verdict { placed, best, delta }
+}
+
+impl Verdict {
+    /// Whether the placement is within `tolerance` mm² of the best.
+    pub fn ok(&self, tolerance: f64) -> bool {
+        self.delta <= tolerance
+    }
+
+    /// "as placed it needs 1280 mm² support (cost 1291.5); on its side: 0 mm²
+    /// support (cost 3.5), 1288 better".
+    pub fn words(&self) -> String {
+        format!(
+            "as placed it needs {} (cost {}); {}: {} (cost {}), {} better",
+            support_words(&self.placed),
+            num(self.placed.cost),
+            self.best.label,
+            support_words(&self.best),
+            num(self.best.cost),
+            num(self.delta)
+        )
+    }
+
+    /// The finding, a warning, for a report.
+    pub fn issue(&self, name: &str) -> crate::Issue {
+        crate::Issue::new(
+            crate::Check::PrintOrientation,
+            crate::Severity::Warning,
+            format!("{name}: {}", self.words()),
+            None,
+            self.delta,
+        )
+    }
+}
+
+/// The cost a placement may lose to the best before it is called worse,
+/// in mm² of support equivalent: what `assert_orientation_optimal` and
+/// `cadpole check --orientation` allow by default.
+pub const DEFAULT_ORIENTATION_TOLERANCE: f64 = 5.0;

@@ -57,6 +57,7 @@ this document exactly as a part does.
 | --- | --- |
 | [§6.1](#61-exports-and-printing) Exports and printing | `export` (STL, OBJ, 3MF, STEP), `print_check`, `orient_for_print`, `paint`, `split`, `printer` |
 | [§6.2](#62-printing-in-pieces-cadpoleprintstar) Printing in pieces | `@cadpole/print.star`: pegs, sockets, story bands |
+| [§6.5](#65-plating-print_plan-and-cadpole-plate) Plating | `print_plan`, `print_part`, `assert_orientation_optimal`, `cadpole plate`: a model's parts oriented, packed onto plates and written as one Bambu project |
 | [§6.3](#63-drawings) Drawings | `drawing`, `export_svg`, `export_dxf`, `export_pdf` |
 | [§6.4](#64-sheet-sets) Sheet sets | `sheet_set`, title blocks, plan, section and elevation views, `sweep_table` |
 
@@ -3643,7 +3644,8 @@ deterministic. docs/views.md has the flags and a turntable recipe.
 
 What a script writes, for either kind of work: mesh and STEP files and
 print projects (§6.1), a model printed in pieces (§6.2), dimensioned
-drawings (§6.3) and multi-page sheet sets (§6.4). A script records what it
+drawings (§6.3), multi-page sheet sets (§6.4) and a model plated for
+printing (§6.5). A script records what it
 wants exported; the host decides whether and where to write (§1). glTF is
 written from the command line (§4.13).
 
@@ -4651,6 +4653,157 @@ its first error. `configs` names parameters the document declares; at most
 
 ---
 
+### 6.5 Plating: `print_plan` and `cadpole plate`
+
+**To make a print file from a model, plate it**: do not export the
+assembled model, and do not turn and translate copies by hand.
+`print_plan` takes the parts as the model has them -- the lid on its box,
+the wheels on their axles -- and lays them out on print-ready plates of a
+printer: each piece turned the way it prints with the least support,
+packed by its outline onto as few plates as hold it, every plate within
+the AMS's filament slots, test coupons first, and every decision written
+down with its numbers. `cadpole plate` does the same from the command line
+for any script, and the `Plate` operation from MCP. `docs/plating.md` is
+the design.
+
+```python
+plan = print_plan(
+    [box_body, lid, axle, wheel,                           # loose bodies: the pieces are found
+     print_part(latch, along="+z", name="latch"),          # its arm bends: keep it along the layers
+     print_part(coupon, coupon=True, name="latch coupon"), # printed first, on its own plate
+     [badge, stripe]],                                      # a list is one piece
+    "trinket.3mf", printer="bambu_h2d", variants=["colour", "mono"])
+plate_images("trinket.3mf")
+```
+
+```
+6 pieces on 3 plates for the bambu_h2d (300 x 320 mm where every nozzle reaches, 4 AMS slots a plate).
+plate 1 "Test coupons": 1 piece, 1 filament, 40 layers
+  latch coupon: on the 120 mm² flat face: 0 mm² support vs 0 mm² as modelled (its along= axis now runs along the layers (0° out of the bed plane, was 90°))
+plate 2 "Colour 1": 5 pieces, 4 filaments (#2F6F8F, #F4F3EE, #FFCE1F, #161616), ~89 colour changes, 150 layers
+  box_body: as modelled; 0 mm² support, the best of 4 orientations scored
+  lid: on the 3500 mm² flat face: 0 mm² support vs 3036 mm² as modelled
+  badge and stripe: one multi-material piece, as modelled; 0 mm² support, the best of 4 orientations scored
+  axle and wheel: print-in-place, kept as modelled so its gaps stay on the layer grid; 0 mm² support; 1 captive joint, the tightest 0.31 mm
+  ...
+```
+
+`examples/print_plan.star` is the whole script, with tests of the plan.
+
+#### `print_plan(items, path=None, *, printer=None, ams=4, variants=["colour"], spacing=4, joint_gap=1, max_bridge=10, template=None, tolerance=None, layer="print")`
+
+`items` is a list of Bodies, lists of bodies, `print_part(...)`s and
+Instances or Assemblies (their bodies, loose). Returns a dict: `report`
+(the text above), `printer`, `plates` (per plate `name`, `variant`,
+`pieces`, `filaments`, `colour_changes`, `layers`), `pieces` (per placed
+piece `name`, `plate`, `kind`, `orientation`, `support_area`,
+`modelled_support_area`, `spin`, `reason`, `bodies`) and `bodies` (every
+placed copy). The report is also an info diagnostic. With `path` (a
+`.3mf`) the plates are recorded as Bambu exports, exactly as
+`export(..., flavor=flavor.bambu, plate=, name=)` calls would be, and
+`cadpole export --run-exports` writes them; `plate_images(path)` after it
+draws them.
+
+**Pieces: what moves as one.** A list is one piece. Loose bodies are
+joined where the analysis finds they belong together:
+
+| relation | when | result |
+| --- | --- | --- |
+| overlap | they share material | one multi-material piece |
+| skin | they touch, at least 10% of the smaller one's surface lies on the other, and it is thin there (its volume over the contact under a quarter of its size): a stripe, a spot, an inlaid eye, a hub in its tyre | one multi-material piece |
+| print-in-place | within `joint_gap`, at least half of `min_gap` clear, and neither can be slid away from the other in any of 26 directions: a wheel on an axle between caps, a planet between carrier plates | one piece, kept as modelled, never pulled apart or turned relative to each other |
+| anything else | a lid resting on its box lifts off; a nut 0.11 mm clear on its screw would fuse | separate pieces (the report says when a held pair is printed apart) |
+
+**Orientation.** The candidates are: as modelled, upside down, the four
+sides, the outward normals of the eight largest flat regions, and the six
+largest facets of the piece's convex hull (what a part with no flat face
+rests on). Each is scored by a cost in mm² of support equivalent, the same
+for every part, so the report can quote it: the support area `print_check`'s
+support rule still finds (bridges, short ledges and small holes allowed),
+plus 60 per island and 20 per mm it hangs, 40 per mm a ledge sticks out
+past `max_cantilever`, 50 per round horizontal hole too wide to bridge, 150
+when it stands too tall for its footing (`max_height_to_base`), 400 when an
+`along=` axis runs across the layers, 0.05 per mm of height (print time) and
+0.5 for any turn at all; a candidate that does not fit costs a million.
+Print-in-place pieces keep their modelled pose, since their gaps are drawn
+on the layer grid. Orientations within 2 mm² and 2% of the best, with no
+more islands, are *the same print*, and the packer may use one of them to
+fit a plate before it opens another: a plate saved is never bought with
+support.
+
+**Plates.** Pieces are packed by raster bottom-left fill: each piece's
+outline seen from above at 1 mm, grown by half the `spacing`, placed at the
+lowest, then leftmost, spot that is clear, over the turns about z tried
+(0°, 90°, 180°, 270° and the two of its minimum-area rectangle). A plate is
+what every nozzle of the printer reaches (X 25–325 on an H2D or H2C), its
+excluded corners kept clear (the X1 and P1 cutter); a plate of more than
+one filament keeps a square for the prime tower at its back right. Plates
+are tried by colour affinity -- fewest new filaments, then most shared --
+and never take a piece that would put them past `ams` filaments
+(`ams=0`: no limit). Test coupons go first, on "Test coupons"; then the
+pieces, larger first, a `group=` together. `variants=["colour", "mono"]`
+makes a set of plates each, named "Colour 1", "Mono 1", ...; one variant's
+plates are "Parts", or "Parts 1", "Parts 2". A mono plate prints every
+piece in filament 1. Each plate reports its filaments and an estimate of
+its colour changes: per layer, one fewer than the filaments that layer
+prints, plus one where it cannot start on the filament the last layer
+ended on.
+
+**The copies** go on the hidden `layer` (`"print"`, declared when the
+script has not), each with its source's paint; the model is untouched.
+`printer=` is `printer()`'s names (the X1 Carbon by default). `template=`
+is optional and only ever a settings source: a Bambu Studio project's
+printer, process and filament settings, never its objects, plate
+pictures or side files; without one the project carries Cadpole's own
+settings for `printer` (§6.1). `tolerance=` is the export's tessellation
+tolerance.
+
+#### `print_part(bodies, *, name=None, down=None, orient="auto", along=None, spin=None, group=None, plate=None, coupon=False, together=True)`
+
+What a script pins about a piece. `down=` is the model direction that
+faces the bed, `(x, y, z)` or `"-z"`, `"+x"`, `"top"`, `"bottom"`,
+`"front"`, `"back"`, `"left"`, `"right"`; `orient="keep"` prints it as
+modelled. `along=` is the direction its fibres must run in -- a snap arm's
+length, which bends along the layers and breaks across them
+(`snap_fit()` in §6.2 gives its strain) -- kept within 30° of the bed plane
+when any orientation can. `spin=` is its turn about z in degrees, or
+`False` for none. `group=` names pieces that share a plate when they fit;
+`plate=` is the plate of its set it goes on; `coupon=True` prints it first.
+`together=False` leaves a list's bodies loose for the analysis. Every pin is
+reported as pinned.
+
+#### `assert_orientation_optimal(body, *, printer=None, tolerance=5, along=None, max_bridge=None, msg=None)`
+
+For a print layout placed by hand: fails unless each piece of `body` (a
+Body, or a list, joined as `print_plan` joins them) stands within
+`tolerance` mm² of support equivalent of the best orientation found. A
+print-in-place group stays one piece and is not judged.
+
+```
+assert_orientation_optimal failed: 1 piece is placed worse than the best orientation by more than 5 mm²
+  - wheel_2: as placed it needs 1280 mm² support (cost 1281.5); on the 1256.6 mm² flat face: 0 mm² support (cost 1.5), 1280 better
+```
+
+`cadpole check --orientation [--orientation-tolerance MM2]` asks the same of
+every checked body (a `print_orientation` warning), and `cadpole plate`
+says the same, as `hand-placed:` lines, of what the script's own Bambu
+exports and `print` layer place.
+
+#### `cadpole plate`
+
+```
+cadpole plate model.star --printer bambu_h2c [--ams 4] [--variant colour --variant mono] -o out.3mf
+    [--layer NAME] [--body ID] [--coupon-layer NAME] [--include-hidden] [--script-objects]
+    [--spacing MM] [--joint-gap MM] [--max-bridge MM] [--template FILE] [--plate-images DIR] [--json]
+```
+
+Plates the visible bodies (or `--layer`'s, `--body`'s), writes the project
+and prints the report. `--coupon-layer` marks a layer's bodies as test
+coupons; `--script-objects` keeps the script's own `export(..., name=)`
+objects as pieces. The `Plate` operation is the same for `cadpole op` and
+MCP: its response carries `report`, per-plate and per-piece data, the
+`.3mf` bytes in `data` and, with `plate_images`, the contact sheet.
+
 ## 7. Tests, assistants and diagnostics
 
 A script can state what must stay true of its model (§7.1), check and report
@@ -4755,6 +4908,7 @@ fraction of the expected value) mean the same thing everywhere:
 | `assert_solid(body, *, msg=None)` | the tessellation is a solid (§7.2) |
 | `assert_printable(body, *, printer=None, …, msg=None)` | `print_check(body, …)` with the same keywords has nothing to report — warnings included, because a test wants a verdict where `print_check` gives advice. Nothing is recorded as a diagnostic. `body` may be a list: one print, checked between the bodies too |
 | `assert_support_free(body, *, printer=None, …, msg=None)` | the support rules of `print_check` find nothing: no overhang patch past `max_overhang_area`, no island, no ledge past `max_cantilever`, no round horizontal hole past `max_horizontal_hole` with a round top, nothing in the air between the bodies of a list. The failure lists each finding on its own line with its position and face |
+| `assert_orientation_optimal(body, *, printer=None, tolerance=5, along=None, max_bridge=None, msg=None)` | each piece stands within `tolerance` mm² of support equivalent of the best orientation `print_plan` finds for it (§6.5); the failure names the piece, what it needs as placed, the better orientation, its cost and the saving |
 
 There is no separate helper for these: a face by name is
 `body.face("plate/top")` (an error when there is none), a face count is
@@ -4774,6 +4928,7 @@ There is no separate helper for these: a face by name is
 | `assert_bbox(body, lo, hi, *, tol=0.1, msg=None)` | every corner coordinate within `tol` mm — §7.1 |
 | `assert_printable(body, *, printer=None, min_wall=None, nozzle=None, perimeters=None, layer_height=None, material=None, max_overhang=None, bed=None, bed_shape=None, min_gap=None, msg=None, max_bridge=10, max_overhang_area=4, max_cantilever=3, max_horizontal_hole=7, min_island=None, max_slenderness=8, slender_width=3, max_height_to_base=6)` | `print_check` with the same keywords has nothing to report, warnings included — the chord-error-vs-gap warning of §6.1 among them, the support rules' `island`, `cantilever`, `horizontal_hole`, `slender` and `bed_contact` too; a bridge within `max_bridge` and overhang within the allowances not (they are information, not findings); records no diagnostic — §7.1. A list of bodies is one print: the checks between them (`fuse`, `layer_gap`, `bridge`, §6.1) run too, so `assert_printable([sun, ring, carrier])` is the planetary's fit test |
 | `assert_support_free(body, *, printer=None, layer_height=None, max_overhang=None, max_bridge=10, max_overhang_area=4, max_cantilever=3, max_horizontal_hole=7, min_island=None, build_direction=None, msg=None)` | the body prints without support: none of `print_check`'s support findings — `overhang` past the allowances, `island`, `cantilever`, `horizontal_hole`, and for a list printed together `bridge` (a body in the air). Fails with one line per finding, each with its check, position and face. `build_direction=` judges it another way up — §6.1 |
+| `assert_orientation_optimal(body, *, printer=None, tolerance=5, along=None, max_bridge=None, msg=None)` | a print layout's pieces stand the best way up: each within `tolerance` of the best orientation's cost — §6.5 |
 | `print(...)` | Starlark builtin: each line becomes an info diagnostic in `Model.diagnostics` |
 | `test(name, func, *, sweep=None, monotone=None)` | registers a model test; runs after the model is built, only under `cadpole test` and the example gate — §7.1 |
 

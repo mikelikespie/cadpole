@@ -112,33 +112,7 @@ pub const DEFAULT_PRINTER: &str = "bambu_x1c";
 
 /// Plan, place the copies, and (with a path) record the project's exports.
 pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Plated> {
-    let printer_id = if req.printer.is_empty() { DEFAULT_PRINTER } else { req.printer.as_str() };
-    let printer = cadpole_print::printer(printer_id)
-        .ok_or_else(|| anyhow::anyhow!("unknown printer {printer_id:?}; Cadpole knows {}", cadpole_print::printer_list()))?;
-    let mut profile = printer.profile();
-    let (machine, tower) = match &req.template {
-        Some(t) => {
-            let tpl = cadpole_export_3mf::bambu_settings::Template::from_parts(&t.application, &t.settings)
-                .map_err(|e| anyhow::anyhow!("template {:?}: {e}", t.asset))?;
-            let m = tpl.machine();
-            profile.bed = [m.area[2] - m.area[0], m.area[3] - m.area[1], m.height];
-            (m, cadpole_export_3mf::bambu_settings::tower_room(Some(&tpl)))
-        }
-        None => (machine_of_printer(printer), cadpole_export_3mf::bambu_settings::tower_room(None)),
-    };
-    let options = Options {
-        profile,
-        max_bridge: req.max_bridge,
-        region: machine.shared(),
-        exclude: machine.exclude.clone(),
-        tower: tower.map(|r| r.span()),
-        ams: req.ams,
-        spacing: req.spacing,
-        joint_gap: req.joint_gap,
-        cell: 1.0,
-        variants: if req.variants.is_empty() { vec![Variant::Colour] } else { req.variants.clone() },
-        printer: printer.id.to_owned(),
-    };
+    let (options, printer) = options_for(req)?;
 
     // The bodies, once each, in the order the items name them.
     let mut sources: Vec<BodyId> = Vec::new();
@@ -161,47 +135,7 @@ pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Pla
         anyhow::bail!("there is nothing to plate");
     }
     let paints = cadpole_core::paint::paints(ctx);
-    let mut meshes: Vec<(Mesh, Topology)> = Vec::with_capacity(sources.len());
-    let mut names = Vec::new();
-    let mut colours: Vec<(Vec<String>, Vec<u8>)> = Vec::new();
-    for id in &sources {
-        let (name, base, id_string) = {
-            let b = ctx.body(*id)?;
-            (b.name.clone(), cadpole_core::paint::hex(b.material.base_color), b.id_string())
-        };
-        let (mesh, topo) = ctx.body_mesh_with(*id, req.tolerance)?.clone();
-        let mut list = vec![base];
-        let mut tri: Vec<u8> = Vec::new();
-        for p in paints.iter().filter(|p| p.body_id == id_string && !p.hex.is_empty()) {
-            if p.faces.is_empty() {
-                // The whole body: its filament is the paint's, and earlier
-                // face paint is painted over.
-                list = vec![p.hex.clone()];
-                tri.clear();
-                continue;
-            }
-            let k = match list.iter().position(|c| c == &p.hex) {
-                Some(k) => k,
-                None => {
-                    list.push(p.hex.clone());
-                    list.len() - 1
-                }
-            };
-            if tri.is_empty() {
-                tri = vec![0; mesh.triangle_count()];
-            }
-            let faces: Vec<u32> =
-                p.faces.iter().filter_map(|n| topo.faces.iter().position(|f| &f.name == n).map(|i| i as u32)).collect();
-            for (t, f) in mesh.face_ids.iter().enumerate() {
-                if faces.contains(f) {
-                    tri[t] = k.min(255) as u8;
-                }
-            }
-        }
-        names.push(name);
-        colours.push((list, tri));
-        meshes.push((mesh, topo));
-    }
+    let (meshes, names, colours) = load(ctx, &sources, &paints, req.tolerance)?;
     let bodies: Vec<PlanBody<'_>> = (0..sources.len())
         .map(|i| PlanBody {
             name: names[i].clone(),
@@ -277,6 +211,138 @@ pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Pla
         ctx.diagnostics.push(cadpole_core::context::Diagnostic::warning(format!("print_plan: {n}")).with_span(req.span.clone()));
     }
     Ok(Plated { plan, options, report, sources, copies, printer: printer.id.to_owned() })
+}
+
+/// The planner's options for a request: the printer's (or the template's)
+/// machine, and the request's numbers.
+fn options_for(req: &PlateRequest) -> anyhow::Result<(Options, &'static cadpole_print::Printer)> {
+    let printer_id = if req.printer.is_empty() { DEFAULT_PRINTER } else { req.printer.as_str() };
+    let printer = cadpole_print::printer(printer_id)
+        .ok_or_else(|| anyhow::anyhow!("unknown printer {printer_id:?}; Cadpole knows {}", cadpole_print::printer_list()))?;
+    let mut profile = printer.profile();
+    let (machine, tower) = match &req.template {
+        Some(t) => {
+            let tpl = cadpole_export_3mf::bambu_settings::Template::from_parts(&t.application, &t.settings)
+                .map_err(|e| anyhow::anyhow!("template {:?}: {e}", t.asset))?;
+            let m = tpl.machine();
+            profile.bed = [m.area[2] - m.area[0], m.area[3] - m.area[1], m.height];
+            (m, cadpole_export_3mf::bambu_settings::tower_room(Some(&tpl)))
+        }
+        None => (machine_of_printer(printer), cadpole_export_3mf::bambu_settings::tower_room(None)),
+    };
+    let options = Options {
+        profile,
+        max_bridge: req.max_bridge,
+        region: machine.shared(),
+        exclude: machine.exclude.clone(),
+        tower: tower.map(|r| r.span()),
+        ams: req.ams,
+        spacing: req.spacing,
+        joint_gap: req.joint_gap,
+        cell: 1.0,
+        variants: if req.variants.is_empty() { vec![Variant::Colour] } else { req.variants.clone() },
+        printer: printer.id.to_owned(),
+    };
+    Ok((options, printer))
+}
+
+type Loaded = (Vec<(Mesh, Topology)>, Vec<String>, Vec<(Vec<String>, Vec<u8>)>);
+
+/// Each body's mesh, name, and filaments with the per-triangle paint.
+fn load(ctx: &mut Context, sources: &[BodyId], paints: &[cadpole_core::paint::Paint], tolerance: Option<f64>) -> anyhow::Result<Loaded> {
+    let mut meshes: Vec<(Mesh, Topology)> = Vec::with_capacity(sources.len());
+    let mut names = Vec::new();
+    let mut colours: Vec<(Vec<String>, Vec<u8>)> = Vec::new();
+    for id in sources {
+        let (name, base, id_string) = {
+            let b = ctx.body(*id)?;
+            (b.name.clone(), cadpole_core::paint::hex(b.material.base_color), b.id_string())
+        };
+        let (mesh, topo) = ctx.body_mesh_with(*id, tolerance)?.clone();
+        let mut list = vec![base];
+        let mut tri: Vec<u8> = Vec::new();
+        for p in paints.iter().filter(|p| p.body_id == id_string && !p.hex.is_empty()) {
+            if p.faces.is_empty() {
+                // The whole body: its filament is the paint's, and earlier
+                // face paint is painted over.
+                list = vec![p.hex.clone()];
+                tri.clear();
+                continue;
+            }
+            let k = match list.iter().position(|c| c == &p.hex) {
+                Some(k) => k,
+                None => {
+                    list.push(p.hex.clone());
+                    list.len() - 1
+                }
+            };
+            if tri.is_empty() {
+                tri = vec![0; mesh.triangle_count()];
+            }
+            let faces: Vec<u32> =
+                p.faces.iter().filter_map(|n| topo.faces.iter().position(|f| &f.name == n).map(|i| i as u32)).collect();
+            for (t, f) in mesh.face_ids.iter().enumerate() {
+                if faces.contains(f) {
+                    tri[t] = k.min(255) as u8;
+                }
+            }
+        }
+        names.push(name);
+        colours.push((list, tri));
+        meshes.push((mesh, topo));
+    }
+    Ok((meshes, names, colours))
+}
+
+/// One piece judged as it stands.
+#[derive(Clone, Debug)]
+pub struct Judged {
+    pub name: String,
+    pub verdict: plate::score::Verdict,
+    /// A print-in-place piece keeps its modelled pose whatever the verdict,
+    /// so it is never called worse.
+    pub in_place: bool,
+}
+
+impl Judged {
+    /// Placed worse than the best by more than `tolerance`.
+    pub fn worse(&self, tolerance: f64) -> bool {
+        !self.in_place && !self.verdict.ok(tolerance)
+    }
+}
+
+/// Judge `ids` as placed: the pieces the planner finds in them (a
+/// print-in-place group stays one piece, and is not turned), each as it
+/// stands against the best orientation found.
+pub fn judge_orientation(ctx: &mut Context, ids: &[BodyId], req: &PlateRequest, along: Option<Vec3>) -> anyhow::Result<Vec<Judged>> {
+    let (options, _) = options_for(req)?;
+    let paints = cadpole_core::paint::paints(ctx);
+    let (meshes, names, colours) = load(ctx, ids, &paints, req.tolerance)?;
+    let bodies: Vec<PlanBody<'_>> = (0..ids.len())
+        .map(|i| PlanBody {
+            name: names[i].clone(),
+            mesh: &meshes[i].0,
+            topo: Some(&meshes[i].1),
+            colours: colours[i].0.clone(),
+            tri_colours: colours[i].1.clone(),
+        })
+        .collect();
+    let items: Vec<Item> = (0..ids.len()).map(|i| Item { bodies: vec![i], ..Item::default() }).collect();
+    let mut notes = Vec::new();
+    let groups = plate::pieces::join(&bodies, &items, &options, &mut notes);
+    let pin = Pin { along, ..Pin::default() };
+    Ok(groups
+        .into_iter()
+        .map(|g| {
+            let in_place = g.kind == plate::PieceKind::PrintInPlace;
+            let (mesh, topo) = if g.bodies.len() == 1 {
+                (meshes[g.bodies[0]].0.clone(), Some(&meshes[g.bodies[0]].1))
+            } else {
+                (plate::pieces::without_contacts(&g.bodies.iter().map(|&b| &meshes[b].0).collect::<Vec<_>>()), None)
+            };
+            Judged { name: g.name, verdict: plate::score::judge(&mesh, topo, &pin, &options), in_place }
+        })
+        .collect())
 }
 
 /// The model direction a script names: `(x, y, z)` or one of `"-z"`, `"+x"`,

@@ -29,7 +29,7 @@ module lifecycle {
   pure val DOORS: Set[str] = Set("http", "ffi")
 
   // Operations that cost real time in the interpreter or the kernel.
-  pure val HEAVY: Set[str] = Set("Evaluate", "Render", "Sweep", "Animate", "Export", "PrintCheck", "Drawing")
+  pure val HEAVY: Set[str] = Set("Evaluate", "Render", "Sweep", "Animate", "Export", "PrintCheck", "Plate", "Drawing")
 
   // What each door bounds in the code: `post_op`'s `heavy` match and the
   // request `deadline_of` reads. Diffed against the Rust by `//spec:names_test`.

@@ -134,6 +134,30 @@ service CadpoleOps {
     };
   }
 
+  // Lay a model out on print-ready plates and write them as one Bambu
+  // Studio project: use this to make a print file, instead of exporting the
+  // assembled model or placing parts by hand. Each piece is turned the way
+  // it prints with the least support (scored by the same support rules
+  // PrintCheck judges: overhang area, islands, ledges, wide round holes,
+  // footing, height), packed by its outline onto as few plates of the
+  // printer as hold it, where every nozzle reaches and clear of the prime
+  // tower, a plate never needing more filaments than the AMS has slots.
+  // Bodies that overlap or lie on each other (a stripe, an inlay) are one
+  // multi-material piece; bodies held captive across a small gap (a wheel
+  // on its axle, a gear in its carrier) are one print-in-place piece, kept
+  // as modelled. A lid resting on its box lifts off, so it is printed apart.
+  // `report` explains every decision with its numbers ("lid: on the
+  // 3500 mm2 flat face: 0 mm2 support vs 3036 mm2 as modelled"); `data` is
+  // the .3mf. A script's own `print_plan(...)` pins choices this cannot
+  // know (a snap arm's strength direction, pieces to keep together).
+  rpc Plate(PlateRequest) returns (PlateResponse) {
+    option (cadpole.op) = {
+      cli_name: "plate",
+      idempotent: true,
+      image_field: "plate_sheet"
+    };
+  }
+
   // Inspect the geometry a document produces, body by body, and say what the
   // geometry kernel decided while making it. Use this when a model looks
   // wrong, renders with artefacts, has lost its face names, or when a
@@ -1498,6 +1522,120 @@ message TestResult {
   double eval_ms = 8;
 }
 
+message PlateRequest {
+  option (cadpole.type) = {title: "Plate a model for printing"};
+
+  // The document to plate. Supplied by the front-end.
+  Document document = 1 [(cadpole.field) = {hidden: true}];
+  // Which bodies to plate, by id (`feature#n`) or by name. Empty (with
+  // `layer_names` empty too) means every visible body that is not on a
+  // hidden display layer: the model as it is shown.
+  repeated string body_ids = 2;
+  // Plate only the visible bodies on these display layers, by the name
+  // `layer(...)` declared; "other" is the bodies on no layer. Adds to
+  // `body_ids`. A hidden layer named here is plated.
+  repeated string layer_names = 3 [(cadpole.field) = {flag: "layer", example: "parts"}];
+  // Also plate the bodies on display layers the script declares hidden.
+  bool include_hidden_layers = 4;
+  // The printer the plates are laid out for: "bambu_h2d", "bambu_h2c",
+  // "bambu_h2s", "bambu_x1c", "bambu_x1e", "bambu_p1s", "bambu_p2s",
+  // "bambu_a1", "bambu_a1_mini" (short forms such as "h2c" work too). Empty
+  // is the X1 Carbon.
+  string printer = 5 [(cadpole.field) = {example: "bambu_h2c"}];
+  // Filaments one plate may use: the AMS slots. 0 means 4.
+  uint32 ams = 6 [(cadpole.field) = {example: "4"}];
+  // Sets of plates to make, in order: "colour" (each body in its own
+  // filaments) and "mono" (every body in filament 1). Empty means
+  // "colour" alone.
+  repeated string variants = 7 [(cadpole.field) = {flag: "variant", example: "mono"}];
+  // Clear space between pieces on a plate, in mm. 0 means 4.
+  double spacing = 8 [(cadpole.field) = {example: "4"}];
+  // The widest gap, in mm, across which two bodies held captive in each
+  // other are one print-in-place piece. 0 means 1.
+  double joint_gap = 9 [(cadpole.field) = {example: "1"}];
+  // The longest bridge in mm a flat downward face may span without
+  // support, as PrintCheck's. 0 means 10; a negative number turns
+  // bridging off.
+  double max_bridge = 10 [(cadpole.field) = {example: "10"}];
+  // Bodies on these display layers are test coupons: printed first, on a
+  // plate of their own, whether or not the layer is hidden.
+  repeated string coupon_layers = 11 [(cadpole.field) = {flag: "coupon-layer", example: "coupon"}];
+  // Keep each object the script's own `export(..., name=)` calls make as
+  // one piece, as the script grouped it, instead of finding the pieces.
+  bool script_objects = 12;
+  // Optional: a Bambu Studio project to take printer, process and filament
+  // settings from, named as one of the document's assets (`cadpole plate
+  // --template FILE` adds the file). Only its settings are used, never its
+  // objects or pictures. Without it the project carries Cadpole's own
+  // settings for `printer`.
+  string template = 13 [(cadpole.field) = {example: "h2c_pla.3mf"}];
+  // Tessellation tolerance in mm (0 = engine default).
+  double tolerance = 14;
+  // Boolean (kernel) tolerance in mm (0 = engine default).
+  double boolean_tolerance = 15;
+  // Also render an image of every plate and a contact sheet of them, which
+  // comes back in `plate_sheet`.
+  bool plate_images = 16;
+  // The project's title, which names the plate images; empty is "plates".
+  string title = 17 [(cadpole.field) = {example: "toy"}];
+}
+
+message PlateResponse {
+  // The Bambu Studio project, .3mf bytes. Empty when the document has an
+  // error or no plan could be written.
+  bytes data = 1;
+  // Every decision, a line each, as `cadpole plate` prints it.
+  string report = 2;
+  repeated PlannedPlate plates = 3;
+  repeated PlannedPiece pieces = 4;
+  // Diagnostics from evaluating the document and from writing the project
+  // (its warnings).
+  repeated Diagnostic diagnostics = 5;
+  // One image per plate when `plate_images` asked for them.
+  repeated PlateImage plate_images = 6;
+  // The contact sheet of `plate_images`, PNG.
+  bytes plate_sheet = 7;
+}
+
+// One plate of a plan.
+message PlannedPlate {
+  // Its name in the project: "Parts", "Colour 2", "Test coupons".
+  string name = 1;
+  // "colour", "mono" or "coupons".
+  string variant = 2;
+  // The pieces on it, by name.
+  repeated string pieces = 3;
+  // Its filaments, `#rrggbb`; empty for a mono plate.
+  repeated string filaments = 4;
+  // An estimate of its colour changes: per layer, one fewer than its
+  // filaments, plus one where it starts on another filament than the last
+  // layer ended on.
+  uint32 colour_changes = 5;
+  uint32 layers = 6;
+}
+
+// One piece of a plan, as placed.
+message PlannedPiece {
+  string name = 1;
+  // The plate it is on, by name.
+  string plate = 2;
+  // "single", "fused", "print-in-place" or "declared".
+  string kind = 3;
+  // How it is turned: "as modelled", "upside down", "on the 3500 mm2 flat
+  // face", ...
+  string orientation = 4;
+  // What still needs support in that orientation, in mm2.
+  double support_area = 5;
+  // The same as modelled.
+  double modelled_support_area = 6;
+  // The turn about z, in degrees.
+  double spin = 7;
+  // The sentence about it.
+  string reason = 8;
+  // The bodies it is made of, by name.
+  repeated string bodies = 9;
+}
+
 message PrintCheckRequest {
   option (cadpole.type) = {title: "Check a model for printability"};
 
@@ -1595,6 +1733,15 @@ message PrintCheckRequest {
   // island, cantilever, horizontal_hole, and bridge between bodies) and
   // drops the rest, and `ok` is false when any is left.
   bool support_free = 26;
+  // Also judge each body's orientation as placed against the best one
+  // `Plate` finds for it, and warn (check "print_orientation") when it costs
+  // more than `orientation_tolerance` mm2 of support equivalent more: a
+  // hand-placed print layer's wheel standing on its tread, a lid the right
+  // way up.
+  bool optimal_orientation = 27 [(cadpole.field) = {flag: "orientation"}];
+  // How much worse than the best a placement may be, in mm2 of support
+  // equivalent, before `optimal_orientation` warns. 0 means 5.
+  double orientation_tolerance = 28 [(cadpole.field) = {example: "5"}];
 }
 
 message PrintCheckResponse {

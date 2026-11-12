@@ -4,9 +4,11 @@
 //! for each pair whose bounding boxes come within `joint_gap`:
 //!
 //! * **overlap**: they share material ([`clearance::Clearance::overlap`]);
-//! * **skin**: they touch, and at least [`SKIN_FRACTION`] of the smaller
-//!   one's surface lies on the other -- a stripe, a spot, an inlaid eye;
-//! * **captive**: within `joint_gap` and neither can be slid away from the
+//! * **skin**: they touch, at least [`SKIN_FRACTION`] of the smaller
+//!   one's surface lies on the other, and it is thin over that contact
+//!   ([`SKIN_THICKNESS`]) -- a stripe, a spot, an inlaid eye;
+//! * **captive**: within `joint_gap`, at least half `min_gap` clear (a
+//!   tighter pair fuses, and is printed apart), and neither can be slid away from the
 //!   other in any of 26 directions -- a wheel on an axle with a hub cap, a
 //!   planet between carrier plates. This is the non-directional blocking
 //!   test of assembly planning, by rays: A is free to leave B along `d`
@@ -29,6 +31,16 @@ use crate::{centroid, num, tri, tri_normal_area};
 /// The share of the smaller body's surface that must lie on the other for
 /// two touching bodies to be one piece.
 pub const SKIN_FRACTION: f64 = 0.10;
+
+/// A skin's mean thickness over its contact, at most this share of its
+/// bounding-box diagonal.
+pub const SKIN_THICKNESS: f64 = 0.25;
+
+/// A captive pair prints in place only across a gap of at least this share
+/// of `min_gap`: tighter, its faces fuse. Half, because a modelled gap
+/// measured on chords reads a little under the design (a 0.35 mm wheel
+/// clearance measures 0.31 at 0.05 mm tolerance) and `min_gap` is a margin.
+pub const PRINTABLE_GAP_SHARE: f64 = 0.5;
 
 /// Two surfaces closer than this, in mm, touch.
 pub const TOUCH: f64 = 0.02;
@@ -132,11 +144,26 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
             } else if c.distance > reach {
                 None
             } else {
-                let skin = if c.distance <= TOUCH { skin_share(bodies[i].mesh, bodies[j].mesh) } else { 0.0 };
-                if skin >= SKIN_FRACTION {
-                    Some(JointKind::Skin(skin))
+                let (share, thin) = if c.distance <= TOUCH { skin(bodies[i].mesh, bodies[j].mesh) } else { (0.0, false) };
+                if share >= SKIN_FRACTION && thin {
+                    Some(JointKind::Skin(share))
                 } else if captive(bodies[i].mesh, bodies[j].mesh) {
-                    Some(JointKind::Captive(c.distance))
+                    // Held, but a gap this tight fuses on the printer: an
+                    // assembly made after printing (a nut on its screw, a
+                    // lid snapped onto its base), so printed apart.
+                    let need = PRINTABLE_GAP_SHARE * opts.profile.min_gap;
+                    if c.distance >= need {
+                        Some(JointKind::Captive(c.distance))
+                    } else {
+                        notes.push(format!(
+                            "{} is held in {} but only {} mm clear, under the {} mm a print-in-place gap needs (half of min_gap): printed apart, to be assembled",
+                            bodies[i].name,
+                            bodies[j].name,
+                            num(c.distance),
+                            num(need)
+                        ));
+                        None
+                    }
                 } else {
                     None
                 }
@@ -242,6 +269,23 @@ fn merge_pin(into: &mut Pin, from: &Pin, first: bool) {
 /// of its triangles from whose centroid a ray a hair along the outward
 /// normal meets the other body, over its whole area.
 pub fn skin_share(a: &Mesh, b: &Mesh) -> f64 {
+    skin(a, b).0
+}
+
+/// [`skin_share`], and whether the smaller body is *thin* over what it
+/// touches: its volume over the contact area -- its mean thickness there --
+/// at most [`SKIN_THICKNESS`] of its size. A stripe, a spot, an inlaid eye
+/// or a hub in its tyre is; a figure standing on its plinth is not.
+pub fn skin(a: &Mesh, b: &Mesh) -> (f64, bool) {
+    let small = if a.area() <= b.area() { a } else { b };
+    let share = contact_share(a, b);
+    let contact = share * small.area();
+    let size = small.bbox().map(|(lo, hi)| (hi - lo).length()).unwrap_or(0.0);
+    let thin = contact > 0.0 && small.volume().abs() / contact <= SKIN_THICKNESS * size;
+    (share, thin)
+}
+
+fn contact_share(a: &Mesh, b: &Mesh) -> f64 {
     let (small, other) = if a.area() <= b.area() { (a, b) } else { (b, a) };
     let total = small.area();
     if total <= 0.0 {

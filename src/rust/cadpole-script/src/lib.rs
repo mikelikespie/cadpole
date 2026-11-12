@@ -6539,4 +6539,75 @@ assert_eq(str(1.23e45), "1.23e+45")
         assert!(errs[0].contains("a layer is declared once, and a second declaration must repeat"), "{errs:?}");
         assert!(!errs[0].contains("  "), "no run of spaces: {errs:?}");
     }
+
+    /// `print_plan` plates the model as it is written: the lid sitting on
+    /// its box is turned over onto its top beside it, the copies go on a
+    /// hidden `print` layer with their paint, and the plates are recorded
+    /// as Bambu exports under their names.
+    #[test]
+    fn print_plan_plates_a_lid_and_its_box() {
+        let ctx = run(
+            "base = subtract(box(60, 40, 20), box(56, 36, 20, at=(2, 2, 2)), name=\"base\")\n\
+             lid = subtract(box(60, 40, 6, at=(0, 0, 20)), box(56, 36, 4, at=(2, 2, 20)), name=\"lid\")\n\
+             base.material(color=\"#2F6F8F\")\n\
+             paint(lid, faces=lid.faces(normal=(0, 0, 1)), color=\"#FFCE1F\")\n\
+             plan = print_plan([base, lid], \"box.3mf\", printer=\"bambu_a1\")\n\
+             assert_eq([p[\"name\"] for p in plan[\"plates\"]], [\"Parts\"])\n\
+             assert_eq(sorted([p[\"name\"] for p in plan[\"pieces\"]]), [\"base\", \"lid\"])\n\
+             lp = [p for p in plan[\"pieces\"] if p[\"name\"] == \"lid\"][0]\n\
+             assert_eq(lp[\"support_area\"], 0.0)\n\
+             assert_true(lp[\"modelled_support_area\"] > 1000, msg=lp[\"reason\"])\n\
+             assert_eq(len(plan[\"bodies\"]), 2)\n\
+             assert_true(\"lid:\" in plan[\"report\"])\n",
+        );
+        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
+        let specs: Vec<_> = ctx.exports.iter().filter(|e| e.path == "box.3mf").collect();
+        assert_eq!(specs.len(), 2);
+        assert!(specs.iter().all(|e| e.flavor == cadpole_core::export::Flavor::Bambu && e.printer == "bambu_a1"));
+        let print = ctx.layers.iter().find(|l| l.name == "print").expect("the print layer is declared");
+        assert!(!print.visible, "and hidden");
+        for e in &specs {
+            for id in &e.bodies {
+                assert_eq!(ctx.body(*id).unwrap().layer, "print");
+            }
+        }
+        // The lid's copy carries its paint.
+        let lid_copy = specs.iter().find(|e| e.name.as_deref() == Some("lid")).unwrap().bodies[0];
+        let id = ctx.body(lid_copy).unwrap().id_string();
+        assert!(cadpole_core::paint::paints(&ctx).iter().any(|p| p.body_id == id && p.hex == "#FFCE1F"));
+    }
+
+    /// The pins a piece can carry are checked at the call.
+    #[test]
+    fn print_part_refuses_what_it_cannot_mean() {
+        for (call, want) in [
+            ("print_part(b, orient=\"sideways\")", "orient= is \"auto\" or \"keep\""),
+            ("print_part(b, orient=\"keep\", down=\"-x\")", "pass one"),
+            ("print_part(b, down=\"sideways\")", "not a direction"),
+            ("print_part(b, down=(0, 0, 0))", "has no direction"),
+            ("print_part(b, spin=\"a lot\")", "spin= is an angle"),
+            ("print_part(b, plate=0)", "plate= is 1 or more"),
+            ("print_plan([b], \"x.stl\")", "is not a .3mf"),
+            ("print_plan([b], variants=[\"sepia\"])", "is not \"colour\" or \"mono\""),
+            ("print_plan([b], printer=\"nope\")", "unknown printer"),
+        ] {
+            let ctx = run(&format!("b = box(10, 10, 10)\n{call}\n"));
+            let e = errors(&ctx);
+            assert!(e.iter().any(|m| m.contains(want)), "{call}: {e:?}");
+        }
+    }
+
+    /// `assert_orientation_optimal` passes a part lying flat and fails one
+    /// standing on its end, naming the better way and the saving.
+    #[test]
+    fn assert_orientation_optimal_names_the_better_orientation() {
+        let ctx = run("assert_orientation_optimal(box(80, 10, 10, name=\"bar\"))\n");
+        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
+        let ctx = run("assert_orientation_optimal(box(10, 10, 80, name=\"post\"), msg=\"the post\")\n");
+        let e = errors(&ctx);
+        let m = e.iter().find(|m| m.contains("assert_orientation_optimal failed")).unwrap_or_else(|| panic!("{e:?}"));
+        assert!(m.contains("(the post)") && m.contains("post: as placed it needs") && m.contains("better"), "{m}");
+        let ctx = run("assert_orientation_optimal(box(10, 10, 80, name=\"post\"), tolerance=1000)\n");
+        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
+    }
 }

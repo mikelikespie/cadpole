@@ -307,3 +307,84 @@ fn a_footprint_raster_covers_the_shape_and_its_spacing() {
     assert!(fp.raster.get(0, 5) && fp.raster.get(7, 0));
     assert!(!fp.raster.get(0, 0), "the corner of a disc dilation is round");
 }
+
+/// A truck wheel as modelled on its axle: a hub disc and a tyre ring round
+/// it, axis along y, standing on its tread.
+fn standing_wheel() -> (Mesh, Mesh) {
+    let stand = Transform::rotation(Vec3::ZERO, Vec3::X, std::f64::consts::FRAC_PI_2);
+    let hub = revolve(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)], 48).transformed(&stand);
+    let tyre = revolve(&[(10.0, 0.0), (20.0, 0.0), (20.0, 10.0), (10.0, 10.0), (10.0, 0.0)], 48).transformed(&stand);
+    (hub, tyre)
+}
+
+#[test]
+fn a_wheel_standing_on_its_tread_is_laid_on_its_side() {
+    let (hub, tyre) = standing_wheel();
+    let bodies = [body("hub", &hub, "#FFCE1F"), body("tyre", &tyre, "#161616")];
+    let opts = Options::default();
+    let plan = plan(&bodies, &loose(2), &opts);
+    assert_eq!(plan.pieces.len(), 1, "the hub is a skin of the tyre's bore: one piece");
+    let p = &plan.pieces[0];
+    let base = &p.candidates[p.baseline.unwrap()];
+    assert!(base.support_area > 100.0, "standing, the tread's underside overhangs: {}", p.reason);
+    assert!(p.best().down.dot(Vec3::Y).abs() > 0.99, "it lies on a side: {}", p.reason);
+    assert_eq!(p.best().support_area, 0.0, "{}", p.reason);
+    assert!((p.best().height - 10.0).abs() < 1e-3, "{}", p.reason);
+
+    // And judged as placed, standing is clearly worse.
+    let mesh = pieces::without_contacts(&[&hub, &tyre]);
+    let v = score::judge(&mesh, None, &Pin::default(), &opts);
+    assert!(!v.ok(score::DEFAULT_ORIENTATION_TOLERANCE), "{}", v.words());
+    assert!(v.words().contains("as placed it needs") && v.delta > 100.0, "{}", v.words());
+}
+
+#[test]
+fn a_tall_thin_bracket_lies_down() {
+    let m = box_mesh(10.0, 10.0, 80.0);
+    let bodies = [body("bracket", &m, "#ff0000")];
+    let plan = plan(&bodies, &loose(1), &Options::default());
+    let p = &plan.pieces[0];
+    assert!(p.best().height <= 10.0 + 1e-6, "{}", p.reason);
+    assert!(p.reason.contains("10 mm tall instead of 80") || p.reason.contains("steady"), "{}", p.reason);
+}
+
+#[test]
+fn a_flat_part_as_placed_is_judged_optimal() {
+    let m = lid(60.0, 40.0).transformed(&Transform::rotation(Vec3::new(30.0, 20.0, 5.0), Vec3::X, std::f64::consts::PI));
+    let v = score::judge(&m, None, &Pin::default(), &Options::default());
+    assert!(v.ok(score::DEFAULT_ORIENTATION_TOLERANCE), "the lid on its top is the best: {}", v.words());
+    let up = lid(60.0, 40.0);
+    let v = score::judge(&up, None, &Pin::default(), &Options::default());
+    assert!(!v.ok(score::DEFAULT_ORIENTATION_TOLERANCE), "{}", v.words());
+}
+
+#[test]
+fn a_part_with_no_flat_face_rests_on_a_hull_facet() {
+    // A tyre alone, standing: its sides are flat, but a ball has none.
+    let ball = revolve(&ball_profile(10.0, 16), 32);
+    let facets = score::hull_facets(&ball);
+    assert!(!facets.is_empty());
+    let (_, tyre) = standing_wheel();
+    let f = score::hull_facets(&tyre);
+    assert!(f.iter().any(|(n, _)| n.dot(Vec3::Y).abs() > 0.99), "the sides are hull facets: {f:?}");
+}
+
+#[test]
+fn a_nut_held_tight_on_its_screw_is_printed_apart() {
+    // The axle and ring, but only 0.1 mm clear: it would fuse.
+    let axle = joined(&[
+        ([-2.0, -2.0, 0.0], [2.0, 2.0, 20.0]),
+        ([-8.0, -8.0, 0.0], [8.0, 8.0, 2.0]),
+        ([-8.0, -8.0, 18.0], [8.0, 8.0, 20.0]),
+    ]);
+    let ring = joined(&[
+        ([-12.0, -12.0, 2.1], [-2.1, 12.0, 17.9]),
+        ([2.1, -12.0, 2.1], [12.0, 12.0, 17.9]),
+        ([-2.1, -12.0, 2.1], [2.1, -2.1, 17.9]),
+        ([-2.1, 2.1, 2.1], [2.1, 12.0, 17.9]),
+    ]);
+    let bodies = [body("screw", &axle, "#ff0000"), body("nut", &ring, "#000000")];
+    let plan = plan(&bodies, &loose(2), &Options::default());
+    assert_eq!(plan.pieces.len(), 2);
+    assert!(plan.notes.iter().any(|n| n.contains("printed apart")), "{:?}", plan.notes);
+}

@@ -338,14 +338,15 @@ impl Plan {
             s.push_str(&format!("note: {n}\n"));
         }
         for (i, p) in self.plates.iter().enumerate() {
+            let filaments = if p.variant == Some(Variant::Mono) { 1 } else { p.colours.len().max(1) };
             s.push_str(&format!(
                 "plate {} \"{}\": {} piece{}, {} filament{}{}{}, {} layers\n",
                 i + 1,
                 p.name,
                 p.placements.len(),
                 plural(p.placements.len()),
-                p.colours.len(),
-                plural(p.colours.len()),
+                filaments,
+                if p.variant == Some(Variant::Mono) { " (every piece in filament 1)" } else { plural(filaments) },
                 if p.colours.len() > 1 { format!(" ({})", p.colours.join(", ")) } else { String::new() },
                 if p.colours.len() > 1 {
                     format!(", ~{} colour change{}", p.colour_changes, plural(p.colour_changes))
