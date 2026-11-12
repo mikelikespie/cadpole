@@ -376,6 +376,18 @@ pub fn piece_rows(p: &Plated) -> Vec<BTreeMap<&'static str, String>> {
         row.insert("modelled_support_area", base.map(|b| format!("{}", b.support_area)).unwrap_or_default());
         row.insert("spin", format!("{}", pl.spin));
         row.insert("reason", piece.reason.clone());
+        // Every orientation fully scored, best first: what the choice was
+        // made from.
+        row.insert(
+            "considered",
+            piece
+                .candidates
+                .iter()
+                .filter(|k| k.full)
+                .map(|k| format!("{}: cost {:.1}, {:.1} mm² support, {} islands", k.label, k.cost, k.support_area, k.islands))
+                .collect::<Vec<_>>()
+                .join("; "),
+        );
         out.push(row);
     }
     out

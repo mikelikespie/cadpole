@@ -16,6 +16,7 @@ use std::sync::Arc;
 use cadpole_engine::cadpole_assets::AssetStore;
 use cadpole_engine::cadpole_core::context::Context;
 use cadpole_engine::cadpole_core::{BodyId, ParamValue};
+use cadpole_engine::cadpole_print::plate::Pin;
 use cadpole_engine::cadpole_script::plating::{self, PlateItem, PlateRequest};
 use cadpole_engine::cadpole_script::{self, EvalInput, ScriptFile};
 
@@ -144,10 +145,20 @@ fn the_gear_toy_plan_matches_its_hand_layout() {
         ctx.exports.iter().filter(|e| e.path == "gear_toy.3mf").map(|e| e.bodies.clone()).collect();
     assert_eq!(specs.len(), 3, "three plates by hand: core, lid, crank");
     let hs = hand_support(&mut ctx, &specs, "bambu_h2d");
-    let all: Vec<BodyId> = specs.iter().flatten().copied().collect();
-    let out = plan(&mut ctx, loose(&all), "bambu_h2d", 4);
+    // Each call's bodies as the script would hand them over: a list each,
+    // the core kept as modelled (its gaps are on the layer grid). The
+    // copies stand in each other's space, one plate apiece by hand.
+    let items: Vec<PlateItem> = specs
+        .iter()
+        .enumerate()
+        .map(|(k, ids)| PlateItem {
+            bodies: ids.clone(),
+            declared: true,
+            pin: Pin { keep: k == 0, ..Pin::default() },
+        })
+        .collect();
+    let out = plan(&mut ctx, items, "bambu_h2d", 4);
     at_least_as_good("gear_toy", &out, hs, 3);
-    assert!(out.report.contains("print-in-place"), "{}", out.report);
 }
 
 #[test]

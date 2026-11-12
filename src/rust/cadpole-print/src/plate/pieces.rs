@@ -139,12 +139,17 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
             let Some(c) = clearance::closest(trees[i].as_ref().unwrap(), trees[j].as_ref().unwrap(), 0.0) else {
                 continue;
             };
+            // Two pieces the script gave as lists are joined only where
+            // one holds the other captive: copies laid out for different
+            // plates may stand in each other's space.
+            let both_declared = items[ii].declared && items[ij].declared;
             let kind = if c.overlap {
-                Some(JointKind::Overlap)
+                (!both_declared).then_some(JointKind::Overlap)
             } else if c.distance > reach {
                 None
             } else {
-                let (share, thin) = if c.distance <= TOUCH { skin(bodies[i].mesh, bodies[j].mesh) } else { (0.0, false) };
+                let (share, thin) =
+                    if c.distance <= TOUCH && !both_declared { skin(bodies[i].mesh, bodies[j].mesh) } else { (0.0, false) };
                 if share >= SKIN_FRACTION && thin {
                     Some(JointKind::Skin(share))
                 } else if captive(bodies[i].mesh, bodies[j].mesh) {

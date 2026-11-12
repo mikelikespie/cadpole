@@ -995,6 +995,7 @@ mod tests {
                 "Animate",
                 "Export",
                 "PrintCheck",
+                "Plate",
                 "Inspect",
                 "Drawing",
                 "RunTests",

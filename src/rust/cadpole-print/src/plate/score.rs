@@ -18,9 +18,11 @@
 //! ```
 //!
 //! The full support rules cost a weld and a sweep per candidate, so every
-//! candidate is first measured by its raw overhang area and only the best
-//! [`FULL`] (and "as modelled", the baseline the report compares with) get
-//! the full rules.
+//! candidate is first measured by its raw overhang area, and the full rules
+//! run on the best [`FULL`] of those, on "as modelled" (the baseline the
+//! report compares with), and on the answers raw overhang can rank wrongly
+//! because it does not see islands: upside down and the two largest flat
+//! faces.
 
 use cadpole_core::geom::{Transform, Vec3};
 use cadpole_core::tessellate::{Mesh, Topology};
@@ -166,7 +168,16 @@ pub fn orient(
     let rough = |s: &Scored| s.raw_overhang + if s.fits { 0.0 } else { MISFIT } + along_cost(s);
     order.sort_by(|&a, &b| rough(&out[a]).total_cmp(&rough(&out[b])).then(a.cmp(&b)));
     let mut full: Vec<usize> = order.iter().copied().take(FULL).collect();
-    for i in [Some(0), pinned_dir].into_iter().flatten() {
+    // The raw overhang misses islands, so the obvious answers are always
+    // measured too: upside down and the two largest flat faces.
+    let obvious = dirs
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, l))| l.starts_with("on the ") || l == "upside down")
+        .map(|(i, _)| i)
+        .filter(|&i| dirs[i].1 == "upside down" || dirs[..i].iter().filter(|(_, l)| l.starts_with("on the ")).count() < 2);
+    let obvious: Vec<usize> = obvious.collect();
+    for i in [Some(0), pinned_dir].into_iter().flatten().chain(obvious) {
         if !full.contains(&i) {
             full.push(i);
         }

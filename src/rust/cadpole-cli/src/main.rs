@@ -5020,11 +5020,11 @@ mod tests {
     #[test]
     fn every_front_end_exposes_exactly_the_registry() {
         let registry: Vec<String> = cadpole_ops::registry().iter().filter(|m| !m.hidden).map(|m| m.name.clone()).collect();
-        // 30 visible operations: every rpc of CadpoleOps except `PostMessage`,
+        // 31 visible operations: every rpc of CadpoleOps except `PostMessage`,
         // which is `(cadpole.op).hidden` because posting as the user is the user's
         // client's business and nobody else's (capability.rs). The last four
         // are the solve jobs.
-        assert_eq!(registry.len(), 30, "{registry:?}");
+        assert_eq!(registry.len(), 31, "{registry:?}");
         assert!(!registry.contains(&"PostMessage".to_owned()), "a hidden op must not reach a front-end's list");
         assert!(cadpole_ops::method("PostMessage").is_some(), "...but it is still callable by name");
 
