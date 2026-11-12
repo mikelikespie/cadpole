@@ -4,7 +4,7 @@
     "group": "Solids",
     "title": "Parameters",
     "blurb": "Named numbers with limits drive the model; change one and the part rebuilds.",
-    "alt": "A teal plate with rounded corners and three evenly spaced holes.",
+    "alt": "Three teal plates from one function: the 40 mm plate with three holes in front, and wider plates with more holes behind.",
     "view": "-32,28,24,1",
     "kind": "model"
   },
@@ -12,8 +12,8 @@
     "id": "extrude",
     "group": "Solids",
     "title": "Extrude",
-    "blurb": "A flat sketch, holes included, pushed up into a solid.",
-    "alt": "A teal rounded block with a round hole through its top.",
+    "blurb": "A flat sketch, holes included, pushed out into a solid.",
+    "alt": "A length of silver 20 x 20 T-slot framing: a T-slot in each face and a centre bore running its full length.",
     "view": "-32,28,24,1",
     "kind": "model"
   },
@@ -22,7 +22,7 @@
     "group": "Solids",
     "title": "Revolve",
     "blurb": "A profile turned about an axis, here three quarters of the way round.",
-    "alt": "A teal flanged bushing with a quarter cut away to show its profile.",
+    "alt": "A teal flanged bushing with a quarter cut away, the turned profile showing in amber.",
     "view": "40,30,24,1",
     "kind": "model"
   },
@@ -31,7 +31,7 @@
     "group": "Solids",
     "title": "Sweep",
     "blurb": "A section carried along a path of lines and arcs.",
-    "alt": "A teal tube with a smooth right-angle bend, its open end visible.",
+    "alt": "A teal rectangular duct that runs in, up and over through two bends in different planes, its hollow section painted amber at both ends.",
     "view": "30,20,24,1",
     "kind": "model"
   },
@@ -40,7 +40,7 @@
     "group": "Solids",
     "title": "Loft",
     "blurb": "One solid stretched through several cross-sections.",
-    "alt": "A teal vase-like solid that narrows in the middle and widens again.",
+    "alt": "A teal vase that starts round at the foot, pinches at the waist and opens into a square mouth.",
     "view": "-32,22,24,1",
     "kind": "model"
   },
@@ -49,7 +49,7 @@
     "group": "Solids",
     "title": "Booleans",
     "blurb": "Join two solids, cut one from the other, or keep only the overlap.",
-    "alt": "A block and cylinder joined, the block with the cylinder cut out, and their overlap in amber.",
+    "alt": "A rounded block joined to a pin, the block with a slot where the pin was cut away, and their overlap in amber, faint outlines showing the inputs each result no longer has.",
     "view": "-8,42,24,1",
     "kind": "model"
   },
@@ -58,7 +58,7 @@
     "group": "Solids",
     "title": "Threads",
     "blurb": "Bolts and nuts from the standard library carry real helical threads.",
-    "alt": "A teal hex bolt with a visible thread and an amber nut part way up it.",
+    "alt": "A teal M12 hex bolt with chamfered head and tip, and an amber chamfered nut part way up its thread.",
     "view": "-30,20,24,1",
     "kind": "model"
   },
@@ -67,7 +67,7 @@
     "group": "Edges",
     "title": "Chamfer",
     "blurb": "Pick edges by the face they belong to and cut them back to a flat.",
-    "alt": "A teal block whose top edges are bevelled.",
+    "alt": "A teal vise jaw with vee grooves and countersunk screw holes, its bevelled top edges picked out in amber.",
     "view": "-32,32,24,1",
     "kind": "model"
   },
@@ -76,7 +76,7 @@
     "group": "Edges",
     "title": "Fillet",
     "blurb": "Round the edges you select, each set with its own radius.",
-    "alt": "A teal block with rounded corners and a softly rounded top edge.",
+    "alt": "A tan machined pedestal: the base plate's corners and the boss's top rim rounded, every other edge left sharp.",
     "view": "-32,32,24,1",
     "kind": "model"
   },
@@ -85,7 +85,7 @@
     "group": "Patterns",
     "title": "Mirror",
     "blurb": "Model one half and reflect it across a plane.",
-    "alt": "A teal bracket half with a hole and its amber mirror image beside it.",
+    "alt": "A teal half of an angle bracket and its amber mirror image, meeting at the centre to complete the bracket and its round bore.",
     "view": "-20,40,24,1",
     "kind": "model"
   },
@@ -94,7 +94,7 @@
     "group": "Patterns",
     "title": "Linear pattern",
     "blurb": "Copies of a body stepped along a direction.",
-    "alt": "Five amber pegs in a row on a teal strip.",
+    "alt": "A teal finned heat sink: nine fins stepped along a mounting plate.",
     "view": "-28,30,24,1",
     "kind": "model"
   },
@@ -103,7 +103,7 @@
     "group": "Patterns",
     "title": "Circular pattern",
     "blurb": "Copies spaced around an axis, used here to cut a ring of holes.",
-    "alt": "A teal disc with eight holes in a circle.",
+    "alt": "A teal weld-neck flange with eight bolt holes in a circle round its neck.",
     "view": "-30,40,24,1",
     "kind": "model"
   },
@@ -112,7 +112,7 @@
     "group": "Sketch",
     "title": "Sketch constraints",
     "blurb": "Describe a profile by its relationships and sizes; the solver finds the shape.",
-    "alt": "A teal L-shaped block with a small hole near one end.",
+    "alt": "A teal angle bracket with a rounded bend and two holes in each leg, beside the rough amber outline the solver started from.",
     "view": "-30,45,24,1",
     "kind": "model"
   },
@@ -121,7 +121,7 @@
     "group": "Sketch",
     "title": "Offset",
     "blurb": "Grow or shrink an outline by a set distance to make walls and rims.",
-    "alt": "A teal L-shaped floor with an amber wall of even thickness around it.",
+    "alt": "An amber wall grown 3 mm round a teal L-shaped floor, with a groove shrunk inside the outline.",
     "view": "-30,40,24,1",
     "kind": "model"
   },
@@ -130,7 +130,7 @@
     "group": "Sketch",
     "title": "Text",
     "blurb": "Lettering becomes ordinary geometry you can raise, cut or engrave.",
-    "alt": "A teal nameplate with the word CADPOLE in raised amber letters.",
+    "alt": "A teal nameplate with CADPOLE in raised amber letters, PARAMETRIC CAD engraved beneath, and a countersunk hole at each end.",
     "view": "-18,42,24,1",
     "kind": "model"
   },
@@ -139,7 +139,7 @@
     "group": "Surfaces and fields",
     "title": "Emboss",
     "blurb": "Artwork wrapped around a curved face and raised from it.",
-    "alt": "A teal cylinder with the number 42 raised on its curved side.",
+    "alt": "A teal pen cup with the number 42 raised on its curved side.",
     "view": "-4,16,24,1",
     "kind": "model"
   },
@@ -148,7 +148,7 @@
     "group": "Surfaces and fields",
     "title": "Smooth blend",
     "blurb": "Shapes described as distance fields merge with a soft radius.",
-    "alt": "A teal post flowing smoothly into a rounded base.",
+    "alt": "A teal lever knob: a round plate, a slender stem and a ball, joined by smooth fillets.",
     "view": "-35,28,24,1",
     "kind": "model"
   },
@@ -157,7 +157,7 @@
     "group": "Surfaces and fields",
     "title": "Twist",
     "blurb": "A field turned steadily about its axis, then turned into a mesh.",
-    "alt": "A teal rounded bar twisted along its height.",
+    "alt": "A teal three-bladed column twisted most of a turn between a round foot and cap.",
     "view": "-32,20,24,1",
     "kind": "model"
   },
@@ -166,7 +166,7 @@
     "group": "Output",
     "title": "Section",
     "blurb": "Cut a part on a plane to see inside it.",
-    "alt": "A teal spool cut in half, showing its bore and flanges.",
+    "alt": "A teal V-belt pulley cut in half, the cut face in amber showing the hub, keyed bore, set-screw hole, web and grooved rim.",
     "view": "-25,22,24,1",
     "kind": "model"
   },

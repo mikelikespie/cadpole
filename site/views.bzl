@@ -35,9 +35,9 @@ VIEWS = [
     _v("imports", "gallery", "Imported files", "//examples:import_demo.star", ["--tolerance", "0.15"]),
     _v("planetary", "gallery", "Herringbone planetary", "//examples:planetary.star", ["--tolerance", "0.15", "-p", "sun_angle=7.5", "-p", "chord=0.05"]),
     _v("wheel", "gallery", "Compressor wheel", "//examples:compressor_wheel.star", ["--tolerance", "0.15"]),
-    _play("part", "A plate with a hole", "part.star"),
+    _play("part", "Mounting plate", "part.star"),
     _play("planter", "Planter", "planter.star"),
-    _play("bracket", "Bracket", "bracket.star"),
+    _play("bracket", "Pivot bracket", "bracket.star"),
     _play("knob", "Knurled knob", "knurled_knob.star"),
     # Opens cut like a plan, from the preview's camera (az -35, el 55): the
     # roof and the walls above the 4 ft cut hidden, both a switch away in Layers.

@@ -10,7 +10,7 @@ FEATURES = {  # card: camera of its still (azimuth, elevation)
 
 # name: (script, extra `cadpole render` arguments) -> static/media/<name>-{1200,720[,360]}.webp
 STILLS = {
-    "part": ("examples/part.star", ["--view", "az=-32,el=28"]),
+    "part": ("examples/part.star", ["--view", "az=-32,el=36"]),
     "planter": ("examples/planter.star", ["--view", "az=-30,el=24"]),
     "bracket": ("examples/bracket.star", ["--view", "az=-35,el=30"]),
     "knob": ("examples/knurled_knob.star", ["--view", "az=-30,el=26"]),

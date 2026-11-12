@@ -33,7 +33,7 @@
    "id": "section-pillow-block",
    "kind": "section",
    "title": "Hatched section",
-   "blurb": "The part cut along its bore: the cut face outlined heavily, hatched and dimensioned."
+   "blurb": "The part cut across its bore: the cut face outlined heavily and hatched, the housing beyond drawn behind it, dimensioned."
   }
  ],
  "cards": [
@@ -50,7 +50,7 @@
    "id": "sheet",
    "title": "Dimensioned sheet",
    "blurb": "Front, top and right views on one sheet, dimensioned in inches, as SVG, PDF and DXF.",
-   "alt": "A drawing sheet with top, front, right and pictorial views of a pillow block and three dimensions.",
+   "alt": "A drawing sheet with top, front, right and pictorial views of a pillow block, seven dimensions, the bore and slots called out.",
    "drawing": "sheet-pillow-block",
    "script": "feat-sheet.star",
    "kind": "drawing"
@@ -59,7 +59,7 @@
    "id": "hatched-section",
    "title": "Hatched section",
    "blurb": "Cut the part on a plane; the cut face is hatched and dimensions run between model points.",
-   "alt": "A section through a pillow block along its bore, the cut material hatched, with five dimensions.",
+   "alt": "A section across a pillow block through its bore and slots, the cut material hatched, with six dimensions and centre lines.",
    "drawing": "section-pillow-block",
    "script": "feat-section.star",
    "kind": "drawing"
