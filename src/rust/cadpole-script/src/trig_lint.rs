@@ -245,8 +245,8 @@ mod tests {
             "c = 2 * math.pi * r\nx = math.sin(theta)\n",
             "x = math.sin(a) * math.pi\n",
             "s = \"math.sin(math.pi)\"\n# math.cos(math.pi)\n",
-            "s = '''\nmath.sin(math.pi)\n'''\n",
-            "x = mymath.sin(math.pi)\n",
+            "s = '''\nmath.sin(math.pi)\n'''\n", // not f64: Starlark source
+            "x = mymath.sin(math.pi)\n", // not f64: Starlark source
             "x = math.sin(math.pipe)\n",
         ] {
             assert!(warned(src).is_empty(), "{src}: {:?}", warned(src));

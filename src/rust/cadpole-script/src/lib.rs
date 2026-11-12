@@ -1337,7 +1337,7 @@ if f.face("mouth/bottom").name != "mouth/bottom":
             (
                 "knurled_knob.star",
                 &[
-                    "knob#0 faces=2486 names=9058ea4dda1cab3c geom=c3d1027845211fdd volume=11085.035817",
+                    "knob#0 faces=2486 names=9058ea4dda1cab3c geom=82a9c5ea3c99db9e volume=11085.035817",
                     "cap_disc#1 faces=6 names=5f0082f0ab12606e geom=d04b8604ce2dc5f1 volume=474.826012",
                 ],
             ),
@@ -2938,7 +2938,7 @@ assert_eq(u.kind, "brep")
         assert_eq!(refused("plate_images(\"toy.3mf\", size=(800, 600, 2))", "got 3 values"), 0);
         assert_eq!(refused("plate_images(\"toy.3mf\", size=(800, 8))", "16 to 8192 pixels a side, got 8"), 0);
         assert_eq!(refused("plate_images(\"toy.3mf\", size=(1.5, 600))", "takes whole pixels"), 0);
-        assert_eq!(refused("plate_images(\"toy.3mf\", background=\"sky\")", "\"transparent\", \"studio\", \"white\", \"black\" or \"#rrggbb\""), 0);
+        assert_eq!(refused("plate_images(\"toy.3mf\", background=\"neon\")", "\"transparent\", \"studio\", \"white\", \"black\" or \"#rrggbb\""), 0);
         assert_eq!(refused("plate_images(\"toy.3mf\", backend=\"gpu\")", "not \"raster\" or \"path\""), 0);
         // A plain 3MF has no plates to picture.
         let ctx = run("a = box(10, 10, 10)\nexport(a, \"plain.3mf\")\nplate_images(\"plain.3mf\")\n");
