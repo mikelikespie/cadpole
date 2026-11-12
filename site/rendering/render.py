@@ -4,7 +4,7 @@
     bazel run --config=opt //site:render -- <set> [options]
 
     stills [NAME ...]    the path-traced stills (static/media/*.webp); all, or the named ones
-    frames SET           one scroll scene's frame set: iris, mug or radial
+    frames SET           one scroll scene's frame set: iris, lamp or radial
     jet [FIRST [LAST]]   the turbojet scene's frames, one render per frame (restartable)
     drawings [NAME ...]  the vector drawings and plan sheets (static/draw/); all, or the named ones ("cabin": the plan sheets)
     buildings            the building sections: raster pictures (static/media/), the drawing-set
@@ -143,9 +143,16 @@ def alpha_box(png):
     return int(box["x1"]), int(box["y1"]), int(box["x2"]) + 1, int(box["y2"]) + 1
 
 
-def flatten(src, dst, window, out, grid=None):
+# A scene in a room of its own fades into the page round its subject: an ellipse about the centre, a
+# little below it, opaque inside and gone by the picture's sides, so the room's table and walls do
+# not run to the picture's edge.
+ROOM_FADE = "255*clip((1.15-hypot((X/W-0.5)/0.36\\,(Y/H-0.52)/0.42))/0.25\\,0\\,1)"
+
+
+def flatten(src, dst, window, out, grid=None, fade=None):
     """The `window` (x, y, width, height; it may reach past the picture) of a transparent master, on the
-    page colour, over the ground grid when there is one (an SVG the size of the window), scaled to `out`."""
+    page colour, over the ground grid when there is one (an SVG the size of the window), scaled to `out`.
+    `fade`: an alpha expression (ffmpeg geq) laid over the master's own."""
     x, y, w, h = window
     inputs, under = ["-i", src], "[bg]"
     fc = f"color=c={PAGE}:s={w}x{h},format=rgba[bg];"
@@ -155,7 +162,8 @@ def flatten(src, dst, window, out, grid=None):
         inputs += ["-i", dst + ".grid.svg"]
         fc += "[1:v]format=rgba[gr];[bg][gr]overlay=0:0:format=auto[bg2];"
         under = "[bg2]"
-    fc += f"[0:v]format=rgba[fg];{under}[fg]overlay={-x}:{-y}:format=auto,scale={out[0]}:{out[1]}:flags=lanczos,format=rgb24"
+    alpha = f",geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*({fade})/255'" if fade else ""
+    fc += f"[0:v]format=rgba{alpha}[fg];{under}[fg]overlay={-x}:{-y}:format=auto,scale={out[0]}:{out[1]}:flags=lanczos,format=rgb24"
     ffmpeg(*inputs, "-filter_complex", fc, "-frames:v", "1", dst)
     if grid:
         os.remove(dst + ".grid.svg")
@@ -174,16 +182,25 @@ def frames(run):
     if not run.args or run.args[0] not in sets.FRAMES:
         sys.exit(f"frames: one of {', '.join(sets.FRAMES)}")
     name = run.args[0]
-    script, n, fill = sets.FRAMES[name]
+    script, n, fill = sets.FRAMES[name][:3]
+    room = fill is None  # a scene in its own room: its own look, the whole picture
+    look = ["--backend", "path", "--denoise", *sets.FRAMES[name][3]] if room else ["--samples", "64", *LOOK]
     raw, out = f"{run.work}/frames/{name}", f"{run.work}/framed/{name}"
     os.makedirs(raw, exist_ok=True)
     os.makedirs(out, exist_ok=True)
     camfile = f"{run.work}/frames/{name}.camera.json"
     if len(glob.glob(f"{raw}/frame_*.png")) != n or not os.path.exists(camfile):
-        run.cli("animate", run.script(script), "--name", "scroll_story", "--frames", n, "--size", "1500x1500", "--format", "frames", "--samples", "64", *LOOK,
+        run.cli("animate", run.script(script), "--name", "scroll_story", "--frames", n, "--size", "1500x1500", "--format", "frames", *look,
                 "--camera-json", camfile, "--threads", run.threads, "-o", raw + "/")
     cam = json.load(open(camfile))
     W, fr = cam["width"], cam["frames"]
+    if room:
+        def whole(i):
+            flatten(f"{raw}/frame_{i:04d}.png", f"{out}/frame_{i:04d}.png", (0, 0, W, cam["height"]), (1500, 1500), fade=ROOM_FADE)
+        with ThreadPoolExecutor(6) as ex:
+            list(ex.map(whole, range(len(fr))))
+        print(f"{name}: {len(fr)} frames; now: encode")
+        return
     win, cx, cy = [], [], []
     for f in fr:
         x0, y0, x1, y1 = f["bounds"]["px"]
@@ -229,7 +246,7 @@ def jet(run):
         t = i / (N - 1)
         cut = 90 * ss((t - .27) / .15)
         cutaway = ["--param", "cutaway=true", "--param", f"cutaway_angle={cut:.3f}"] if cut >= 0.5 else ["--param", "cutaway=false"]
-        pose = [run.script(sets.JET["script"]), "--param", f"explode={18 * ss((t - .06) / .86):.4f}", *cutaway, "--param", f"spool={60 * t:.3f}",
+        pose = [run.script(sets.JET["script"]), "--param", f"explode={18 * ss((t - .48) / .44):.4f}", *cutaway, "--param", f"spool={60 * t:.3f}",
                 "--view", f"az={-32 + 14 * ss(t):.3f},el={16 + 3 * ss(t):.3f}", "--fov", "24", "--size", "2160x1440", "--threads", run.threads]
         if os.path.exists(f):
             # A master without its camera: the camera comes from the model and the view, not from the

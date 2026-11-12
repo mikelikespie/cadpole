@@ -10,7 +10,7 @@ for (const name of Object.keys(VIEWPORTS)) {
     await p.waitForTimeout(800);
     const spots: Record<string, number> = await p.evaluate(() => {
       const y = (s: string, f = 0) => { const r = document.querySelector(s)!.getBoundingClientRect(); return Math.round(r.top + scrollY + r.height * f); };
-      return { top: 0, "scene1-mid": y("#turbojet", 0.45), "scene3-mid": y("#mug", 0.5), play: y("#play", 0.2), gallery: y("#gallery", 0.1), bottom: document.documentElement.scrollHeight - innerHeight };
+      return { top: 0, "scene1-mid": y("#turbojet", 0.45), "scene3-mid": y("#lamp", 0.5), play: y("#play", 0.2), gallery: y("#gallery", 0.1), bottom: document.documentElement.scrollHeight - innerHeight };
     });
     const state = () => p.evaluate(() => ({
       y: Math.round(scrollY),

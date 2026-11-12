@@ -22,8 +22,10 @@ res = param("resolution", 0.5, unit="mm", min=0.15, max=2, doc="grid pitch; 0.25
 pitch = param("picture_pitch", 0.5, unit="mm", min=0.2, max=2, doc="how finely the picture is drawn")
 scene = param("scene", False, doc="the shade over its lamp, in a dark room, for rendering")
 lit = param("lit", True, doc="with scene=true: the lamp on or off")
-power = param("power", 40.0, doc="with scene=true: the lamp's brightness")
-ambient = param("ambient", 1.2, doc="with scene=true: the room's faint window light")
+power = param("power", 7.0, min=0, max=100, doc="with scene=true: the lamp's brightness")
+ambient = param("ambient", 1.2, min=0, max=100, doc="with scene=true: the room's window light; 1.2 is a night sky")
+room_light = param("room", 0.0, min=0, max=100, doc="with scene=true: the room's ceiling light, off by default")
+turn = param("turn", 0.0, unit="deg", min=-180, max=180, doc="the shade turned on its lamp; 0 puts the moon at the front")
 
 THIN = 0.6     # mm of wall for white
 THICK = 3.0    # mm of wall for black
@@ -125,7 +127,7 @@ def moonlight(u, v):
                     b = max(b, 0.95 * (1 - smooth(sr - 0.3, sr + 0.4, d)))
     return math.clamp(b, 0.0, 1.0)
 
-# The lamp is a short tube on the axis, so the wall nearest its middle is lit
+# A night-light is a small bulb on the axis, so the wall nearest it is lit
 # hardest. Part of that fall-off is written back into the thickness -- the
 # wall is a little thicker where the light is strongest -- so the picture
 # reads evenly from the foot to the lip. FADE is the plastic's effective
@@ -147,6 +149,8 @@ def picture(u, v):
 
 shade = lithophane(picture, radius=R, height=H, thickness=(THIN, THICK + EXTRA),
                    border=3, border_thickness=FRAME, resolution=res, samples=pitch, name="shade")
+if turn:
+    shade = shade.rotate(turn, axis=(0, 0, 1))
 
 # Natural (unpigmented) PLA: milky; light gets through a millimetre or two
 # and comes out darker and warmer the thicker the wall.
@@ -162,8 +166,10 @@ if scene:
     base.material(color="#d9d4ca", roughness=0.5)
     stem = cylinder(3.0, LAMP_Z - 28.0, at=(0, 0, 5.0), name="lamp_stem")
     stem.material(color="#c9c4ba", roughness=0.4)
-    tube = mesh(field.capsule((0, 0, -20.0), (0, 0, 20.0), 8.0).translate((0, 0, LAMP_Z)), resolution=0.4, name="lamp_tube")
-    tube.material(color="#fff4e0", emissive=(WARM[0] * e, WARM[1] * e, WARM[2] * e))
+    # A frosted globe that nearly fills the bore: the wall is lit evenly
+    # from behind, and no bright filament shows through the thin wall.
+    globe = mesh(field.capsule((0, 0, -22.0), (0, 0, 22.0), 30.0).translate((0, 0, LAMP_Z)), resolution=1.0, name="lamp_globe")
+    globe.material(color="#fff4e0", emissive=(WARM[0] * e, WARM[1] * e, WARM[2] * e))
     table = box(1400, 1200, 10, center=True, at=(0, 0, -10), name="table")
     table.material(color="#4a3020", roughness=0.32)
     wall = box(1400, 10, 600, center=True, at=(0, 260, 0), name="wall")
@@ -172,8 +178,23 @@ if scene:
     room.material(color="#0c0c0d", roughness=1.0)
     window = box(320, 4, 160, center=True, at=(-150, -594, 270), name="window")
     window.material(color="#000000", emissive=(ambient * 0.55, ambient * 0.68, ambient))
+    ceiling = box(500, 500, 4, center=True, at=(0, -200, 590), name="ceiling_light")
+    ceiling.material(color="#000000", emissive=(room_light, room_light * 0.93, room_light * 0.84))
 
 export(shade, "lithophane_lamp.stl")
+
+# The site's scroll scene: the shade in room light, then the room dimmed and
+# the lamp brought up so the picture appears, then a slow turn that carries
+# the moon across. Render it with `--lighting none`: the ceiling, the window
+# and the lamp are the only lights.
+animation("scroll_story", [
+    keyframe(0.0, scene=True, power=0.0, room=1.25, ambient=0.25, turn=-40.0,
+             camera=view(eye=(0, -430, 100), target=(0, 0, 56), fov=24)),
+    keyframe(1.0, power=0.0, room=1.25, ambient=0.25),
+    keyframe(2.4, power=7.0, room=0.0, ambient=0.08),
+    keyframe(2.6, turn=-40.0),
+    keyframe(4.8, turn=40.0),
+], fps=15)
 
 # ---- tests ------------------------------------------------------------------
 def closed():

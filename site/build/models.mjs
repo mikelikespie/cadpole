@@ -8,12 +8,12 @@
 // progress: the parameter the frames were rendered along (rendering/sets.py).
 export const SCENES = [
   {
-    id: "turbojet", seq: "tj", ar: "16 / 9", arv: 1.7778, arp: "4 / 3", len: 5, eyebrow: "One script, a whole assembly", model: "models/turbojet_cut.cpmesh",
-    read: { label: "explode", keys: [[0, 0.0], [0.06, 0.0], [0.15, 0.022], [0.25, 0.088], [0.35, 0.187], [0.49, 0.354], [0.63, 0.521], [0.73, 0.62], [0.83, 0.687], [0.92, 0.709], [1, 0.709]], digits: 2, unit: " in" },
+    id: "turbojet", seq: "tj", ar: "16 / 9", arv: 1.7778, arp: "4 / 3", len: 5, eyebrow: "One script, a whole assembly", model: "models/turbojet.cpmesh",
+    read: { label: "explode", keys: [[0, 0.0], [0.48, 0.0], [0.53, 0.025], [0.58, 0.093], [0.63, 0.191], [0.68, 0.306], [0.73, 0.426], [0.78, 0.539], [0.83, 0.632], [0.88, 0.692], [0.92, 0.709], [1, 0.709]], digits: 2, unit: " in" },
     steps: [
-      [0, 0.07, "-32,16,24,0.67", null, "HERO", "", "A turbojet engine model with its casings cut away"],
-      [0.07, 0.26, "-32,16,24,0.67", null, "A whole engine, one model.", "Fan, three compressor stages, combustor, turbine and nozzle: 108 parts in one nested assembly from <code>turbojet.star</code>. Blade counts, radii and clearances are parameters an agent, or you, can change.", "The assembled turbojet model, casings cut away"],
-      [0.26, 0.48, "-29,17,24,0.64", null, "Cut open by a flag.", "<code>cutaway = True</code> takes a wedge out of every casing, frame and vane ring, so the rotor, the liner and the fuel injectors show. <code>cutaway_angle</code> sets how far it opens.", "The turbojet with a wedge cut from every casing"],
+      [0, 0.07, "-32,16,24,0.67", null, "HERO", "", "A turbojet engine model, assembled"],
+      [0.07, 0.26, "-32,16,24,0.67", null, "A whole engine, one model.", "Fan, three compressor stages, combustor, turbine and nozzle: 108 parts in one nested assembly from <code>turbojet.star</code>. Blade counts, radii and clearances are parameters an agent, or you, can change.", "A turbojet engine model, assembled"],
+      [0.26, 0.48, "-29,17,24,0.64", "models/turbojet_cut.cpmesh", "Cut open by a flag.", "<code>cutaway = True</code> takes a wedge out of every casing, frame and vane ring, so the rotor, the liner and the fuel injectors show. <code>cutaway_angle</code> sets how far it opens.", "The turbojet with a wedge cut from every casing"],
       [0.48, 0.78, "-22,18,24,0.6", "models/turbojet_open.cpmesh", "Pull it apart.", "<code>explode</code> is a parameter like any other. Every stage slides out along the shaft, and the bolts go with their flanges.", "The turbojet with its stages spreading along the shaft"],
       [0.78, 1.01, "-18,19,24,0.58", "models/turbojet_open.cpmesh", "It checks itself.", "Fan, compressor, combustor, turbine, nozzle. The model's own tests measure the tip clearance of every blade, so whoever changes it knows at once whether it still fits.", "The turbojet fully exploded, casings cut away"],
     ],
@@ -22,18 +22,18 @@ export const SCENES = [
     id: "iris", seq: "ir", ar: "1", arv: 1, len: 3.5, eyebrow: "Mechanisms that move", model: "models/iris.cpmesh",
     read: { label: "opening", keys: [[0, 0], [1, 100]], digits: 0, unit: "%" },
     steps: [
-      [0, 0.3, "-24,58,26,1", null, "An iris that prints in place.", "Eight blades on pivots under a slotted ring. Blade count, aperture and every clearance are parameters of <code>iris.star</code>.", "A closed eight-blade iris mechanism"],
-      [0.3, 0.7, "-24,58,26,1", null, "Turn the ring.", "<code>opening</code> runs from 0 to 1. Each drive pin rides a spiral cam slot cut along its own path, so the ring turns 36 degrees from shut to open and the picture is the mechanism.", "The iris half open"],
-      [0.7, 1.01, "-24,58,26,1", null, "Fully open.", "The blades sit behind the lip. The gaps are whole layers, so it comes off the printer already moving.", "The iris fully open"],
+      [0, 0.3, "-30,46,26,1", null, "An iris that prints in place.", "Eight blades on pivots under a slotted ring. Blade count, aperture and every clearance are parameters of <code>iris.star</code>.", "A closed eight-blade iris mechanism"],
+      [0.3, 0.7, "-30,46,26,1", null, "Turn the ring.", "<code>opening</code> runs from 0 to 1. Each drive pin rides a spiral cam slot cut along its own path, so the ring turns 36 degrees from shut to open and the picture is the mechanism.", "The iris half open"],
+      [0.7, 1.01, "-30,46,26,1", null, "Fully open.", "The blades sit behind the lip. The gaps are whole layers, so it comes off the printer already moving.", "The iris fully open"],
     ],
   },
   {
-    id: "mug", seq: "mg", ar: "1", arv: 1, len: 4, eyebrow: "Artwork to geometry", model: "models/mug.cpmesh",
-    read: { label: "relief", keys: [[0, 0.016], [0.333, 0.016], [0.722, 0.063], [0.736, 0.063], [1, 0.039]], digits: 3, unit: " in" },
+    id: "lamp", seq: "lp", ar: "1", arv: 1, len: 4, eyebrow: "Artwork turned into relief", model: "models/lamp.cpmesh",
+    read: { label: "lamp", keys: [[0, 0], [0.208, 0], [0.5, 100], [1, 100]], digits: 0, unit: "%" },
     steps: [
-      [0, 0.34, "-58,14,24,1", null, "Wrap an SVG round it.", "<code>import_svg</code> reads the drawing. <code>wrap</code> lays it round the wall of the mug without stretching it.", "A mug with flat artwork painted on its wall"],
-      [0.34, 0.73, "-30,16,24,1", null, "Raise it.", "<code>emboss(kind=emboss.raised)</code> turns the outline into solid relief. How far it stands out is a parameter.", "The same mug with the artwork raised from the wall"],
-      [0.73, 1.01, "-4,20,24,1", null, "Or cut it in.", "Change one argument and the same artwork is engraved instead. Either way it exports as a printable solid.", "The same mug with the artwork cut into the wall"],
+      [0, 0.3, "0,8,24,1", null, "A picture in the wall.", "<code>lithophane()</code> turns a picture into wall thickness: thin where it is light, thick where it is dark. In room light it is a plain white shade.", "A white cylindrical lamp shade in room light"],
+      [0.3, 0.58, "0,8,24,1", null, "Turn the lamp on.", "Dim the room and light the lamp inside. Thin wall glows, thick wall stays dark, and a moonrise comes up out of the plastic.", "The shade lit from inside, a moon over hills showing through it"],
+      [0.58, 1.01, "-30,8,24,1", null, "Turn the shade.", "The picture runs all the way round: a moon over three ranges of hills, pines and stars, drawn by a function in <code>lithophane_lamp.star</code>. It prints upright in one piece.", "The lit shade turning, the moon passing across it"],
     ],
   },
   {

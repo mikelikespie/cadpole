@@ -22,10 +22,11 @@ def _play(name, title, script):
     return _v(name, "play", title, "//examples:" + script, ["--tolerance", "0.05", "--show-params", "all"])
 
 VIEWS = [
+    _v("turbojet", "turbojet", "Turbojet", "//examples:turbojet.star", ["--tolerance", "0.12"]),
     _v("turbojet_cut", "turbojet", "Turbojet, cut away", "//examples:turbojet.star", ["--tolerance", "0.12", "-p", "cutaway=true"]),
     _v("turbojet_open", "turbojet", "Turbojet, apart", "//examples:turbojet.star", ["--tolerance", "0.12", "-p", "explode=18", "-p", "cutaway=true"]),
     _v("iris", "iris", "Iris diaphragm", "//examples:iris.star", ["--tolerance", "0.1", "-p", "opening=0.55"]),
-    _v("mug", "mug", "Embossed mug", "//examples:embossed_mug.star", ["--tolerance", "0.15", "-p", "scene=single", "-p", "finish=raised"]),
+    _v("lamp", "lamp", "Moonrise night-light", "//examples:lithophane_lamp.star", ["--tolerance", "0.1"]),
     _v("radial", "radial", "Radial engine", "//examples:radial_engine.star", ["--tolerance", "0.25"]),
     _v("radial_open", "radial", "Radial engine, apart", "//examples:radial_engine.star", ["--tolerance", "0.25", "-p", "explode=30", "-p", "cutaway=true"]),
     _v("mascot", "gallery", "Desk mascot", "//examples:desk_mascot.star", ["--tolerance", "0.1"]),

@@ -30,9 +30,12 @@ STILLS = {
 STILLS.update({"feat-" + k: ("site/features/%s.star" % k, ["--view", "az=%d,el=%d" % v]) for k, v in FEATURES.items()})
 
 # scene: (script with a `scroll_story` animation, frames, share of the picture the model fills)
+# or, for a scene in a room of its own, (script, frames, None, the render flags): the
+# animation's own camera, an opaque picture, uncropped and with no ground grid.
 FRAMES = {
     "iris": ("examples/iris.star", 60, 0.74),
-    "mug": ("examples/embossed_mug.star", 72, 0.74),
+    "lamp": ("examples/lithophane_lamp.star", 72, None,
+             ["--samples", "256", "--lighting", "none", "--exposure", "3", "--tonemap", "neutral", "--supersample", "2", "--no-grid"]),
     "radial": ("examples/radial_engine.star", 72, 0.74),
 }
 
@@ -48,7 +51,7 @@ JET = {
 ENCODE = {
     "tj": ("jet-wide", "jet-narrow", 96, True),
     "ir": ("iris", "iris", 60, False),
-    "mg": ("mug", "mug", 72, False),
+    "lp": ("lamp", "lamp", 72, False),
     "ra": ("radial", "radial", 72, False),
 }
 
