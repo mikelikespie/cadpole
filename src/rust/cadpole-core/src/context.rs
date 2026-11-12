@@ -3067,7 +3067,7 @@ impl Context {
                         "{} of a mesh body: the mesh kernel takes it (the B-rep side is \
                          tessellated at tolerance {}, so the result is approximate to that)",
                         op.kind_name(),
-                        mesh_tol
+                        if a.kind_name() == "mesh" { chords.1 } else { chords.0 }
                     ))
                 } else if pair_faces > budget {
                     Some(format!(
@@ -3135,7 +3135,7 @@ impl Context {
             Err(e) => {
                 // `kernel="brep"`: the refusal is the answer, with the faces
                 // named. The tessellation this costs is on the error path only.
-                let named = match (realise(&a, a_names, mesh_tol), realise(b, b_names, mesh_tol)) {
+                let named = match (realise(&a, a_names, chords.0), realise(b, b_names, chords.1)) {
                     (Ok((am, _, _)), Ok((bm, _, _))) => cadpole_tangent_summary(op, &am, &bm, tol, crate::tangent::Path::Exact),
                     _ => String::new(),
                 };
@@ -3927,14 +3927,14 @@ mod tests {
                 .positions
                 .chunks(3)
                 .map(|p| (p[0] as f64, p[1] as f64, p[2] as f64))
-                .filter(|(x, y, z)| (z - 30.0).abs() < 1e-4 && (x.hypot(*y) - 20.0).abs() < 1e-3)
-                .map(|(x, y, _)| y.atan2(x))
+                .filter(|(x, y, z)| (z - 30.0).abs() < 1e-4 && (crate::fmath::hypot(*x, *y) - 20.0).abs() < 1e-3)
+                .map(|(x, y, _)| crate::fmath::atan2(y, x))
                 .collect();
             let mut angles = rim;
             angles.sort_by(|a, b| a.partial_cmp(b).unwrap());
             angles.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
             let widest = angles.windows(2).map(|w| w[1] - w[0]).fold(0.0f64, f64::max);
-            20.0 * (1.0 - (widest / 2.0).cos())
+            20.0 * (1.0 - crate::fmath::cos(widest / 2.0))
         };
         let document = half(None);
         let fine = half(Some(0.005));
@@ -4480,13 +4480,13 @@ mod tests {
         let mut rim: Vec<f64> = positions
             .chunks(3)
             .filter(|p| (p[2] as f64 - 9.5).abs() < 1e-3)
-            .map(|p| (p[1] as f64 - 30.0).atan2(p[0] as f64 - 30.0))
+            .map(|p| crate::fmath::atan2(p[1] as f64 - 30.0, p[0] as f64 - 30.0))
             .collect();
         rim.sort_by(f64::total_cmp);
         rim.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
         assert!(rim.len() > 16, "the rim is sampled: {} vertices", rim.len());
         let widest = rim.windows(2).map(|w| w[1] - w[0]).fold(0.0, f64::max);
-        let sag = 12.0 * (1.0 - (widest / 2.0).cos());
+        let sag = 12.0 * (1.0 - crate::fmath::cos(widest / 2.0));
         assert!(sag <= 0.005 + 1e-4, "the rim's widest chord sags {sag} mm, over the hub's 0.005 mm");
     }
 

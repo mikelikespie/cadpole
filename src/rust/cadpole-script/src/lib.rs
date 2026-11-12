@@ -2988,6 +2988,18 @@ assert_eq(u.kind, "brep")
             "holes",
             "a room scan: an open surface, imported as reference with repair.off",
         ),
+        // The mascot's print layout lays each meshed field figure on its
+        // back: a rigid turn of a surface meshed from a distance field, whose
+        // f32 positions, turned, leave one pair of slivers on the rim's thin
+        // edge passing through each other by a tenth of a micron. The
+        // figure as meshed, standing on the plinth, is a solid.
+        (
+            "desk_mascot.star",
+            "*",
+            "paddle_rim_flat",
+            "crossings",
+            "a sub-micron crossing of two slivers in the laid-flat copy of the meshed paddle rim",
+        ),
     ];
 
     fn example_files() -> (String, Vec<std::path::PathBuf>) {

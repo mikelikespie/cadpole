@@ -82,12 +82,11 @@ split_for_bed.star	topology	piece#2: dcc7a347b438d5e2 vs 550354e8c70496a2 -- as 
 split_for_bed.star	mesh	piece#2: 64393e308a761229 vs 73b6c8735b8d8243 -- as order
 split_for_bed.star	inspect	piece#2: min_altitude_at (13.33, 13.33, 218) vs (-13.33, -13.33, 218) -- two triangles tie for the thinnest, and which is found first follows the order row
 svg_badge.star	topology	badge#0: e6a9ce85bb0c1fe0 vs 51d71852e7fb2766
-turbojet.star	diagnostics	diagnostic[32] (turbine_blade union): truck's exact union of the blade and its platform fails on both targets, and both retry on the mesh kernel with the same contact named, but it fails differently -- natively truck returns an error ("This wire is not simple"), which leads the message, in wasm it returns no solid: truck's arithmetic, whose last bits differ between the targets, choosing the path
-turbojet.star	order	shaft_i#207 edges[25]: "key_front/top|shaft_blank/seg[0.8]#1" vs "key_front/right|shaft_blank/seg[0.8]#1" -- the key boxes' exact union with the shaft revolve: the exact kernel's intersection edges, as bracket.star's order row; the triangle counts agree
-turbojet.star	volume	front_outer_race_i#221: 4090bd0157da9000 vs 4090bd0157f8208d -- the front outer race, an exact revolve of a profile with the groove's arc, placed as an instance: its mesh volume differs in the tenth significant digit while its counts agree
-turbojet.star	topology	fan_i#206: 8232b2154c99b037 vs a6ca8dd5687303aa -- the fan is a mesh union of an 11-blade smooth-loft pattern and the keyed hub; centroids and areas differ in their last bits
-turbojet.star	mesh	fan_i#206: 4123c3eb2598dacd vs 5d585726c06dddf5 -- the same mesh union's f32 positions differ in their last bits
-turbojet.star	inspect	front_outer_race_i#221: volume_mm3 1071.2513116979972 vs 1071.2513121385448, area_mm2 1234.8484299377958 vs 1234.8484296129766 -- as volume
+turbojet.star	order	shaft_i#270 edges[25]: "key_front/top|shaft_blank/seg[0.8]#1" vs "key_front/right|shaft_blank/seg[0.8]#1" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
+turbojet.star	volume	front_outer_race_i#285: 4090bd0157da9000 vs 4090bd0157f8208d -- the volume in its last bits
+turbojet.star	topology	fan_i#269: c0a12e07711e85e8 vs d64ecf30727ee9c8 -- as the body's other rows: its f64 digest in the last bits
+turbojet.star	mesh	fan_i#269: 02c10f22084645f2 vs dfa060e0cab3a95e -- the f32 positions differ in their last bits
+turbojet.star	inspect	front_outer_race_i#285 at char 338: …0, z: 13.0 }) }), volume_mm3: 1071.2513116979972, area_mm2: 1234.8484299377958, solid: Some(SolidVer vs …0, z: 13.0 }) }), volume_mm3: 1071.2513121385448, area_mm2: 1234.8484296129766, solid: Some(SolidVer -- as volume
 vase.star	topology	vase#0: 04d5e15c9cd1d08f vs e5e5a827503338d3
 vase.star	mesh	vase#0: cf8412f4ac783f21 vs 06c1ed7913bf7e51
 wing.star	order	s2_r#55 edges[212]: "s2/side[1.9]|servo_pocket/side[0.4]" vs "s2/side[1.9]|servo_pocket/start" -- section 2's skin with the servo pocket cut from it (exact): the exact kernel's intersection edges, as bracket.star's order row
@@ -136,11 +135,10 @@ cabin_plan.star	volume	walls_above#44: 41fb8254eb1db6a5 vs 41fb8254eb1db6e1 -- t
 cabin_plan.star	topology	walls#21: 4a8e58a44b2a1ac0 vs b267d79dea656cd1 -- as the body's other rows: its f64 digest in the last bits
 cabin_plan.star	mesh	walls#21: c63cca513c836ea6 vs 6c16b19b75b1a3d1 -- the f32 positions differ in their last bits
 cabin_plan.star	inspect	walls#21 at char 125: …", faces: 88, edges: 252, triangles: 1612, thin_faces: 21, bbox: Some(BBox { min: Some(Vec3 { x: -15 vs …", faces: 88, edges: 252, triangles: 1610, thin_faces: 21, bbox: Some(BB... -- as volume
-embossed_mug.star	counts	translate_9#104: {"faces":55,"edges":105,"vertices":65,"triangles":7922,"mesh_vertices":6232} vs {...,"triangles":7924,"mesh_vertices":6234} -- the handled mug comes out of a mesh-kernel union (over the B-rep face budget), which triangulates a face differently between the targets, as gridfinity_baselid.star's counts row
-embossed_mug.star	volume	translate_1#32: 40fa005014360367 vs 40fa00501436035c -- the mesh volume in its last bits
-embossed_mug.star	topology	translate_1#32: 32552213b1ff5892 vs e168f02e8de36510 -- as the body's other rows: its f64 digest in the last bits
-embossed_mug.star	mesh	translate_1#32: a4dde99c95902a5e vs 1bd4e0e5ab5baad5 -- the f32 positions differ in their last bits
-embossed_mug.star	inspect	translate_1#32 at char 383: …96.0 }) }), volume_mm3: 106501.00493432359, area_mm2: 59546.45612801585, solid: Some(SolidVerdict { vs …96.0 }) }), volu... -- as volume
+embossed_mug.star	volume	translate_1#44: 40fa0446b8ea1048 vs 40fa0446bb5175bb -- the volume in its last bits
+embossed_mug.star	topology	translate_1#44: d27471b9fbb5cb1a vs 233f13d42f6a7efb -- as the body's other rows: its f64 digest in the last bits
+embossed_mug.star	mesh	translate_1#44: 040fdbedbc2620d6 vs 1023c94a47dc1122 -- the f32 positions differ in their last bits
+embossed_mug.star	inspect	translate_1#44 at char 375: …3, z: 96.0 }) }), volume_mm3: 106564.42014509544, area_mm2: 59626.556119413646, solid: Some(SolidVer vs …3, z: 96.0 }) }), volume_mm3: 106564.42073198307, area_mm2: 59626.55608197914, solid: Some(SolidVerd -- as volume
 enclosure.star	order	board_i#193 edges[7]: "box_1/front|box_2/right" vs "box_1/front|box_2/top" -- a connector is an exact subtract of its mouth from its shell, and the exact boolean's intersection edges come out in another order, as bracket.star's
 enclosure.star	volume	board_i#193: 405a3f61a8c9ec6b vs 405a3f61a8c9ec65 -- the same connector's mesh volume in its last bits, as order
 enclosure.star	topology	board_i#164: 2a9083b38862212b vs 4dc6c8bea5f9b773 -- as order: a connector's f64 digest in the last bits
@@ -177,7 +175,19 @@ pillow_block.star	volume	block#12: 40f198d14b83ee06 vs 40f198d14b83fa67 -- the m
 pillow_block.star	topology	block#12: 6b252a8b06eec7fa vs fa2073b0b1f60b42 -- as the body's other rows: its f64 digest in the last bits
 pillow_block.star	mesh	block#12: 00673f1335f2bf7e vs 057152b25ee98fbe -- the f32 positions differ in their last bits
 pillow_block.star	inspect	block#12 at char 345: volume_mm3 72077.08093636492 vs 72077.08093641103 -- as volume
-radial_engine.star	volume	pipes_0#56: 40a81545bafd8904 vs 40a81545bafd8909 -- the mesh volume in its last bits
-radial_engine.star	topology	head_0#54: ffa0e3081c216904 vs 78f3826fc7f17a0c -- as the body's other rows: its f64 digest in the last bits
-radial_engine.star	mesh	head_0#54: 14eb76af0cc269d0 vs 7475cf1de709e1b0 -- the f32 positions differ in their last bits
-radial_engine.star	inspect	pipes_0#56 at char 371: …8711 }) }), volume_mm3: 3082.636192248321, area_mm2: 3389.962932247889, solid: Some(SolidVerdict { i vs …8711 }) }), volume_m... -- as volume
+radial_engine.star	names	pipes_0#129 faces[11]: "pushrod_front_tube/side[0.0]#0" vs "pushrod_front_tube/side[0.1]#1#0" -- a body's face ids follow the exact boolean's intersection edges, which come out in another order, as bracket.star's order row
+radial_engine.star	order	pipes_0#129 edges[21]: "pushrod_front_gland/end|pushrod_front_tube/side[0.0]#1" vs "pushrod_front_gland/end|pushrod_front_tube/side[0.1]#1#1" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
+radial_engine.star	counts	pipes_0#129: {"faces":19,"edges":39,"vertices":26,"triangles":680,"mesh_vertices":710} vs {"faces":19,"edges":39,"vertices":26,"triangles":676,"mesh_vertices":706} -- a mesh-kernel boolean triangulates a face differently between the targets, as gridfinity_baselid.star's counts row
+radial_engine.star	volume	head_0#127: 40a702acab30c2e3 vs 40a702acab30c2f0 -- the volume in its last bits
+radial_engine.star	topology	crankcase_i#81: 97b68bb8287f7d72 vs 7246aa6ce3898a92 -- as the body's other rows: its f64 digest in the last bits
+radial_engine.star	mesh	head_0#127: 745612b0b9772b74 vs 39a7f338bcfd5c6f -- the f32 positions differ in their last bits
+radial_engine.star	inspect	head_0#127 at char 369: …96094 }) }), volume_mm3: 2945.337243579664, area_mm2: 3249.0371020597727, solid: Some(SolidVerdict { vs …96094 }) }), volume_mm3: 2945.33724357967, area_mm2: 3249.0371020597736, solid: Some(SolidVerdict {  -- as volume
+desk_mascot.star	order	plinth_round#17 edges[10]: "plinth/end|slot/back" vs "plinth/end|slot/left" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
+desk_mascot.star	topology	silhouette_prism#0: 282b92d58589f545 vs 864bf5d5860cad11 -- as the body's other rows: its f64 digest in the last bits
+desk_mascot.star	mesh	plinth_round#17: a57dfc335ae1a505 vs cfc7b464a9795b6a -- the f32 positions differ in their last bits
+knurled_knob.star	topology	knob#0: cba695251825b965 vs 05effe71f8c21964 -- as the body's other rows: its f64 digest in the last bits
+knurled_knob.star	mesh	knob#0: c3d1027845211fdd vs 838d9c0c33d5f4f1 -- the f32 positions differ in their last bits
+planter.star	volume	pot#8: 40fb73f8cc80ea8f vs 40fb73f8cc588964 -- the volume in its last bits
+planter.star	topology	pot#8: 25aa25bc0a257284 vs 5f1f064bd57847ad -- as the body's other rows: its f64 digest in the last bits
+planter.star	mesh	pot#8: 5c435bf01a21549c vs c5b358570be63c6a -- the f32 positions differ in their last bits
+planter.star	inspect	pot#8 at char 327: …, z: 100.0 }) }), volume_mm3: 112447.54992763161, area_mm2: 67981.60540479634, solid: Some(SolidVerd vs …, z: 100.0 }) }), volume_mm3: 112447.54988912266, area_mm2: 67981.6054118739, solid: Some(SolidVerdi -- as volume

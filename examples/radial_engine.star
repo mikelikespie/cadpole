@@ -453,10 +453,9 @@ BLADE_STATIONS = [
     (0.12, 0.80, 0.22, 54.0),
     (0.32, 1.08, 0.15, 41.0),
     (0.52, 1.02, 0.11, 32.0),
-    (0.72, 0.86, 0.08, 26.0),
-    (0.88, 0.62, 0.06, 22.0),
-    (0.97, 0.38, 0.05, 20.0),
-    (1.0, 0.22, 0.04, 19.0),
+    (0.72, 0.86, 0.085, 26.0),
+    (0.87, 0.64, 0.075, 22.0),
+    (1.0, 0.36, 0.09, 19.0),
 ]
 
 
@@ -465,14 +464,17 @@ def af_point(t, chord, th):
     ellipse thickened toward the leading edge (+x), its back (+y) curved and
     its face nearly flat. Closed and smooth, so the spline through it cannot
     loop at a sharp trailing edge."""
-    w = 1.0 + 0.35 * math.cos(t)
+    w = 1.0 + 0.25 * math.cos(t)
     y = 0.5 * th * math.sin(t) * w
-    return (0.5 * chord * math.cos(t) + 0.15 * chord, y if y > 0.0 else 0.2 * y)
+    return (0.5 * chord * math.cos(t) + 0.15 * chord, y if y > 0.0 else 0.35 * y)
 
 
 def blade(k):
     """A blade lofted through cambered sections: a nearly flat face toward
-    the engine, a curved back toward the front."""
+    the engine, a curved back toward the front, standing at blade k's angle
+    round the shaft."""
+    a = 360.0 * k / 3.0 + 25.0
+    ca, sa = math.cos(a), math.sin(a)
     secs = []
     for i, st in enumerate(BLADE_STATIONS):
         f, cb, tb, pitch_a = st
@@ -484,11 +486,12 @@ def blade(k):
         for p in loop:
             px = p[0] * math.cos(pitch_a) - p[1] * math.sin(pitch_a)
             py = p[0] * math.sin(pitch_a) + p[1] * math.cos(pitch_a)
-            pts.append((px, PROP_Y - py, rr))
+            pts.append((px * ca + rr * sa, PROP_Y - py, -px * sa + rr * ca))
         c = curve(pts[0], name="blade_%d_s%d" % (k, i)).spline(pts[1:] + [pts[0]])
         secs.append(c.close())
-    b = loft(secs, ruled=False, name="blade_%d_z" % k)
-    return rotate(b, 360.0 * k / 3.0 + 30.0, axis=(0, 1, 0), name="blade_%d" % k)
+    b = loft(secs, ruled=False, name="blade_%d" % k)
+    b.tessellation(tolerance=0.03)
+    return b
 
 
 # =========================================================== assembly
@@ -593,9 +596,9 @@ prop_bodies = []
 if prop != "none" and not cutaway:
     prop_bodies = [make_spinner().material(color="#d5d8dc", metallic=0.7, roughness=0.42)]
     if prop == "blades":
-        for k in range(3):
-            b = blade(k)
-            b.material(color="#8a5530", roughness=0.3)  # varnished wood
+        # One blade, and two rigid copies of it that share its triangles.
+        for b in pattern_circular(blade(0), 3, axis=(0, 1, 0), name="blades"):
+            b.material(color="#7b5034", roughness=0.35)  # varnished wood
             prop_bodies.append(b)
 prop_i = []
 if prop_bodies:
