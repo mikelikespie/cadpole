@@ -262,7 +262,7 @@ pub fn check_support(
         candidates.retain(|t| kept.contains(t));
     }
     let spans = if max_bridge > 0.0 && !candidates.is_empty() {
-        bridge_spans(adj, up, &candidates, scale)
+        bridge_spans(adj, up, &candidates, &resting, scale)
     } else {
         HashMap::new()
     };
@@ -574,11 +574,18 @@ pub(crate) fn plane_axes(up: Vec3) -> (Vec3, Vec3) {
 ///
 /// The mesh is welded so the regions and their boundary can be found by
 /// shared edges. An edge of a region is supported when a triangle across it
-/// reaches below it: the wall the bridge rests on. The lines are cast in
+/// reaches below it -- the wall the bridge rests on -- or rests on the part
+/// below across a print-in-place gap. The lines are cast in
 /// the plane square to `up`, across each supported edge's direction and
 /// along the plane's two axes, so a rectangular head's span between its two
 /// jambs is found exactly.
-fn bridge_spans(adj: &Adjacency, up: Vec3, candidates: &[usize], scale: f64) -> HashMap<usize, (f64, usize)> {
+fn bridge_spans(
+    adj: &Adjacency,
+    up: Vec3,
+    candidates: &[usize],
+    resting: &HashSet<usize>,
+    scale: f64,
+) -> HashMap<usize, (f64, usize)> {
     let regions = regions(adj, candidates);
     let (e1, e2) = plane_axes(up);
     let flat2 = |p: Vec3| [p.dot(e1), p.dot(e2)];
@@ -600,7 +607,8 @@ fn bridge_spans(adj: &Adjacency, up: Vec3, candidates: &[usize], scale: f64) -> 
                 let (pa, pb) = (adj.wpos(a), adj.wpos(b));
                 let h = (pa.dot(up) + pb.dot(up)) / 2.0;
                 let supported = on.iter().filter(|x| !in_region.contains(x)).any(|&x| {
-                    adj.wtri(x).iter().any(|&v| v != a && v != b && adj.wpos(v).dot(up) < h - eps)
+                    resting.contains(&(adj.origin[x] as usize))
+                        || adj.wtri(x).iter().any(|&v| v != a && v != b && adj.wpos(v).dot(up) < h - eps)
                 });
                 boundary.push((flat2(pa), flat2(pb), supported));
             }

@@ -670,6 +670,23 @@ through the same code. Each check returns positions, not a boolean.
   total. A bridge is not an overhang: a flat downward face held up at both
   ends whose shortest span between supports is at most `max_bridge` (10 mm by
   default) is reported as a bridge and left out of the total.
+- **Support rules** (`cadpole-print`'s `support` module and the overhang
+  check, `SupportRules` on the profile): the overhang left after bridges
+  is joined into connected patches and judged by the largest against
+  `max_overhang_area` (4 mm²); a near-level ledge held up on one side may
+  stick out `max_cantilever` (3 mm); an **island** -- a region whose lowest
+  point is in mid-air, found by sweeping the welded surface bottom up and
+  joining each vertex to the lower neighbours already passed -- may hang
+  no deeper than `min_island` (a layer); a round horizontal hole (a
+  recognised horizontal cylinder, concave, half a turn or more) wider than
+  `max_horizontal_hole` (7 mm) with a round top wants a teardrop; and from
+  horizontal sections, a feature under `slender_width` (3 mm) taller than
+  `max_slenderness` (8) times its width, and a part taller than
+  `max_height_to_base` (6) times the root of its first-layer area, are
+  warnings. A downward face within two layers of an upward face of the
+  same part rests on it (a print-in-place gap). `Check::is_support` names
+  the findings that mean "needs support", which `assert_support_free` and
+  `cadpole check --support-free` judge.
 - **Bed fit** as the bounding box in the printer's frame, also tried turned
   90° on the plate and turned across the plate diagonal (the footprint's
   convex hull, turned and measured, so a part too wide for the diagonal is

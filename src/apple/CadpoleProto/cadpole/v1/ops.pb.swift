@@ -2537,6 +2537,70 @@ public struct Cadpole_V1_PrintCheckRequest {
     set {_uniqueStorage()._maxBridge = newValue}
   }
 
+  /// The largest connected patch of overhang, in mm2, that prints without
+  /// support: a speck the perimeters round it carry. 0 means Cadpole's
+  /// default, 4 mm2; a negative number counts every patch.
+  public var maxOverhangArea: Double {
+    get {return _storage._maxOverhangArea}
+    set {_uniqueStorage()._maxOverhangArea = newValue}
+  }
+
+  /// How far a near-level downward ledge held up on one side only (a shelf,
+  /// an outstretched thumb) may stick out, in mm, before it needs support. 0
+  /// means Cadpole's default, 3 mm; a negative number judges every ledge.
+  public var maxCantilever: Double {
+    get {return _storage._maxCantilever}
+    set {_uniqueStorage()._maxCantilever = newValue}
+  }
+
+  /// The widest round horizontal hole, in mm across, whose round top a
+  /// slicer bridges; a wider one wants a teardrop or diamond top. 0 means
+  /// Cadpole's default, 7 mm; a negative number flags every round hole with
+  /// a round top.
+  public var maxHorizontalHole: Double {
+    get {return _storage._maxHorizontalHole}
+    set {_uniqueStorage()._maxHorizontalHole = newValue}
+  }
+
+  /// How deep, in mm, a region whose lowest point is in mid-air (a downward
+  /// tip, a hanging finger) may hang before it is an island that needs
+  /// support. 0 means one layer height; a negative number flags every one.
+  public var minIsland: Double {
+    get {return _storage._minIsland}
+    set {_uniqueStorage()._minIsland = newValue}
+  }
+
+  /// The tallest a feature narrower than `slender_width` may be, as a
+  /// multiple of its width, before the `slender` warning. 0 means Cadpole's
+  /// default, 8; a negative number turns the check off.
+  public var maxSlenderness: Double {
+    get {return _storage._maxSlenderness}
+    set {_uniqueStorage()._maxSlenderness = newValue}
+  }
+
+  /// What counts as slender, in mm across. 0 means Cadpole's default, 3 mm.
+  public var slenderWidth: Double {
+    get {return _storage._slenderWidth}
+    set {_uniqueStorage()._slenderWidth = newValue}
+  }
+
+  /// The tallest a part may be over the square root of its first-layer area
+  /// before the `bed_contact` warning (it may tip or come off the plate). 0
+  /// means Cadpole's default, 6; a negative number turns the check off.
+  public var maxHeightToBase: Double {
+    get {return _storage._maxHeightToBase}
+    set {_uniqueStorage()._maxHeightToBase = newValue}
+  }
+
+  /// Judge only whether the model prints without support: each body's
+  /// `issues` keeps the support findings (overhang past the allowances,
+  /// island, cantilever, horizontal_hole, and bridge between bodies) and
+  /// drops the rest, and `ok` is false when any is left.
+  public var supportFree: Bool {
+    get {return _storage._supportFree}
+    set {_uniqueStorage()._supportFree = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2840,6 +2904,81 @@ public struct Cadpole_V1_BodyPrintReport {
     set {_uniqueStorage()._maxBridgeMm = newValue}
   }
 
+  /// What still needs support after every allowance (bridges, ledges within
+  /// `max_cantilever`, the tops of small round horizontal holes, patches no
+  /// larger than `max_overhang_area`), in mm2. 0 when the overhang rule is
+  /// satisfied.
+  public var supportAreaMm2: Double {
+    get {return _storage._supportAreaMm2}
+    set {_uniqueStorage()._supportAreaMm2 = newValue}
+  }
+
+  /// The largest connected overhang patch after those allowances, in mm2.
+  public var largestOverhangMm2: Double {
+    get {return _storage._largestOverhangMm2}
+    set {_uniqueStorage()._largestOverhangMm2 = newValue}
+  }
+
+  /// How far the longest ledge held up on one side sticks out, in mm.
+  public var longestCantileverMm: Double {
+    get {return _storage._longestCantileverMm}
+    set {_uniqueStorage()._longestCantileverMm = newValue}
+  }
+
+  /// Regions whose lowest point is in mid-air, and the deepest, in mm.
+  public var islands: UInt32 {
+    get {return _storage._islands}
+    set {_uniqueStorage()._islands = newValue}
+  }
+
+  public var deepestIslandMm: Double {
+    get {return _storage._deepestIslandMm}
+    set {_uniqueStorage()._deepestIslandMm = newValue}
+  }
+
+  /// Round horizontal holes found (only on bodies with recognised cylinder
+  /// faces), and how many are wider than `max_horizontal_hole` with a round
+  /// top.
+  public var horizontalHoles: UInt32 {
+    get {return _storage._horizontalHoles}
+    set {_uniqueStorage()._horizontalHoles = newValue}
+  }
+
+  public var wideHoles: UInt32 {
+    get {return _storage._wideHoles}
+    set {_uniqueStorage()._wideHoles = newValue}
+  }
+
+  /// Slender features past `max_slenderness`, and the largest height over
+  /// width among them.
+  public var slender: UInt32 {
+    get {return _storage._slender}
+    set {_uniqueStorage()._slender = newValue}
+  }
+
+  public var slenderness: Double {
+    get {return _storage._slenderness}
+    set {_uniqueStorage()._slenderness = newValue}
+  }
+
+  /// Area of the section half a layer above the bed, in mm2, and the part's
+  /// height over its square root.
+  public var firstLayerAreaMm2: Double {
+    get {return _storage._firstLayerAreaMm2}
+    set {_uniqueStorage()._firstLayerAreaMm2 = newValue}
+  }
+
+  public var heightToBase: Double {
+    get {return _storage._heightToBase}
+    set {_uniqueStorage()._heightToBase = newValue}
+  }
+
+  /// True when no support finding was made: it prints without support.
+  public var supportFree: Bool {
+    get {return _storage._supportFree}
+    set {_uniqueStorage()._supportFree = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2879,7 +3018,9 @@ public struct Cadpole_V1_PrintIssue {
 
   /// Which check found it: "solid", "watertight", "non_manifold",
   /// "orientation", "self_intersection", "internal_face", "fold",
-  /// "degenerate", "thickness", "overhang", "bed_fit".
+  /// "degenerate", "thickness", "overhang", "bridged", "island",
+  /// "cantilever", "horizontal_hole", "slender", "bed_contact", "bed_fit",
+  /// "chord_error", and between bodies "fuse", "layer_gap" and "bridge".
   public var check: String = String()
 
   /// "info", "warning" or "error".
@@ -8031,6 +8172,14 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
     16: .standard(proto: "layer_names"),
     17: .standard(proto: "include_hidden_layers"),
     18: .standard(proto: "max_bridge"),
+    19: .standard(proto: "max_overhang_area"),
+    20: .standard(proto: "max_cantilever"),
+    21: .standard(proto: "max_horizontal_hole"),
+    22: .standard(proto: "min_island"),
+    23: .standard(proto: "max_slenderness"),
+    24: .standard(proto: "slender_width"),
+    25: .standard(proto: "max_height_to_base"),
+    26: .standard(proto: "support_free"),
   ]
 
   fileprivate class _StorageClass {
@@ -8052,6 +8201,14 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
     var _layerNames: [String] = []
     var _includeHiddenLayers: Bool = false
     var _maxBridge: Double = 0
+    var _maxOverhangArea: Double = 0
+    var _maxCantilever: Double = 0
+    var _maxHorizontalHole: Double = 0
+    var _minIsland: Double = 0
+    var _maxSlenderness: Double = 0
+    var _slenderWidth: Double = 0
+    var _maxHeightToBase: Double = 0
+    var _supportFree: Bool = false
 
     static let defaultInstance = _StorageClass()
 
@@ -8076,6 +8233,14 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
       _layerNames = source._layerNames
       _includeHiddenLayers = source._includeHiddenLayers
       _maxBridge = source._maxBridge
+      _maxOverhangArea = source._maxOverhangArea
+      _maxCantilever = source._maxCantilever
+      _maxHorizontalHole = source._maxHorizontalHole
+      _minIsland = source._minIsland
+      _maxSlenderness = source._maxSlenderness
+      _slenderWidth = source._slenderWidth
+      _maxHeightToBase = source._maxHeightToBase
+      _supportFree = source._supportFree
     }
   }
 
@@ -8112,6 +8277,14 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
         case 16: try { try decoder.decodeRepeatedStringField(value: &_storage._layerNames) }()
         case 17: try { try decoder.decodeSingularBoolField(value: &_storage._includeHiddenLayers) }()
         case 18: try { try decoder.decodeSingularDoubleField(value: &_storage._maxBridge) }()
+        case 19: try { try decoder.decodeSingularDoubleField(value: &_storage._maxOverhangArea) }()
+        case 20: try { try decoder.decodeSingularDoubleField(value: &_storage._maxCantilever) }()
+        case 21: try { try decoder.decodeSingularDoubleField(value: &_storage._maxHorizontalHole) }()
+        case 22: try { try decoder.decodeSingularDoubleField(value: &_storage._minIsland) }()
+        case 23: try { try decoder.decodeSingularDoubleField(value: &_storage._maxSlenderness) }()
+        case 24: try { try decoder.decodeSingularDoubleField(value: &_storage._slenderWidth) }()
+        case 25: try { try decoder.decodeSingularDoubleField(value: &_storage._maxHeightToBase) }()
+        case 26: try { try decoder.decodeSingularBoolField(value: &_storage._supportFree) }()
         default: break
         }
       }
@@ -8178,6 +8351,30 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
       if _storage._maxBridge != 0 {
         try visitor.visitSingularDoubleField(value: _storage._maxBridge, fieldNumber: 18)
       }
+      if _storage._maxOverhangArea != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._maxOverhangArea, fieldNumber: 19)
+      }
+      if _storage._maxCantilever != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._maxCantilever, fieldNumber: 20)
+      }
+      if _storage._maxHorizontalHole != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._maxHorizontalHole, fieldNumber: 21)
+      }
+      if _storage._minIsland != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._minIsland, fieldNumber: 22)
+      }
+      if _storage._maxSlenderness != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._maxSlenderness, fieldNumber: 23)
+      }
+      if _storage._slenderWidth != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._slenderWidth, fieldNumber: 24)
+      }
+      if _storage._maxHeightToBase != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._maxHeightToBase, fieldNumber: 25)
+      }
+      if _storage._supportFree != false {
+        try visitor.visitSingularBoolField(value: _storage._supportFree, fieldNumber: 26)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8205,6 +8402,14 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
         if _storage._layerNames != rhs_storage._layerNames {return false}
         if _storage._includeHiddenLayers != rhs_storage._includeHiddenLayers {return false}
         if _storage._maxBridge != rhs_storage._maxBridge {return false}
+        if _storage._maxOverhangArea != rhs_storage._maxOverhangArea {return false}
+        if _storage._maxCantilever != rhs_storage._maxCantilever {return false}
+        if _storage._maxHorizontalHole != rhs_storage._maxHorizontalHole {return false}
+        if _storage._minIsland != rhs_storage._minIsland {return false}
+        if _storage._maxSlenderness != rhs_storage._maxSlenderness {return false}
+        if _storage._slenderWidth != rhs_storage._slenderWidth {return false}
+        if _storage._maxHeightToBase != rhs_storage._maxHeightToBase {return false}
+        if _storage._supportFree != rhs_storage._supportFree {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -8301,6 +8506,18 @@ extension Cadpole_V1_BodyPrintReport: SwiftProtobuf.Message, SwiftProtobuf._Mess
     38: .standard(proto: "longest_bridge_mm"),
     39: .same(proto: "bridges"),
     40: .standard(proto: "max_bridge_mm"),
+    41: .standard(proto: "support_area_mm2"),
+    42: .standard(proto: "largest_overhang_mm2"),
+    43: .standard(proto: "longest_cantilever_mm"),
+    44: .same(proto: "islands"),
+    45: .standard(proto: "deepest_island_mm"),
+    46: .standard(proto: "horizontal_holes"),
+    47: .standard(proto: "wide_holes"),
+    48: .same(proto: "slender"),
+    49: .same(proto: "slenderness"),
+    50: .standard(proto: "first_layer_area_mm2"),
+    51: .standard(proto: "height_to_base"),
+    52: .standard(proto: "support_free"),
   ]
 
   fileprivate class _StorageClass {
@@ -8344,6 +8561,18 @@ extension Cadpole_V1_BodyPrintReport: SwiftProtobuf.Message, SwiftProtobuf._Mess
     var _longestBridgeMm: Double = 0
     var _bridges: UInt32 = 0
     var _maxBridgeMm: Double = 0
+    var _supportAreaMm2: Double = 0
+    var _largestOverhangMm2: Double = 0
+    var _longestCantileverMm: Double = 0
+    var _islands: UInt32 = 0
+    var _deepestIslandMm: Double = 0
+    var _horizontalHoles: UInt32 = 0
+    var _wideHoles: UInt32 = 0
+    var _slender: UInt32 = 0
+    var _slenderness: Double = 0
+    var _firstLayerAreaMm2: Double = 0
+    var _heightToBase: Double = 0
+    var _supportFree: Bool = false
 
     static let defaultInstance = _StorageClass()
 
@@ -8390,6 +8619,18 @@ extension Cadpole_V1_BodyPrintReport: SwiftProtobuf.Message, SwiftProtobuf._Mess
       _longestBridgeMm = source._longestBridgeMm
       _bridges = source._bridges
       _maxBridgeMm = source._maxBridgeMm
+      _supportAreaMm2 = source._supportAreaMm2
+      _largestOverhangMm2 = source._largestOverhangMm2
+      _longestCantileverMm = source._longestCantileverMm
+      _islands = source._islands
+      _deepestIslandMm = source._deepestIslandMm
+      _horizontalHoles = source._horizontalHoles
+      _wideHoles = source._wideHoles
+      _slender = source._slender
+      _slenderness = source._slenderness
+      _firstLayerAreaMm2 = source._firstLayerAreaMm2
+      _heightToBase = source._heightToBase
+      _supportFree = source._supportFree
     }
   }
 
@@ -8448,6 +8689,18 @@ extension Cadpole_V1_BodyPrintReport: SwiftProtobuf.Message, SwiftProtobuf._Mess
         case 38: try { try decoder.decodeSingularDoubleField(value: &_storage._longestBridgeMm) }()
         case 39: try { try decoder.decodeSingularUInt32Field(value: &_storage._bridges) }()
         case 40: try { try decoder.decodeSingularDoubleField(value: &_storage._maxBridgeMm) }()
+        case 41: try { try decoder.decodeSingularDoubleField(value: &_storage._supportAreaMm2) }()
+        case 42: try { try decoder.decodeSingularDoubleField(value: &_storage._largestOverhangMm2) }()
+        case 43: try { try decoder.decodeSingularDoubleField(value: &_storage._longestCantileverMm) }()
+        case 44: try { try decoder.decodeSingularUInt32Field(value: &_storage._islands) }()
+        case 45: try { try decoder.decodeSingularDoubleField(value: &_storage._deepestIslandMm) }()
+        case 46: try { try decoder.decodeSingularUInt32Field(value: &_storage._horizontalHoles) }()
+        case 47: try { try decoder.decodeSingularUInt32Field(value: &_storage._wideHoles) }()
+        case 48: try { try decoder.decodeSingularUInt32Field(value: &_storage._slender) }()
+        case 49: try { try decoder.decodeSingularDoubleField(value: &_storage._slenderness) }()
+        case 50: try { try decoder.decodeSingularDoubleField(value: &_storage._firstLayerAreaMm2) }()
+        case 51: try { try decoder.decodeSingularDoubleField(value: &_storage._heightToBase) }()
+        case 52: try { try decoder.decodeSingularBoolField(value: &_storage._supportFree) }()
         default: break
         }
       }
@@ -8580,6 +8833,42 @@ extension Cadpole_V1_BodyPrintReport: SwiftProtobuf.Message, SwiftProtobuf._Mess
       if _storage._maxBridgeMm != 0 {
         try visitor.visitSingularDoubleField(value: _storage._maxBridgeMm, fieldNumber: 40)
       }
+      if _storage._supportAreaMm2 != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._supportAreaMm2, fieldNumber: 41)
+      }
+      if _storage._largestOverhangMm2 != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._largestOverhangMm2, fieldNumber: 42)
+      }
+      if _storage._longestCantileverMm != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._longestCantileverMm, fieldNumber: 43)
+      }
+      if _storage._islands != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._islands, fieldNumber: 44)
+      }
+      if _storage._deepestIslandMm != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._deepestIslandMm, fieldNumber: 45)
+      }
+      if _storage._horizontalHoles != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._horizontalHoles, fieldNumber: 46)
+      }
+      if _storage._wideHoles != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._wideHoles, fieldNumber: 47)
+      }
+      if _storage._slender != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._slender, fieldNumber: 48)
+      }
+      if _storage._slenderness != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._slenderness, fieldNumber: 49)
+      }
+      if _storage._firstLayerAreaMm2 != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._firstLayerAreaMm2, fieldNumber: 50)
+      }
+      if _storage._heightToBase != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._heightToBase, fieldNumber: 51)
+      }
+      if _storage._supportFree != false {
+        try visitor.visitSingularBoolField(value: _storage._supportFree, fieldNumber: 52)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8629,6 +8918,18 @@ extension Cadpole_V1_BodyPrintReport: SwiftProtobuf.Message, SwiftProtobuf._Mess
         if _storage._longestBridgeMm != rhs_storage._longestBridgeMm {return false}
         if _storage._bridges != rhs_storage._bridges {return false}
         if _storage._maxBridgeMm != rhs_storage._maxBridgeMm {return false}
+        if _storage._supportAreaMm2 != rhs_storage._supportAreaMm2 {return false}
+        if _storage._largestOverhangMm2 != rhs_storage._largestOverhangMm2 {return false}
+        if _storage._longestCantileverMm != rhs_storage._longestCantileverMm {return false}
+        if _storage._islands != rhs_storage._islands {return false}
+        if _storage._deepestIslandMm != rhs_storage._deepestIslandMm {return false}
+        if _storage._horizontalHoles != rhs_storage._horizontalHoles {return false}
+        if _storage._wideHoles != rhs_storage._wideHoles {return false}
+        if _storage._slender != rhs_storage._slender {return false}
+        if _storage._slenderness != rhs_storage._slenderness {return false}
+        if _storage._firstLayerAreaMm2 != rhs_storage._firstLayerAreaMm2 {return false}
+        if _storage._heightToBase != rhs_storage._heightToBase {return false}
+        if _storage._supportFree != rhs_storage._supportFree {return false}
         return true
       }
       if !storagesAreEqual {return false}

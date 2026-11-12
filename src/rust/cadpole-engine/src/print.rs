@@ -2114,6 +2114,38 @@ mod tests {
         assert!((o.unsupported_area_mm2 - w.unsupported_area_mm2).abs() < 0.05, "{} vs {}", o.unsupported_area_mm2, w.unsupported_area_mm2);
     }
 
+    /// `support_free` keeps only the findings that mean "needs support",
+    /// and the request's rules move them.
+    #[test]
+    fn support_free_keeps_only_what_needs_support() {
+        let src = "post = box(4, 4, 30, name=\"post\")\n\
+                   arm = box(14, 4, 4, at=(4, 0, 26), name=\"arm\")\n\
+                   finger = box(2, 4, 8, at=(14, 0, 18), name=\"finger\")\n\
+                   hook = union(post, arm, finger, name=\"hook\")\n";
+        let ask = |area: f64, island: f64| {
+            print_check(&pb::PrintCheckRequest {
+                document: Some(doc(src)),
+                support_free: true,
+                max_overhang_area: area,
+                min_island: island,
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let r = ask(0.0, 0.0);
+        assert!(!r.ok);
+        let b = &r.bodies[0];
+        assert!(!b.support_free);
+        assert_eq!(b.islands, 1);
+        assert!((b.deepest_island_mm - 8.0).abs() < 1e-6, "{}", b.deepest_island_mm);
+        let support = ["overhang", "island", "cantilever", "horizontal_hole", "bridge"];
+        assert!(b.issues.iter().all(|i| support.contains(&i.check.as_str())), "{:?}", b.issues);
+        assert!(b.issues.iter().any(|i| i.check == "island" && i.message.contains("8 mm below")), "{:?}", b.issues);
+        let r = ask(10.0, 9.0);
+        assert!(r.ok, "{:?}", r.bodies[0].issues);
+        assert!(r.bodies[0].support_free && r.bodies[0].issues.is_empty());
+    }
+
     #[test]
     fn orientation_comes_back_with_its_reasoning() {
         let r = print_check(&pb::PrintCheckRequest {
