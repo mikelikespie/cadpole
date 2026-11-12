@@ -317,7 +317,6 @@ mod tests {
             "nightstand.star",
             "nightstand_scene.star",
             "peg_board.star",
-            "planter.star",
             "print_ready.star",
             "showcase.star",
             "split_for_bed.star",

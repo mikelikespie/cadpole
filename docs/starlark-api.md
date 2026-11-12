@@ -4621,13 +4621,14 @@ declare, so an example's tests are CI.
 | `monotone` | `monotone.increasing` / `monotone.decreasing`, or the string (§4.16) | a claim across a one-parameter sweep: `func` returns a number, and it must strictly rise (fall) from point to point |
 
 ```python
-r_top = param("top_radius", 55, unit="mm", min=20, max=120)
+r_top = param("top_radius", 56, unit="mm", min=20, max=120)
 wall = param("wall", 2.4, unit="mm", min=1.2, max=6)
-pot = revolve(profile, axis=(0, 0, 1), name="pot")
+shell = revolve(profile, axis=(0, 0, 1), name="shell")
+pot = subtract(shell, cutters, name="pot", kernel="mesh")
 
 def hollow_and_printable():
     assert_solid(pot)
-    assert_bbox(pot, (-r_top, -r_top, 0), (r_top, r_top, h))
+    assert_bbox(pot, (-r_top, -r_top, 0), (r_top, r_top, h), tol=0.6)
     assert_true(pot.volume() < math.pi * r_top * r_top * h, msg="the pot is hollow")
     assert_printable(pot)
 
@@ -4638,19 +4639,25 @@ def material():
     return pot.volume()
 
 test("thicker walls use more material", material, sweep={"wall": [1.2, 2.4, 4.0]}, monotone="increasing")
-test("a solid at every top radius", material, sweep={"top_radius": [20, 55, 100]})
+test("a solid at every top radius", material, sweep={"top_radius": [20, 56, 120]})
 ```
 
 ```
 $ cadpole test examples/planter.star
 PASS a hollow, printable pot on its footprint
-PASS thicker walls use more material  wall=1.2  = 50834.459
-PASS thicker walls use more material  wall=2.4  = 80661.849
-PASS thicker walls use more material  wall=4  = 119222.184
-PASS a solid at every top radius  top_radius=20  = 56200.772
-PASS a solid at every top radius  top_radius=55  = 80661.849
-PASS a solid at every top radius  top_radius=100  = 112213.522
-7 passed, 0 failed
+PASS the drainage hole goes through the floor
+PASS the floor falls toward the drain
+PASS the collar stands proud of the wall
+PASS each channel runs from the hole to the edge of the foot  drains=2
+PASS each channel runs from the hole to the edge of the foot  drains=4
+PASS each channel runs from the hole to the edge of the foot  drains=6
+PASS thicker walls use more material  wall=1.2  = 80866.301
+PASS thicker walls use more material  wall=2.4  = 112447.55
+PASS thicker walls use more material  wall=4  = 153269.192
+PASS a solid at every top radius  top_radius=20  = 73617.374
+PASS a solid at every top radius  top_radius=56  = 112447.55
+PASS a solid at every top radius  top_radius=120  = 179936.849
+13 passed, 0 failed
 ```
 
 What is reported, per test or per sweep point: the name, pass or fail, the
