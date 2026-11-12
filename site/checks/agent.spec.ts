@@ -147,3 +147,24 @@ test("the pictures first, the reading after: setup and Get started come last, an
   expect(await p.locator(".bar a.primary").textContent()).toContain("GitHub");
   await ctx.close();
 });
+
+test("Copy copies a box's text exactly, links and all", async ({ browser, site }) => {
+  const ctx = await context(browser, "phone-390");
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const p = await ctx.newPage();
+  await p.goto(site + "?noauto=1#connect", { waitUntil: "load" });
+  for (const sel of ["#connect .cmds .cmd", "#start .cmd.prompt", "#start .start-steps .cmd:has(code a)"]) {
+    const box = p.locator(sel).first();
+    await box.scrollIntoViewIfNeeded();
+    // The box has links in it, and the copy is its plain text.
+    expect(await box.locator("code a").count(), sel).toBeGreaterThan(0);
+    const want = await box.locator("code").evaluate((c) => c.textContent!);
+    expect(want).not.toContain("<");
+    if (sel.startsWith("#connect")) expect(want).toContain("from github.com/mikelikespie/cadpole (docs/assistant-integration.md): register");
+    await box.locator("button.copy").click();
+    await expect(box.locator("button.copy")).toHaveText("Copied");
+    expect(await p.evaluate(() => navigator.clipboard.readText()), sel).toBe(want);
+  }
+  expect(await p.evaluate(() => navigator.clipboard.readText())).toMatch(/^git clone https:\/\/github\.com\/mikelikespie\/cadpole\.git && cd cadpole$/);
+  await ctx.close();
+});

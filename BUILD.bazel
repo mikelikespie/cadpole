@@ -13,6 +13,7 @@ exports_files([
     "MODULE.bazel.lock",
     "rustfmt.toml",
     "LICENSE",
+    "README.md",
     "THIRD-PARTY-NOTICES.md",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
