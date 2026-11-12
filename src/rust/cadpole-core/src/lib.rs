@@ -21,6 +21,7 @@ pub mod fillet;
 pub mod fmath;
 pub mod geom;
 pub mod gridjoin;
+pub mod heightfield;
 pub mod ids;
 pub mod kernel;
 pub mod ksurface;

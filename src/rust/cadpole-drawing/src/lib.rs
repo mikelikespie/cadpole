@@ -81,7 +81,7 @@ pub use view::{
     section_drawing, section_loops, BodyRanges, HalfSpace, Hidden, ProjectOptions, Projection,
     ViewBasis,
 };
-pub use views::{Look, ViewBody, ViewGeometry, ViewOptions};
+pub use views::{Frame, Look, ViewBody, ViewGeometry, ViewOptions};
 
 use cadpole_core::sketch::Sketch;
 

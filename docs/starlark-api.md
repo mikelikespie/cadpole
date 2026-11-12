@@ -43,7 +43,7 @@ this document exactly as a part does.
 | [§4.1](#41-parameters) Parameters, [§4.2](#42-planes) Planes | `param`, `units`, the standard planes |
 | [§4.3](#43-sketching) Sketching | sketches, paths, constrained sketches, the 2D toolkit |
 | [§4.4](#44-solids) Solids, [§4.5](#45-booleans) Booleans | `extrude`, `revolve`, `loft`, `sweep_along`, `fillet`, `chamfer`, `emboss`, patterns; `union`, `subtract`, `intersect` |
-| [§4.6](#46-transforms-and-copies) Transforms, [§4.7](#47-organic-and-field-bodies) Field bodies | `translate`, `rotate`, `mirror`; signed-distance blends |
+| [§4.6](#46-transforms-and-copies) Transforms, [§4.7](#47-organic-and-field-bodies) Field bodies | `translate`, `rotate`, `mirror`; signed-distance blends; `heightfield` and `lithophane` ([§4.7.2](#472-height-fields-and-lithophanes)) |
 | [§4.8](#48-queries-and-selectors) Queries, [§4.9](#49-measurement) Measurement | `faces()`, `edges()`; `distance`, `clearance_map` |
 | [§4.10](#410-the-math-namespace) `math`, [§4.11](#411-formatting-numbers-formatvalue-spec) `format` | numbers |
 | [§4.12](#412-materials-and-rendering) Materials and rendering, [§4.13](#413-layers) Layers | appearance, `render_defaults`, display layers, glTF |
@@ -68,7 +68,7 @@ this document exactly as a part does.
 | [§7.1](#71-model-tests) Model tests | `test`, sweeps, monotone claims, the assertions |
 | [§7.2](#72-assistant-hooks-and-diagnostics) Assistant hooks and diagnostics | `selection`, `warn`, `fail`, the `assert_*` family |
 | [§7.3](#73-diagnostics-reference) Diagnostics reference | severities, spans, message shape, exit codes |
-| [§8](#8-worked-examples) Worked examples | a planter, a bracket, a box with a lid, a vase, a dimensioned plate |
+| [§8](#8-worked-examples) Worked examples | a planter, a bracket, a box with a lid, a vase, a dimensioned plate, a lithophane lamp |
 
 ---
 
@@ -595,7 +595,10 @@ only the nearest translucent layer. The path tracer refracts through
 `attenuation` mm, and frosts what is seen through the body as `roughness`
 rises: 0.05 reads clear, 0.2 already milky. `examples/enclosure.star`'s
 shell is `opacity=0.42` for the first three and `transmission=0.92,
-roughness=0.06, attenuation=26` for the tracer.
+roughness=0.06, attenuation=26` for the tracer. In the path tracer an
+emissive body behind a clear one is seen at its full brightness and lights
+what is beyond it, so a lit room keeps its window panes and a lamp its
+glass shade.
 
 Out-of-range numbers are clamped rather than rejected. The albedo textures
 are procedural and shared verbatim between the viewport, the CPU rasterizer
@@ -1047,7 +1050,7 @@ Revolve every region about the world axis through `origin` along `axis` by
 Returns Body or list like `extrude`. Face names: `seg[l.s]`, plus `start`,
 `end` for partial revolves.
 
-#### `loft(sections, *, ruled=True, match="index", cap="plane", name=None)`
+#### `loft(sections, *, ruled=True, fit="interpolate", match="index", cap="plane", name=None)`
 
 A solid through two or more sections: the Gridfinity foot, a stacking-lip
 socket, a wall-to-lip frustum, a lid cup — or a compressor blade between its
@@ -1164,9 +1167,18 @@ of it, which is what "smooth" means; a loft that must not move elsewhere wants
 more sections, not a different algorithm. With two sections `ruled=False` is
 the ruled loft, because there is nothing between them to be smooth about.
 
-Two costs worth knowing. Interpolation is not shape-preserving: a cubic through
-sections that step in size will overshoot a little between them, and the answer
-to that is an intermediate section. And the sections are put on a common knot
+Two costs worth knowing. The default interpolation is not shape-preserving: a
+cubic through sections that step in size will overshoot a little between them,
+and through sections that change sharply over a short distance it can bulge
+well past them. `fit="monotone"` (a `fit` member or its string, §4.16) is the
+shape-preserving alternative:
+
+| `fit=` (with `ruled=False`) | What it builds |
+| --- | --- |
+| `"interpolate"` (default) | One cubic through every section at once: curvature-continuous, a global fit, free to overshoot. |
+| `"monotone"` | A cubic Hermite piece between each pair of sections, tangents limited coordinate by coordinate (Fritsch–Carlson, with Brodlie's weighted harmonic mean): a coordinate that grows across the sections grows between them, one that turns at a section turns there, and two sections that agree on a coordinate keep it between them. Tangent-continuous rather than curvature-continuous, and local: moving a section moves only the pieces either side of it. Still one face per column. The limit is per coordinate, so where neighbouring sections swing hard in one direction while holding another, the surface can crease slightly at the turn instead of bulging (`cadpole check` reports a crease as a fold). |
+
+`fit=` with `ruled=True` is a diagnostic: a ruled loft has nothing to fit. And the sections are put on a common knot
 vector, so sections whose segments are knotted differently multiply the control
 points; Cadpole builds the surface exactly and does not remove knots
 afterwards.
@@ -2251,6 +2263,89 @@ the lattice point).
 Cost follows the *surface area divided by the cell area*, not the volume:
 halving `resolution` roughly quadruples the triangles and the time.
 
+### 4.7.2 Height fields and lithophanes
+
+A wall whose thickness follows a picture, a grid of numbers or a function:
+a relief panel, a lithophane, a textured lamp shade. The result is a closed
+mesh body built on a structured grid — closed by its indexing, not by a
+weld — so it goes straight into `union`/`subtract`/`intersect`, `export`
+and `print_plan`, and a 0.25 mm lithophane of a million triangles builds in
+well under a second.
+
+#### `heightfield(source, *, size=None, radius=None, height=None, profile=None, angle=360, thickness=(0.6, 3.0), invert=False, resolution=0.5, smoothing=0, border=0, border_thickness=None, samples=None, side="outside", name=None, layer=None)`
+
+#### `lithophane(source, *, size=None, radius=None, height=None, profile=None, angle=360, thickness=(0.6, 3.0), resolution=0.25, smoothing=0, border=3, border_thickness=None, samples=None, side="outside", name=None, layer=None)`
+
+`lithophane` is `heightfield` with `invert=True` and a lithophane's
+defaults: a bright pixel is thin wall (0.6 mm, which still holds together)
+and glows when lit from behind, a black one thick (3 mm), on a 0.25 mm grid
+with a 3 mm frame at full thickness that keeps a panel flat and gives a
+shade a foot and a lip.
+
+**The source** — every value is in `[0, 1]`, clamped:
+
+| `source` | What it is |
+| --- | --- |
+| `asset("x.png")` or `"x.png"` | a picture: PNG of any colour type and depth, or binary PGM (`P5`). Read as the luma of the sRGB pixel, transparency over white. Stretched over the whole field; resampled bilinearly, with a Gaussian prefilter when it is finer than the grid |
+| a list of rows | `[[0, 0.5, 1], [1, 0.5, 0]]`: row 0 is the **top**, as a picture is written; every row as long. Stretched like a picture |
+| a function `f(u, v)` | `u` and `v` in mm on the developed surface (below), returning a number. Called once per grid node, or once per pixel of a `samples=` mm picture |
+
+**The base** — exactly one of:
+
+| Keyword | Base | `u`, `v` |
+| --- | --- | --- |
+| `size=(width, height)` | a flat panel in XY centred on the origin, back at z = 0, relief up +z. `(width, None)` takes the height from the picture's proportions | `u` across from the left edge, `v` up from the bottom |
+| `radius=`, `height=` | a cylinder about +z from z = 0; the relief outside, the bore smooth | `u` round the circumference, `v` up |
+| `profile=[(r, z), ...]` | an open profile revolved about +z (a lamp shade); the relief on the profile's left-hand side, which is *out* for a profile listed from the foot up. Every `r` must be positive | `u` round the turn measured at the widest radius, `v` the arc length along the profile |
+
+`angle=` takes part of a turn (degrees), centred on −y — the side the
+front view sees — so a picture reads left to right from outside, the right
+way round. A full turn (`angle=360`, the default) wraps the picture and the
+grid: the seam's nodes are shared, so the wall is continuous across it.
+
+**The wall.** A value `x` becomes the thickness `lo + (hi − lo) · x` for
+`thickness=(lo, hi)` (`hi − (hi − lo) · x` with `invert=True`), measured
+along the base's normal. `smoothing=` is a Gaussian blur in mm applied to
+the values first; `border=` holds a band of that width round the open
+edges at `border_thickness` (default the thicker end): all four edges of a
+panel, the foot and lip of a cylinder or a shade, and the two cut ends of a
+part turn. `side="inside"` puts the relief in a cylinder's bore with the
+outside smooth (`thickness` must stay under the radius); a plane has no
+inside.
+
+**Resolution and cost.** The grid has a node every `resolution` mm along
+the surface; the body has about `4 · area / resolution²` triangles. Over 24
+million is refused. A picture is decoded once and costs nothing per node. A
+function is a Starlark call per node: fast enough for a few hundred
+thousand calls, but its temporaries are only freed when the call returns,
+so a dense grid fills the Starlark heap. `samples=0.5` calls it on a 0.5 mm
+picture instead and stretches that, which is fine enough for most pictures
+and leaves `resolution` free to be finer; the call stops with that advice
+if the heap fills to three quarters.
+
+**Names.** One face group per side of the wall: `relief`, `back`,
+`bottom` (`v = 0`), `top`, and `start` and `end` (`u = 0`, `u = U`) unless
+it is a full turn, e.g. `shade/relief`.
+
+```python
+# A flat lithophane from a picture beside the script, 100 mm wide, its
+# height from the picture's proportions.
+panel = lithophane(asset("portrait.png"), size=(100, None), name="panel")
+
+# A cylinder shade over an 84 mm lamp, the picture drawn by a function
+# of millimetres round and up the shade.
+def rings(u, v):
+    return 0.5 + 0.5 * math.cos(math.hypot(u - 130, v - 50) * 60)
+shade = lithophane(rings, radius=42, height=112, samples=0.5, name="shade")
+
+# A ribbed relief on a tapering shade: ribs every 6 mm round it.
+ribbed = heightfield(lambda u, v: 0.5 + 0.5 * math.cos(u * 60),
+                     profile=[(60, 0), (40, 90)], thickness=(1.2, 2.4), name="ribbed")
+```
+
+The full night-light, with its procedural moonrise and the lamp and room it
+is rendered in, is `examples/lithophane_lamp.star` (§8.6).
+
 ### 4.8 Queries and selectors
 
 #### `Body.faces(...)` / `Body.edges(...)` → `Selection`
@@ -2435,7 +2530,7 @@ union-volume idiom above only approximates. Returns a `Clearance`:
 | Attribute | |
 | --- | --- |
 | `distance` | mm; `0` when the bodies touch or overlap |
-| `overlap` | the bodies share material: one crosses the other, or sits inside it. A body in another's *cavity* is not an overlap |
+| `overlap` | the bodies share material: one crosses the other, or sits inside it. A body in another's *cavity* is not an overlap, and neither is shared material thinner than the tessellation tolerance where the surfaces meet |
 | `touching` | zero distance without shared material |
 | `at` | the closest pair of points, `(a_point, b_point)`; also `a_point` and `b_point` |
 | `face_a`, `face_b` | the named faces those points lie on (§5): `sun/side[3]`, not a triangle index |
@@ -2468,9 +2563,14 @@ and the reason to give close-fitting bodies a finer
 `body.tessellation(tolerance=)`. Two bodies at the same distance on several faces (two cubes
 0.4 mm apart, whose side faces' edges lie on the facing walls) report the
 pair whose faces *face each other*. When the surfaces meet, `overlap` comes
-from a cheap test rather than a boolean: a pair of triangles passing through
-each other's planes, or a few probe points just inside one body's surface
-tested against the other's winding number.
+from a cheap test rather than a boolean: probes stepped from places where the
+triangles pass through each other, and from just under one body's surface,
+tested against both bodies' winding numbers. Shared material counts only when
+it is thicker than the tessellation tolerance (`c.tolerance`): two parts cut
+from one body by exact booleans meet on a surface each has tessellated on its
+own, and where it is curved their chords weave through each other by a few
+microns. Those parts read as touching, not overlapping. For a tighter answer,
+give the bodies a finer `body.tessellation(tolerance=)`.
 
 #### `clearance_map(a, b, *, below, spacing=1.0, limit=256)`
 
@@ -2496,8 +2596,20 @@ not even pi. `math` supplies them.
 
 **Angles are degrees**, matching every other angle a Cadpole script writes —
 `rotate(45)`, `revolve(angle=90)`, `--view el=-28`. That is the opposite of C
-and of Python's `math`. `math.radians` and `math.degrees` convert for anyone
-who needs the other one.
+and of Python's `math`, and the trap is silent: `math.sin(math.pi / 4)` is
+not an error but the sine of 0.785 degrees, about 0.0137. So:
+
+- `sin`, `cos` and `tan` take degrees: `math.sin(45)`, `math.cos(360.0 * i / n)`.
+- `asin`, `acos`, `atan` and `atan2` answer in degrees: `math.atan2(1, 1)` is `45.0`,
+  ready to hand to `rotate()` or back to `math.sin`.
+- `math.radians(d)` and `math.degrees(r)` convert, for arithmetic that really
+  wants radians (an arc length is `math.radians(angle) * r`). A radian value
+  goes into the trigonometry as `math.sin(math.degrees(r))`.
+
+Evaluation warns, with the span of the call, when the text can only mean
+radians: `math.pi` or `math.tau` inside `sin`, `cos` or `tan`, a
+`math.radians(...)` inside one of them, or `math.degrees(...)` straight around
+an inverse function. A radian value reached through a variable is not seen.
 
 Every function is pure. None records a feature, and a domain error is a
 diagnostic naming the call and the value, never a NaN that travels into the
@@ -2588,7 +2700,12 @@ when no `--view` or `--eye` is given. A declaration, not a feature: it
 builds nothing, and a document makes it once. Because the sun is computed
 from the document's parameters, `cadpole sweep --param hour=9,12,15` is a
 shadow study and an `animation` over an `hour` parameter is a day's sun
-sweep (§4.17). The model carries it as `Model.render_defaults`.
+sweep (§4.17). The model carries it as `Model.render_defaults`. The sun's
+colour and strength follow its elevation — near white high up, orange and
+dim near the horizon — so a late-afternoon `sun()` lights the scene warm
+without anything else; `cadpole render --sun-color`/`--sun-intensity` override
+it, and `--backdrop sky` adds the daylight sky it drives (docs/views.md,
+"Daylight").
 
 ```python
 hour = param("hour", 12.0, unit="h", min=5, max=21)
@@ -3401,6 +3518,7 @@ diagnostic, where the string form fails later, inside the call.
 | `kind` | `faces(kind=)`, `edges(kind=)` | `plane`, `cylinder`, `cone`, `sphere`, `torus`, `bspline`, `nurbs`, `revolved` (faces); `line`, `bspline`, `nurbs`, `intersection`, `circle`, `arc` (edges) |
 | `match` | `loft(match=)` | `index`, `arclen` |
 | `cap` | `loft(cap=)` | `plane`, `ruled` |
+| `fit` | `loft(ruled=False, fit=)` | `interpolate`, `monotone` |
 | `sweep_frame` | `sweep_along(frame=)`, `pattern_along(frame=)` — `frame` itself is the assembly function (§P4) | `rmf`, `frenet`, `fixed` |
 | `kernel` | `union`, `subtract`, `intersect`, `split`, `pattern_linear`, `pattern_circular`, `pattern_along`, `pattern_on_surface` (`kernel=`) | `auto`, `brep`, `mesh` |
 | `preset` | `Body.material(preset=)` | `pla_matte`, `pla_silk`, `pla_glow`, `petg_glossy`, `petg_clear`, `petg_translucent`, `abs`, `tpu_rubber`, `resin_clear`, `resin_frosted`, `glass`, `acrylic_clear`, `acrylic_frosted`, `brass`, `aluminum`, `steel`, `wood_oak`, `led` |
@@ -4550,7 +4668,9 @@ They share their placement arguments:
 A view (`SheetView`) has `scale` (paper mm per model mm), `at` (where its
 frame's origin landed), `clip` and `bounds` (paper rectangles), and draws in
 its frame's model coordinates: `point(p)` (the paper point a model point
-lands on), `dimension(p1, p2, *, offset=8, units=None, text=None,
+lands on; `p` is `(x, y)` in the frame or `(x, y, z)` in the model, projected
+the way the view projects the model, so on an `axon_view` a body's corner
+lands where the corner is drawn), `dimension(p1, p2, *, offset=8, units=None, text=None,
 size=None)`, `text(...)`, `label(text, *, at, to, size=2)`,
 `polyline(points, *, weight=0.25, dash=None, color=None, closed=False,
 layer=None, under=False)`, `hatch(region, *, pattern="lines", spacing=None,
@@ -4558,6 +4678,8 @@ angle=None, weight=None, color=None, under=False)`, `fill(region, *,
 color=None, under=False)` and `sketch(sketch, *, weight=0.25, dash=None,
 color=None, fill=False, layer=None, under=False)` — a Sketch's loops and
 paths drawn in the frame: a terrain's `contour_sketch()` on a site plan.
+`text`, `label` and `polyline` take `(x, y, z)` model points the same way,
+so a callout's arrow can sit on a corner of the geometry in an axonometric.
 **`under=True`** paints beneath the view's own line work, in call order:
 the contours, then the roof's outline in white under the projection, is a
 site plan whose contours stop at the house.
@@ -5107,3 +5229,36 @@ s.constrain("radius", hole, 2.75, name="bolt")
 assert_eq(s.dof(), 0)           # fully dimensioned; `dof()` solves
 plate = extrude(s, 6, name="plate")
 ```
+
+### 8.6 A lithophane lamp shade (height fields)
+
+A lithophane is a picture written in wall thickness: lit from behind, thin
+wall glows and thick wall stays dark. Here the picture is a function, so it
+needs no file; `examples/lithophane_lamp.star` draws a moon over three ranges
+of hills the same way, with pines and stars, and renders it over a lamp in a
+dark room (`-p scene=true`).
+
+```python
+# A moon over a ridge, on a shade that drops over an 84 mm lamp.
+R, H = 42.0, 112.0
+C = math.tau * R                       # u runs once round the bore
+
+def picture(u, v):
+    du = min(abs(u - C / 2), C - abs(u - C / 2))   # u = C/2 faces -y, the front
+    if v < 30 + 6 * math.sin(u / C * 360 * 5):     # a rolling ridge, black
+        return 0.0
+    if math.hypot(du, v - 75) < 13:                # the moon, white
+        return 1.0
+    return 0.35 + 0.3 * (1 - v / H)                # the sky, lighter low down
+
+shade = lithophane(picture, radius=R, height=H, resolution=0.5, samples=0.5, name="shade")
+shade.material(color="#f4ead8", roughness=0.42, transmission=1.0, attenuation=2.0,
+               scatter=0.15, ior=1.46)
+assert_solid(shade)
+export(shade, "shade.stl")
+```
+
+`resolution=0.25` is the print setting: about a million triangles, still
+under a second. The material is unpigmented PLA's: under the path tracer
+(`cadpole render --backend path`) the light comes through a millimetre or
+two of it and darkens and warms with depth, which is the lithophane.

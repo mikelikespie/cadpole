@@ -149,6 +149,7 @@ pub fn api_doc() -> pb::ApiDocResponse {
         .with(crate::sightline::sightline_globals)
         .with(crate::sweep::sweep_globals)
         .with(crate::terrain::terrain_globals)
+        .with(crate::heightfield::heightfield_globals)
         .with(crate::sheets::sheet_globals)
         .with(crate::fmtspec::format_globals)
         .with(crate::units::units_globals)

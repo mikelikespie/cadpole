@@ -39,6 +39,17 @@
 //! just inside one body's surface are tested against the other body's
 //! winding number. Material of `a` that is also material of `b` is an
 //! overlap; two boxes sharing a face are not.
+//!
+//! Where the surfaces meet, shared material counts only when it is thicker
+//! than the tessellation tolerance. Two parts cut from one body by exact
+//! booleans meet along a surface each has tessellated on its own, and
+//! where that surface is curved their chords cross each other within the
+//! chordal sag: a lens of "shared" material a few microns thick that is an
+//! artefact of the meshing, not of the model. So where the surfaces meet,
+//! the bodies overlap only where some probe -- stepped from a crossing into
+//! both, or from under one body's surface -- is more than half the
+//! tolerance inside both: shared material thicker than the tolerance. A
+//! tolerance of 0 asks for the exact answer: any crossing, any probe.
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap};
@@ -54,6 +65,13 @@ const LEAF: usize = 4;
 /// Probe points per body for the containment half of the overlap test when
 /// the surfaces touch. When they do not, one probe settles it.
 const PROBES: usize = 16;
+
+/// Crossings kept, and how many of them are probed, when a tolerance band
+/// decides whether a crossing is shared material: one crossing can sit on a
+/// corner of the shared region, where every probe from it lands on a third
+/// face, so several spread along the traversal are tried.
+const CROSSINGS_KEPT: usize = 64;
+const CROSSINGS_PROBED: usize = 8;
 
 /// The answer to "how far apart are these two bodies".
 #[derive(Clone, Debug, PartialEq)]
@@ -122,8 +140,10 @@ impl NearMap {
 /// Minimum distance between two meshes, with where it is and whether the
 /// bodies overlap. `None` when either mesh has no triangles.
 ///
-/// `tolerance` is the tessellation tolerance both were meshed at; it is
-/// reported, not used.
+/// `tolerance` is the tessellation tolerance both were meshed at. It is
+/// reported, and where the surfaces meet it is how thick shared material
+/// must be to count as an overlap (see "Touching versus overlapping"); 0
+/// counts any.
 pub fn distance(a: &Mesh, b: &Mesh, tolerance: f64) -> Option<Clearance> {
     let ta = Tree::build(a);
     let tb = Tree::build(b);
@@ -285,6 +305,38 @@ impl Tree {
 
     fn face_of(&self, tri: u32) -> u32 {
         self.face_ids.get(tri as usize).copied().unwrap_or(0)
+    }
+
+    /// Distance from `p` to the nearest point of this mesh's surface. A
+    /// best-first walk of the tree, so a probe costs a few leaves, not a
+    /// pass over every triangle.
+    pub fn surface_distance(&self, p: Vec3) -> f64 {
+        if self.is_empty() {
+            return f64::INFINITY;
+        }
+        let mut best = f64::INFINITY;
+        let mut heap = BinaryHeap::new();
+        heap.push(Cand { lb: box_distance((p, p), (self.nodes[0].lo, self.nodes[0].hi)), na: 0, nb: 0 });
+        while let Some(Cand { lb, na, .. }) = heap.pop() {
+            if lb >= best {
+                break;
+            }
+            let n = self.nodes[na as usize];
+            if n.is_leaf() {
+                for &t in &self.order[n.start as usize..(n.start + n.count) as usize] {
+                    best = best.min((closest_on_tri(p, &self.tris[t as usize]) - p).length());
+                }
+                continue;
+            }
+            for c in [n.left, n.right] {
+                let m = self.nodes[c as usize];
+                let lb = box_distance((p, p), (m.lo, m.hi));
+                if lb < best {
+                    heap.push(Cand { lb, na: c, nb: 0 });
+                }
+            }
+        }
+        best
     }
 
     /// Winding number of `p` with respect to this mesh: ±1 in the material,
@@ -463,6 +515,7 @@ pub fn closest(a: &Tree, b: &Tree, tolerance: f64) -> Option<Clearance> {
     let mut best_facing = f64::NEG_INFINITY;
     let mut hit: Option<(Vec3, Vec3, u32, u32)> = None;
     let mut crossing = false;
+    let mut crossings: Vec<(Vec3, u32, u32)> = Vec::new();
     let mut heap = BinaryHeap::new();
     heap.push(Cand { lb: box_distance((a.nodes[0].lo, a.nodes[0].hi), (b.nodes[0].lo, b.nodes[0].hi)), na: 0, nb: 0 });
     while let Some(Cand { lb, na, nb }) = heap.pop() {
@@ -480,6 +533,9 @@ pub fn closest(a: &Tree, b: &Tree, tolerance: f64) -> Option<Clearance> {
                         continue;
                     }
                     let (d, pa, pb, crossed) = tri_tri(va, vb);
+                    if crossed && crossings.len() < CROSSINGS_KEPT {
+                        crossings.push((pa, ta, tb));
+                    }
                     if d > best + tie {
                         continue;
                     }
@@ -507,14 +563,23 @@ pub fn closest(a: &Tree, b: &Tree, tolerance: f64) -> Option<Clearance> {
         }
     }
     let (pa, pb, ta, tb) = hit?;
-    let overlap = if best > 0.0 {
+    // How thick shared material must be to count, where the surfaces meet:
+    // the tessellation tolerance (module docs, "Touching versus
+    // overlapping").
+    let band = if tolerance.is_finite() { tolerance.max(0.0) } else { 0.0 };
+    let overlap = if best > band || (band == 0.0 && best > 0.0) {
         // The surfaces never meet, so one probe per lump each way decides:
         // if a point of a lump's material is in b, all of that lump is.
         // One probe per *body* is not enough — a body's first triangle may
         // sit on a lump that is clear of b while another lump is buried.
-        contained(a, b, 0) || contained(b, a, 0)
+        contained(a, b, 0, 0.0) || contained(b, a, 0, 0.0)
+    } else if band == 0.0 {
+        crossing || contained(a, b, PROBES, 0.0) || contained(b, a, PROBES, 0.0)
     } else {
-        crossing || contained(a, b, PROBES) || contained(b, a, PROBES)
+        let step = crossings.len().div_ceil(CROSSINGS_PROBED).max(1);
+        crossings.iter().step_by(step).any(|&(x, ta, tb)| wedge_is_shared(a, b, x, ta, tb, band))
+            || contained(a, b, PROBES, band)
+            || contained(b, a, PROBES, band)
     };
     Some(Clearance {
         // Shared material is no clearance at all, whatever the gap between
@@ -532,13 +597,56 @@ pub fn closest(a: &Tree, b: &Tree, tolerance: f64) -> Option<Clearance> {
     })
 }
 
+/// Does the crossing at `x`, between triangle `ta` of `a` and `tb` of `b`,
+/// open onto material both bodies share, more than `band` deep? Locally the
+/// two surfaces are planes and the shared material is the wedge behind
+/// both; its bisector is `-(na + nb)`. A probe stepped along it until it is
+/// three quarters of `band` behind each plane must be [`deep_in_both`]
+/// (the planes are only an estimate of a curved or thin part). The crossing may be at an end of the shared region (a
+/// corner of two boxes), so the probe is also tried a step either way
+/// along the line the planes cross in. Surfaces within about eleven
+/// degrees of resting face to face have no useful bisector: a crossing
+/// between them is the chords of one shared surface weaving through each
+/// other, and the containment probes judge any real overlap there.
+fn wedge_is_shared(a: &Tree, b: &Tree, x: Vec3, ta: u32, tb: u32, band: f64) -> bool {
+    let (na, _) = crate::solid::tri_normal_area(&a.tris[ta as usize]);
+    let (nb, _) = crate::solid::tri_normal_area(&b.tris[tb as usize]);
+    let s = na + nb;
+    // `-na · d` for the unit bisector `d`: how fast a step along it goes
+    // behind each plane (the same for both).
+    let depth_rate = s.length() * 0.5;
+    if depth_rate < 0.1 {
+        return false;
+    }
+    let reach = 0.75 * band / depth_rate;
+    let centre = x - s * (1.0 / s.length()) * reach;
+    let line = na.cross(nb);
+    let along = if line.length() > 1e-9 { line * (reach / line.length()) } else { Vec3::ZERO };
+    [centre, centre + along, centre - along].iter().any(|&q| deep_in_both(a, b, q, band))
+}
+
+/// Is `q` in the material of both bodies and more than half of `band` from
+/// either surface? That is the test for shared material thicker than the
+/// band. The tree walks go first: they are cheap, and the windings are a
+/// pass over every triangle.
+fn deep_in_both(a: &Tree, b: &Tree, q: Vec3, band: f64) -> bool {
+    a.surface_distance(q) > 0.5 * band
+        && b.surface_distance(q) > 0.5 * band
+        && a.winding(q).abs() > 0.5
+        && b.winding(q).abs() > 0.5
+}
+
 /// Is any probe point just inside `inner`'s surface inside `outer`'s
-/// material? Probes are triangle centroids pushed a little along the inward
-/// normal: one on every lump of `inner` ([`Tree::lumps`]), plus `probes`
-/// more spread across the mesh, so a body touching another from outside
-/// (its probe lands in its own material, outside the other) and a body
-/// sitting in a cavity (winding 0) both answer no.
-fn contained(inner: &Tree, outer: &Tree, probes: usize) -> bool {
+/// material, by more than `min_depth`? Probes are triangle centroids pushed
+/// a little along the inward normal: one on every lump of `inner`
+/// ([`Tree::lumps`]), plus `probes` more spread across the mesh, so a body
+/// touching another from outside (its probe lands in its own material,
+/// outside the other) and a body sitting in a cavity (winding 0) both
+/// answer no. With a tolerance `band` the probe goes three quarters of it
+/// under `inner`'s surface and must be more than half of it inside both
+/// bodies ([`deep_in_both`]): shared material thinner than the band is the
+/// chords of one shared surface crossing, not an overlap.
+fn contained(inner: &Tree, outer: &Tree, probes: usize, band: f64) -> bool {
     let n = inner.tris.len();
     let spread = if probes == 0 { 0..0 } else { 0..n };
     let step = n.div_ceil(probes.max(1)).max(1);
@@ -551,13 +659,23 @@ fn contained(inner: &Tree, outer: &Tree, probes: usize) -> bool {
             continue;
         }
         let edge = (t[1] - t[0]).length().max((t[2] - t[1]).length()).max((t[0] - t[2]).length());
-        let p = (t[0] + t[1] + t[2]) * (1.0 / 3.0) - nrm * (1.0 / len) * (edge * 1e-3).max(1e-6);
+        // Exact: just under the surface. With a band: three quarters of
+        // it under, so the probe is clear of a sliver at the surface.
+        let depth = if band > 0.0 { 0.75 * band } else { (edge * 1e-3).max(1e-6) };
+        let p = (t[0] + t[1] + t[2]) * (1.0 / 3.0) - nrm * (1.0 / len) * depth;
         // Outside the other body's box the winding number is 0: skip the
         // O(n) sum, which keeps a soup of many small pieces cheap.
         if box_distance((p, p), (outer.nodes[0].lo, outer.nodes[0].hi)) > 0.0 {
             continue;
         }
-        if outer.winding(p).abs() > 0.5 {
+        let shared = if band > 0.0 {
+            // The tree walks first: they are cheap, the windings are a
+            // pass over every triangle.
+            deep_in_both(inner, outer, p, band)
+        } else {
+            outer.winding(p).abs() > 0.5
+        };
+        if shared {
             return true;
         }
     }
@@ -967,6 +1085,66 @@ mod tests {
         assert_eq!(c.distance, 0.0);
         assert!(!c.overlap, "sharing a face is touching, not overlapping: {c:?}");
         assert!(c.touching());
+    }
+
+    /// A pin in a bore of the same radius, the two tessellated on their own
+    /// (48 and 64 sides, so out of phase): what two parts cut from one body
+    /// by exact booleans look like where they meet. Their chords weave
+    /// through each other within the sag, about 11 microns here. Under a
+    /// 0.05 mm tolerance that is touching; at tolerance 0 (exact) the
+    /// crossing still counts. A pin 0.5 mm too big for the same bore, or one
+    /// pushed 0.3 mm sideways, overlaps whatever the tolerance.
+    #[test]
+    fn parts_that_meet_on_a_curved_surface_touch_within_the_tolerance() {
+        let skin = tube_grid(5.0, 5.6, 64, 4, 10.0);
+        // Turned a little, so no vertex of one lies on the other: every
+        // contact is a crossing of chords.
+        let mut core = pin_grid(5.0, 48, 3, 10.0);
+        let (c7, s7) = (fmath::cos(0.07), fmath::sin(0.07));
+        for p in core.positions.chunks_exact_mut(3) {
+            let (x, y) = (p[0] as f64, p[1] as f64);
+            p[0] = (c7 * x - s7 * y) as f32;
+            p[1] = (s7 * x + c7 * y) as f32;
+        }
+        let c = distance(&core, &skin, 0.05).unwrap();
+        assert_eq!(c.distance, 0.0, "{c:?}");
+        assert!(!c.overlap, "chords crossing within the sag are a touch: {c:?}");
+        assert!(c.touching(), "{c:?}");
+        let c = distance(&skin, &core, 0.05).unwrap();
+        assert!(!c.overlap, "symmetric: {c:?}");
+        let exact = distance(&core, &skin, 0.0).unwrap();
+        assert!(exact.overlap, "tolerance 0 is the exact answer, which counts the lens: {exact:?}");
+        let exact = distance(&core, &skin, 0.0).unwrap();
+        assert!(exact.overlap, "tolerance 0 is the exact answer: {exact:?}");
+
+        let fat = pin_grid(5.5, 48, 3, 10.0);
+        for tol in [0.0, 0.05, 0.3] {
+            let c = distance(&fat, &skin, tol).unwrap();
+            assert!(c.overlap, "0.5 mm into a 0.6 mm skin at tolerance {tol}: {c:?}");
+            assert_eq!(c.distance, 0.0);
+        }
+        let mut shifted = pin_grid(5.0, 48, 3, 10.0);
+        for p in shifted.positions.chunks_exact_mut(3) {
+            p[0] += 0.3;
+        }
+        let c = distance(&shifted, &skin, 0.05).unwrap();
+        assert!(c.overlap, "a pin pushed 0.3 mm into the skin: {c:?}");
+    }
+
+    /// Two boxes crossing at a corner, 0.2 mm deep each way: real shared
+    /// material, found from the crossing whatever the tolerance below it.
+    #[test]
+    fn a_shallow_real_overlap_is_still_an_overlap() {
+        let a = box_mesh(10.0, 10.0, 10.0);
+        let b = box_between(v(9.8, 9.8, 2.0), v(20.0, 20.0, 8.0));
+        for tol in [0.0, 0.05, 0.1] {
+            let c = distance(&a, &b, tol).unwrap();
+            assert!(c.overlap, "tolerance {tol}: {c:?}");
+        }
+        // Past the tolerance it is a touch: 0.2 mm of shared material is
+        // within a 0.3 mm tessellation's own error.
+        let c = distance(&a, &b, 0.3).unwrap();
+        assert!(!c.overlap && c.touching(), "{c:?}");
     }
 
     #[test]

@@ -45,7 +45,8 @@ impl std::fmt::Display for Stopped {
                 f,
                 "did not finish within its {budget_ms} ms budget and was abandoned (a file that \
                  takes this long is either far over the caps or hostile; the evaluation deadline \
-                 is `cadpole serve --eval-deadline-ms` or EvaluateRequest.deadline_ms)"
+                 is `--eval-budget-secs` on the CLI, `cadpole serve --eval-deadline-ms` or \
+                 EvaluateRequest.deadline_ms)"
             ),
             Stopped::Panic(m) => write!(f, "the parser failed: {m}"),
             Stopped::Thread(m) => write!(f, "the parse thread failed: {m}"),

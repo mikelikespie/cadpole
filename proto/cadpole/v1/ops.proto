@@ -697,6 +697,11 @@ message SweepRequest {
   // Display layers for every cell, as `RenderRequest.layers`:
   // `envelope=off`, `terrain=0.4`.
   repeated LayerState layers = 50 [(cadpole.field) = {flag: "layer", example: "envelope=off"}];
+
+  // The sun's colour and strength, as `RenderRequest.sun_color` and
+  // `RenderRequest.sun_intensity`.
+  string sun_color = 51 [(cadpole.field) = {example: "3500K"}];
+  double sun_intensity = 52;
 }
 
 message AnimateRequest {
@@ -836,6 +841,12 @@ message AnimateRequest {
   // `envelope=off`, `terrain=0.4`. A keyframe's `view(layers=)` writes over
   // these from its time on.
   repeated LayerState layers = 50 [(cadpole.field) = {flag: "layer", example: "envelope=off"}];
+
+  // The sun's colour and strength and the haze, as `RenderRequest.sun_color`,
+  // `RenderRequest.sun_intensity` and `RenderRequest.haze`.
+  string sun_color = 51 [(cadpole.field) = {example: "3500K"}];
+  double sun_intensity = 52;
+  string haze = 53 [(cadpole.field) = {example: "400m"}];
 }
 
 message AnimateResponse {

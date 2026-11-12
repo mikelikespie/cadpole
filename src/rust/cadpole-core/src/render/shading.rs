@@ -62,6 +62,11 @@ pub struct Lights {
     /// rasterizer's are sharp. `None` for every rig unless a render asks
     /// for one ([`RenderOptions::sun`]).
     pub sun: Option<Light>,
+    /// The analytic daylight sky ([`super::sky::Sky`]) in place of the
+    /// gradient: [`env`] returns it, and `sky`/`horizon`/`ground` hold its
+    /// summary for the rasterizer's diffuse ambient. `None` for every rig
+    /// but [`Backdrop::Sky`].
+    pub sky_model: Option<super::sky::Sky>,
 }
 
 /// The sun's angular radius as seen from Earth: a disc of 0.53° across.
@@ -96,6 +101,7 @@ impl Lights {
             env_scale: 1.0,
             rim_art: true,
             sun: None,
+            sky_model: None,
         }
     }
 
@@ -134,7 +140,43 @@ impl Lights {
             env_scale: 1.0,
             rim_art: false,
             sun: None,
+            sky_model: None,
         }
+    }
+
+    /// No rig: the three lights off and a black environment
+    /// ([`Lighting::None`]). A backdrop, a sun or the scene's own emissive
+    /// bodies are then the only light.
+    pub fn none() -> Lights {
+        let mut l = Lights::studio();
+        for x in [&mut l.key, &mut l.fill, &mut l.rim] {
+            x.radiance = [0.0; 3];
+        }
+        l.sky = [0.0; 3];
+        l.horizon = [0.0; 3];
+        l.ground = [0.0; 3];
+        l
+    }
+
+    /// The same rig with its three lights off, the environment kept.
+    fn without_rig(mut self) -> Lights {
+        for x in [&mut self.key, &mut self.fill, &mut self.rim] {
+            x.radiance = [0.0; 3];
+        }
+        self
+    }
+
+    /// Daylight: the rig off, the analytic sky for `sun` as the
+    /// environment, and the sun itself when it is above the horizon.
+    pub fn daylight(self, sun: &super::SunLight) -> Lights {
+        let mut l = self.without_rig();
+        let sky = super::sky::Sky::new(sun.dir, super::sky::DEFAULT_TURBIDITY);
+        let (s, h, g) = sky.gradient();
+        l.sky = s;
+        l.horizon = h;
+        l.ground = g;
+        l.sky_model = Some(sky);
+        l.with_sun(sun)
     }
 
     /// The same rig under another surround.
@@ -169,7 +211,14 @@ impl Lights {
         let rig = match opts.lighting {
             Lighting::Studio => Lights::studio(),
             Lighting::Product => Lights::product(azimuth),
+            Lighting::None => Lights::none(),
         };
+        if opts.backdrop.is_some_and(|b| b.is_sky()) {
+            // The sky replaces the rig: the sun (the render's, or a default
+            // one) and the sky are the only lights.
+            let sun = opts.sun.unwrap_or_else(super::SunLight::default_sky_sun);
+            return rig.daylight(&sun);
+        }
         let rig = match &opts.backdrop {
             Some(b) => rig.with_backdrop(b),
             None => rig,
@@ -194,6 +243,7 @@ impl Lights {
             env_scale: 1.0,
             rim_art: true,
             sun: None,
+            sky_model: None,
         }
     }
 }
@@ -260,6 +310,9 @@ fn env_brdf_approx(roughness: f32, n_v: f32) -> (f32, f32) {
 /// 3-stop vertical gradient environment: ground below, horizon at the
 /// equator, sky at the zenith, blended with a smoothstep on `dir.z`.
 pub fn env(l: &Lights, dir: [f32; 3]) -> [f32; 3] {
+    if let Some(sky) = &l.sky_model {
+        return scale(sky.radiance(dir), l.env_scale);
+    }
     let z = dir[2].clamp(-1.0, 1.0);
     let c = if z >= 0.0 {
         lerp3(l.horizon, l.sky, smoothstep(0.0, 1.0, z))

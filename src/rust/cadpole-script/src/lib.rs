@@ -15,6 +15,7 @@ mod convert;
 mod emboss;
 mod field;
 mod fillet;
+mod heightfield;
 pub mod drawing;
 mod globals;
 mod import2d;
@@ -38,6 +39,7 @@ mod store;
 mod sun;
 mod sweep;
 mod terrain;
+mod trig_lint;
 mod units;
 mod values;
 mod vocab;
@@ -179,6 +181,7 @@ pub fn globals() -> Globals {
         .with(emboss::emboss_globals)
         .with(fillet::fillet_globals)
         .with(field::field_globals)
+        .with(heightfield::heightfield_globals)
         .with(pattern::pattern_globals)
         .with(import2d::import2d_globals)
         .with(import3d::import_globals)
@@ -283,6 +286,12 @@ impl<'a> Loader<'a> {
         // native stack (see `nesting`).
         if let Err(inner) = nesting::check(&source, Limits::MAX_NESTING) {
             return Err(starlark::Error::new_other(NestingError { path: key, inner }));
+        }
+        // Radians handed to the degree trigonometry: a warning, on the text,
+        // since the call itself cannot tell (`trig_lint`).
+        let trig = trig_lint::check(&key, &source);
+        if !trig.is_empty() {
+            self.store.ctx.borrow_mut().diagnostics.extend(trig);
         }
         let ast = AstModule::parse(&key, source, &dialect())?;
         // The entry file is the one nothing loaded. Its body is the model,
@@ -1421,7 +1430,7 @@ if f.face("mouth/bottom").name != "mouth/bottom":
 def place_{name}(x, y):
     s = math.sin({twist})
     c = math.cos({twist})
-    return (x * c - y * s, x * s + y * c, {z} + {warp} * math.sin(x / {chord} * math.pi))
+    return (x * c - y * s, x * s + y * c, {z} + {warp} * math.sin(x / {chord} * 180.0))
 
 def h_{name}(x):
     # Quadratic, so the flanks curve: a linear taper is a straight flank, and

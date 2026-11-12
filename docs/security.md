@@ -303,7 +303,7 @@ files, never the filesystem or a URL. The limits:
 | `print` | a `PrintHandler` that appends info diagnostics; nothing goes to stderr | 200 lines |
 | Recursion | `Evaluator::set_max_callstack_size` | 200 frames |
 | Steps | `Evaluator::set_max_tick_count`; a tick is a function call or a loop back-edge. Deterministic, and it works in wasm, where there is no clock | 200 M ticks |
-| Wall clock | `Evaluator::set_check_cancelled`, plus a check on entry to every Cadpole builtin | 20 s in `cadpole serve` (`--eval-deadline-ms`), 120 s in the CLI, off in the library |
+| Wall clock | `Evaluator::set_check_cancelled`, plus a check on entry to every Cadpole builtin | 20 s in `cadpole serve` (`--eval-deadline-ms`), 120 s in the CLI (`--eval-budget-secs N` or `CADPOLE_EVAL_BUDGET_SECS`; 0 is none), off in the library |
 | Memory | `Evaluator::set_max_heap_size` | 512 MB per file. A native process may change it with `cadpole --max-heap-mb N` or `CADPOLE_MAX_HEAP_MB`; the browser engine and the apps keep 512 MB |
 | Request budget | `cadpole serve` evaluates and renders on a blocking worker; when the budget passes the caller gets `504` and the worker is left to the deadline above | 60 s (`--render-budget-ms`) |
 

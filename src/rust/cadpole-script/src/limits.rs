@@ -226,17 +226,16 @@ impl Deadline {
     /// "it timed out" on its own is not actionable.
     ///
     /// It names where each budget comes from rather than one flag: the budget
-    /// is raisable on `cadpole serve` (`--eval-deadline-ms`) and in an
-    /// `EvaluateRequest`, but `cadpole eval`, `render`, `export` and `sweep` have
-    /// a fixed 120 s and no flag at all, so the old advice to "raise the
-    /// budget with --eval-deadline-ms" could not be followed by the reader
-    /// most likely to see it ('unexpected argument' is what they got).
+    /// is `--eval-deadline-ms` on `cadpole serve`, `--eval-budget-secs` (or
+    /// `CADPOLE_EVAL_BUDGET_SECS`) on every other CLI command, and a field of
+    /// an `EvaluateRequest`; naming only one would send most readers to a
+    /// flag their command does not have.
     pub fn message(&self) -> String {
         format!(
             "evaluation stopped after {:.0} ms: over the {} ms budget. \
              Simplify the script (fewer booleans, a coarser --boolean-tolerance). \
-             The budget is `cadpole serve --eval-deadline-ms` or EvaluateRequest.deadline_ms; \
-             the other CLI commands have a fixed one.",
+             The budget is `--eval-budget-secs` (CADPOLE_EVAL_BUDGET_SECS) on the CLI, \
+             `cadpole serve --eval-deadline-ms`, or EvaluateRequest.deadline_ms.",
             self.elapsed_ms(),
             self.budget_ms
         )
@@ -277,11 +276,12 @@ mod tests {
         assert!(d.fired(), "expiry is remembered");
         let e = d.check().unwrap_err().to_string();
         assert!(e.contains("1 ms budget"), "{e}");
-        // Where the budget comes from, and that it is not a flag the reader
-        // necessarily has: `cadpole eval` has no --eval-deadline-ms, so the old
-        // advice to raise it there answered 'unexpected argument'.
+        // Where the budget comes from, for each host: `cadpole eval` has no
+        // --eval-deadline-ms and `cadpole serve` has no --eval-budget-secs, so
+        // naming one alone answers 'unexpected argument' for the other.
         assert!(e.contains("cadpole serve --eval-deadline-ms"), "the message says where the budget is set: {e}");
-        assert!(e.contains("the other CLI commands have a fixed one"), "{e}");
+        assert!(e.contains("--eval-budget-secs"), "and the CLI flag: {e}");
+        assert!(e.contains("CADPOLE_EVAL_BUDGET_SECS"), "and its env var: {e}");
     }
 
     #[test]

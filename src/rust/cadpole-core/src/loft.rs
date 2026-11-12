@@ -392,6 +392,8 @@ pub struct LoftPlan {
     /// are curve sections closed by [`Cap::Ruled`].
     pub ruled_caps: [Option<RuledCap>; 2],
     pub ruled: bool,
+    /// How a smooth (`ruled == false`) loft passes through its sections.
+    pub fit: crate::skin::Fit,
     /// The rule that produced the correspondence above.
     pub matching: SectionMatch,
     /// Non-fatal findings: the caller turns these into warning diagnostics.
@@ -612,6 +614,7 @@ fn plan_stacked(sections: &[Section], ruled: bool, matching: SectionMatch) -> Re
     // the same corner — because arc length is measured from the seam.
     let warnings = twist_warning(&planned);
     Ok(LoftPlan {
+        fit: crate::skin::Fit::Interpolate,
         sections: planned,
         regions,
         layout: Layout::Stacked { normal, origin, offsets, descending },
@@ -772,6 +775,7 @@ fn plan_ordered(sections: &[Section], ruled: bool, matching: SectionMatch, caps:
     }
     check_point_sections(sections, &[(0, Vec::new())])?;
     Ok(LoftPlan {
+        fit: crate::skin::Fit::Interpolate,
         sections: planned,
         regions: vec![(0, Vec::new())],
         layout: Layout::Ordered,

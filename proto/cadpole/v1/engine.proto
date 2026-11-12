@@ -403,6 +403,15 @@ message Camera {
   double fov_degrees = 6;
   // Extra padding around the fitted model, as a fraction of its size.
   double fit_margin = 7;
+  // A perspective-control (shift) lens: the frame slides up the image
+  // plane by this fraction of its height (negative: down) while the view
+  // direction stays put. 0 is an ordinary lens.
+  double shift = 8;
+  // Level the camera as an architectural photographer does: the view is
+  // turned horizontal and the lens shifted so the target stays at the
+  // centre of the frame, so vertical edges come out vertical instead of
+  // converging. Adds to `shift`.
+  bool level = 9;
 }
 
 enum RenderBackend {
@@ -531,11 +540,16 @@ message RenderRequest {
   // behind. "product": a neutral catalogue rig that turns with the camera —
   // key 40° to camera-left and 40° up, a large soft fill 55° to the right,
   // a narrow rim behind — over a brighter grey surround, so a white part
-  // renders white and a glossy face has something to reflect. Both
-  // backends honour it.
+  // renders white and a glossy face has something to reflect. "none":
+  // no rig and a black environment (unless `backdrop` names one), so only
+  // the sun and the scene's emissive bodies light it -- a lit room at
+  // night. Both backends honour it.
   string lighting = 34 [(cadpole.field) = {example: "product"}];
   // The surround: "studio" (a grey cyclorama with a soft top light),
-  // "white", "black" or "#rrggbb". Sets the environment the path tracer
+  // "white", "black", "#rrggbb", or "sky": an analytic clear daylight sky
+  // driven by the sun (a default one at 35° when there is none), warm
+  // toward a low sun and glowing along the horizon, which replaces the
+  // rig so the sun and the sky are the only lights. Sets the environment the path tracer
   // shows and reflects, the colour of its floor, and — unless `background`
   // is given — the rasterizer's background to the same tone, so the two
   // backends agree. Empty keeps the rig's own gradient, the dark floor and
@@ -621,6 +635,21 @@ message RenderRequest {
   // the script declared hidden; one entry per `--layer`. A layer not named
   // here keeps its own `layer(visible=, opacity=)` defaults.
   repeated LayerState layers = 50 [(cadpole.field) = {flag: "layer", example: "envelope=off"}];
+
+  // The sun's colour. Empty or "auto" (the default) follows its elevation
+  // through the atmosphere: near white at 60°, yellow by 20°, orange by 5°,
+  // red and faint at the horizon. "#rrggbb" or a colour temperature such
+  // as "3500K" sets it instead, keeping the brightness the elevation gives.
+  string sun_color = 51 [(cadpole.field) = {example: "3500K"}];
+  // Multiplier on the sun's irradiance (0 = 1).
+  double sun_intensity = 52;
+  // Path tracing: aerial perspective. "<distance>[unit][,#rrggbb]" -- at
+  // that distance from the camera half of what is seen is haze (`400m`,
+  // `1200ft`; a bare number is mm). The haze takes the colour of the
+  // environment at the horizon in each direction, or the colour given.
+  // Only camera rays are attenuated, so it dims no shadow and costs
+  // nothing. Empty is clear air.
+  string haze = 53 [(cadpole.field) = {example: "400m"}];
 }
 
 // Which static feature edges the raster overlay draws. Selection highlights
@@ -714,6 +743,9 @@ message CameraInfo {
   // (`min_x, min_y, max_x, max_y`; it may reach outside the image). Empty
   // when a corner is behind the camera.
   repeated double bounds_px = 21;
+  // The lens shift, as a fraction of the frame height the frame slid up
+  // (`Camera.shift`, after `level`); `projection` already includes it.
+  double shift = 22;
 }
 
 // Wall-clock milliseconds spent in each stage of one render. Purely

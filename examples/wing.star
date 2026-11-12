@@ -558,7 +558,7 @@ spar_2 = spar(S2_Y0 + 2.5, S2_Y1 - 4.0, "2")
 TUBE_Y0 = 6.0
 TUBE_Y1 = S2_Y0 + 0.5 * rib_pitch  # a 240 mm tube: it spans the section joint and still fits a 256 mm plate, which is what keeps `cadpole check` free of a bed-fit error on a part nobody prints
 tube = along_y(tube_d / 2.0, TUBE_Y0, TUBE_Y1 - TUBE_Y0, tube_at(TUBE_Y0)[0], tube_at(TUBE_Y0)[1], "tube")
-tube = tube.rotate(math.degrees(math.atan((TUBE_TIP[0] - TUBE_ROOT[0]) / half)), axis=(0, 0, -1), origin=(tube_at(TUBE_Y0)[0], TUBE_Y0, tube_at(TUBE_Y0)[1]), name="tube_swept")
+tube = tube.rotate(math.atan((TUBE_TIP[0] - TUBE_ROOT[0]) / half), axis=(0, 0, -1), origin=(tube_at(TUBE_Y0)[0], TUBE_Y0, tube_at(TUBE_Y0)[1]), name="tube_swept")
 
 pins = []
 for i, (y, sign) in enumerate(((KN_IN + TAB_W / 2.0, 1.0), (KN_OUT + TAB_W / 2.0, -1.0))):
@@ -589,7 +589,7 @@ def cylinder_between(a, b, r, name):
     d = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
     l = math.sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2])
     c = cylinder(r, l, at=(0, 0, 0), name=name)
-    ang = math.degrees(math.acos(d[2] / l))
+    ang = math.acos(d[2] / l)
     axis = (-d[1], d[0], 0.0)
     if math.hypot(axis[0], axis[1]) > 1e-9:
         c = c.rotate(ang, axis=axis, origin=(0, 0, 0))

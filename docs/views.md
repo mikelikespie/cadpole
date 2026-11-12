@@ -25,6 +25,8 @@ request's fields as flags; a field with no flag of its own is set with
 | | `camera.orthographic` | An orthographic projection instead of perspective. |
 | | `camera.fit_margin` | Padding around the fitted box, as a fraction, instead of the preset's. |
 | `--size WxH` | `width`, `height` | Image size in pixels. For `sweep` it is the size of one tile (`--tile` is the same thing). |
+| `--shift <fraction>` | `camera.shift` | A shift (perspective-control) lens: the frame slides up the image plane by this fraction of its height (negative: down) and the camera does not turn, so a level camera can take in a tall façade without tilting. Default 0. |
+| `--level` | `camera.level` | Turn the view horizontal and shift the lens so the target stays at the centre of the frame: vertical edges come out vertical instead of converging, as an architectural photographer's do. Adds to `--shift`; with `render_defaults(camera=)` it applies to the document's camera. |
 
 When neither `--view` nor `--eye` is given, a render takes the document's
 `render_defaults(camera=view(eye=, target=, fov=))` if it declares one, else
@@ -134,8 +136,8 @@ analysis views fall back to the CPU rasterizer with a note.
 | `--shadow-catcher` | With a transparent background: keeps the shadow on the ground, as black at the shadow's own alpha. Off by default. |
 | `--supersample N` | Renders N times larger each way (1 to 4) and filters down, for finer silhouettes, ink and alpha. |
 | `--environment` | Path only: show the studio's environment gradient behind the model instead of the flat background. |
-| `--backdrop` | `studio` (a grey cyclorama with a soft top light), `white`, `black`, `#rrggbb`. The environment the path tracer shows and reflects, its floor's colour, and, unless `--background` is given, the rasterizer's background, so the two backends agree. With `--background` as well, the backdrop still lights and reflects in the model, and the pixels it does not cover are the background colour in both backends, edge pixels mixing with it. Unset keeps the rig's own gradient and the dark floor. |
-| `--lighting` | `studio` (default; the engineering rig, fixed in world space) or `product` (a neutral catalogue rig locked to the camera). |
+| `--backdrop` | `studio` (a grey cyclorama with a soft top light), `white`, `black`, `#rrggbb`, or `sky` (daylight; see **Daylight**). The environment the path tracer shows and reflects, its floor's colour, and, unless `--background` is given, the rasterizer's background, so the two backends agree. With `--background` as well, the backdrop still lights and reflects in the model, and the pixels it does not cover are the background colour in both backends, edge pixels mixing with it. Unset keeps the rig's own gradient and the dark floor. |
+| `--lighting` | `studio` (default; the engineering rig, fixed in world space), `product` (a neutral catalogue rig locked to the camera), or `none` (no rig and a black environment; see **A dark room**). |
 | `--floor` | Path only: `matte` (default), `gloss` (a faint reflection of the part), `none`. |
 | `--tonemap` | `aces` (default), `neutral` (Khronos PBR Neutral: hue-preserving, exact for base colours), `none` (a plain clamp). |
 | `--dof <f-number>`, `--bloom` | Path only. `--dof` is a thin lens sized for the field of view, focused on the model; `--bloom` lets highlights over display white spill a little. Both off by default. |
@@ -144,6 +146,9 @@ analysis views fall back to the CPU rasterizer with a note.
 | `--bounces N` | Path only: maximum scattering events in one path (default 8). |
 | `--sun` | `lat,lon,YYYY-MM-DD,HH:MM[,tz]` computes the sun for a place, a date and a local clock time (`tz` is the clock's offset from UTC in hours; default the longitude's standard zone, no daylight saving). `az=<deg>,el=<deg>` places it by compass azimuth (0 north, 90 east) and elevation. Unset takes the document's `render_defaults(sun=)`, else no sun. See **Shadow studies**. |
 | `--north <deg>` | Where north lies in model space, in degrees clockwise from +y seen from above (0: +y is north; 90: +x is north). Unset takes the document's `render_defaults(north=)`, else +y. Turns the sun; nothing else. |
+| `--sun-color` | `auto` (default): the sun's colour and strength follow its elevation through the air. `#rrggbb` or a colour temperature such as `3500K` sets the colour instead and keeps the strength. Applies to the document's sun as well. |
+| `--sun-intensity X` | Multiplier on the sun's irradiance (default 1). |
+| `--haze <dist>[,#rrggbb]` | Path only: aerial perspective. At that distance from the camera half of what is seen is haze (`400m`, `1200ft`; a bare number is mm). Coloured by the environment at the horizon in each direction unless a colour is given. Only camera rays are attenuated, so it dims no shadow and costs nothing. Off by default. |
 | `--stats` | Print per-stage render timings to stderr. |
 
 The sun is a directional light with sharp shadows added to whichever rig
@@ -154,6 +159,65 @@ samples a disc of the sun's own 0.53°, so its shadows have the real penumbra
 and its floor is lit by it. A sun below the horizon lights nothing. Guide
 geometry (`shadow=False`) is out of both backends' shadows; see **Guide
 geometry**.
+
+The sun's colour and strength come from its elevation: its light crosses
+more air the lower it stands (Rayleigh and aerosol extinction over the air
+mass), so the same `sun(lat, lon, date, hour)` is near white at 60°,
+yellow by 20°, orange and much dimmer by 5° and red at the horizon. `--sun-color`
+and `--sun-intensity` override it.
+
+## Daylight
+
+`--backdrop sky` lights the scene as the outdoors does. The environment is an
+analytic clear sky (the Preetham model, with a low sun's glow, the blue of an
+evening sky away from it and the rose band opposite it added) driven by the
+sun's direction, the studio rig is switched off, and the sun and that sky
+are the only lights: the shadows are filled by the sky, blue in shade and
+warm in the sun. With no sun given, the sky brings one at 35° in the
+south-south-west. Below the horizon the sun lights nothing, and the sky fades
+through twilight over the next few degrees, which is what a dusk shot with
+lit windows wants.
+
+The scene is exposed for its light, as a camera's meter would: as the sun
+sinks the exposure opens, about 1.6× at 10° and 2.8× at 5°, partly rather
+than fully, so golden hour stays warmer and darker than noon. `--exposure`
+multiplies it. The path tracer shows and reflects the sky; the rasterizer is
+lit by it and paints its horizon colour flat behind the model. The floor is a
+mid-dark ground (albedo 0.17).
+
+```
+cadpole render street.star -o street.png --backend path --samples 256 --denoise --size 1600x1000 \
+    --backdrop sky --sun 34.05,-84.40,2026-12-05,15:36,-8 --haze 300m --level \
+    --eye=-1500,25000,1600 --target=9000,10000,2400 --fov 46
+```
+
+**Haze** (`--haze`) is aerial perspective: things far off fade into the sky
+behind them, warmer toward the sun, which is most of what gives a street or
+a landscape its depth. It is applied to the camera's rays only — a shadow
+is as dark under the haze as without it, and the light reaching a surface is
+not dimmed — so it is free. A few hundred metres suits a street scene;
+the default is clear air.
+
+**The shift lens** (`--level`, `--shift`) keeps a building's verticals
+vertical: the camera stays level and the frame slides up the image plane
+instead of tilting, so an eye at 5 ft can take in a three-storey façade. The
+camera sidecar's `projection` includes the shift.
+
+## A dark room
+
+`--lighting none` switches off the rig and its environment: nothing lights
+the scene but its own emissive bodies and a sun, if one is given, and the
+background is black unless `--background` or `--backdrop` names one
+(`--backdrop '#0a0f1e'` is a night sky that lights the scene faintly). A
+lamp on a table, a lit room seen from the street at night, a candle in a
+lantern: no enclosure has to be built round the scene to keep the studio
+out.
+
+Emission is seen through glass at full brightness: a lamp behind a clear
+pane, in a glass shade or in a mirror is what the camera sees, and is not
+clipped as a caustic. Light leaves a room through its windows to light the
+ground outside (a shadow ray crosses a clear pane with its transmission),
+and the far face of a thin pane is not stepped over.
 
 ## Transparent backgrounds
 
@@ -231,7 +295,7 @@ cadpole render part.star -o part.png --background transparent --camera-json part
   "frames": [{
     "index": 0, "t": 0.0,
     "eye": [412.1, -713.8, 268.0], "target": [0.0, 0.0, 41.5], "up": [0, 0, 1],
-    "fov_degrees": 24.0, "orthographic": false, "ortho_height": 0.0,
+    "fov_degrees": 24.0, "orthographic": false, "ortho_height": 0.0, "shift": 0.0,
     "near": 310.2, "far": 3480.0,
     "view": [16 numbers], "projection": [16 numbers],
     "ground": {"origin": [0, 0, 0], "normal": [0, 0, 1], "u": [1, 0, 0], "v": [0, 1, 0]},
@@ -247,8 +311,9 @@ matrices on column vectors in the OpenGL convention:
 pixel (0, 0) the top-left corner. `ground` is the plane the model stands on
 (the lowest point of what is drawn; the path tracer's floor and the
 rasterizer's grid lie in it) with two in-plane axes one millimetre long.
-`bounds.px` is the rectangle around the eight projected corners of the
-model's bounding box, `[x0, y0, x1, y1]`: never smaller than what is drawn,
+`shift` is the lens shift as a fraction of the frame height (see
+`--shift`); `projection` already includes it. `bounds.px` is the rectangle
+around the eight projected corners of the model's bounding box, `[x0, y0, x1, y1]`: never smaller than what is drawn,
 often larger, and it may pass the image's edge. It is empty when part of the
 box is behind the camera. `near` and `far` bound the
 depth range the projection maps; the renderers clip nothing. An animation
@@ -266,7 +331,8 @@ writes one entry per frame, `t` in seconds. The same values are
 | Occlusion | SSAO, screen-space | true ambient occlusion, as a consequence of the transport |
 | Bounce light | none (a flat environment term) | full global illumination, including colour bleeding between parts |
 | Translucency | sorted blend, no bending | refraction by Snell's law, Beer-Lambert absorption through the thickness, subsurface scattering |
-| Emissive materials | glow, but light nothing | are light sources |
+| Emissive materials | glow, but light nothing | are light sources, seen and shining through glass |
+| Sky and haze | lit by `--backdrop sky`, which it paints flat | the daylight sky, shown and reflected; `--haze` |
 | Edges, grid | antialiased crease-filtered ink, infinite grid | neither; it has a real floor and real contact instead |
 | Transparent background | coverage alpha, one level per sample; the grid and the ink carry their own | coverage alpha from every path; glass is partly transparent |
 | Determinism | byte-identical for any thread count | byte-identical for any thread count |

@@ -28,9 +28,10 @@ use cadpole_core::context::{Diagnostic, EntityRef};
 use cadpole_core::memo::Memo;
 use cadpole_core::context::RenderDefaults;
 use cadpole_core::render::section::{self, Section};
+use cadpole_core::render::sky;
 use cadpole_core::render::{
     Backdrop, Backend, Camera, DebugView, EdgeMode, FaceFrame, Floor, GridMode, Image, Item, Lighting, RenderOptions,
-    RenderStats, SunLight, ToneMap,
+    Haze, RenderStats, SunLight, SunTint, ToneMap,
 };
 use cadpole_core::sun::SunSpec;
 use cadpole_core::{Context, ParamValue, Vec3};
@@ -481,16 +482,28 @@ pub fn camera_from_proto_aspect(cam: &Option<pb::Camera>, lo: Vec3, hi: Vec3, as
         }
         k.orthographic = c.orthographic;
         k.fit(lo, hi, margin, aspect);
-        return k;
+        return with_lens(k, &c);
     }
     let v = |o: &Option<pb::Vec3>, d: Vec3| o.as_ref().map(|v| Vec3::new(v.x, v.y, v.z)).unwrap_or(d);
-    Camera {
-        eye: v(&c.eye, Vec3::new(100.0, -100.0, 80.0)),
-        target: v(&c.target, (lo + hi) * 0.5),
-        up: v(&c.up, Vec3::Z),
-        fov_degrees: if c.fov_degrees > 0.0 { c.fov_degrees } else { 35.0 },
-        orthographic: c.orthographic,
-    }
+    with_lens(
+        Camera {
+            eye: v(&c.eye, Vec3::new(100.0, -100.0, 80.0)),
+            target: v(&c.target, (lo + hi) * 0.5),
+            up: v(&c.up, Vec3::Z),
+            fov_degrees: if c.fov_degrees > 0.0 { c.fov_degrees } else { 35.0 },
+            orthographic: c.orthographic,
+            shift: 0.0,
+        },
+        &c,
+    )
+}
+
+/// The request camera's lens on a placed camera: its shift, and, when it
+/// asks to be level, the view turned horizontal with the shift that keeps
+/// the target centred ([`Camera::levelled`]).
+pub fn with_lens(mut cam: Camera, c: &pb::Camera) -> Camera {
+    cam.shift = if c.shift.is_finite() { c.shift.clamp(-2.0, 2.0) } else { 0.0 };
+    if c.level { cam.levelled() } else { cam }
 }
 
 /// Render the visible bodies of an evaluated context.
@@ -842,6 +855,9 @@ pub fn camera_for_scene(
                 // The product presets sit the subject a little below the
                 // middle of the frame: floor in the foreground, air above.
                 c.place_subject(Camera::preset_subject_height(preset));
+                if cam.as_ref().is_some_and(|k| k.level) {
+                    c = c.levelled();
+                }
             }
             c
         }
@@ -866,6 +882,10 @@ pub struct Look {
     pub north: f64,
     /// The request's section plane, for the image only.
     pub section: Option<Section>,
+    /// The request's sun colour and strength.
+    pub tint: SunTint,
+    /// The request's haze.
+    pub haze: Option<Haze>,
 }
 
 impl Look {
@@ -877,6 +897,8 @@ impl Look {
             sun: None,
             north: 0.0,
             section: None,
+            tint: SunTint::default(),
+            haze: None,
             lighting: Lighting::parse(lighting)
                 .ok_or_else(|| anyhow::anyhow!("unknown lighting {lighting:?}; expected one of {}", choices(Lighting::names())))?,
             backdrop: if backdrop.is_empty() {
@@ -907,12 +929,23 @@ impl Look {
         Ok(self)
     }
 
+    /// The sun's colour and strength and the haze a request carries.
+    pub fn with_daylight(mut self, sun_color: &str, sun_intensity: f64, haze: &str) -> anyhow::Result<Look> {
+        self.tint = SunTint::parse(sun_color, sun_intensity).map_err(|e| anyhow::anyhow!(e))?;
+        self.haze = Haze::parse(haze).map_err(|e| anyhow::anyhow!(e))?;
+        Ok(self)
+    }
+
     pub fn from_render(req: &pb::RenderRequest) -> anyhow::Result<Look> {
-        Look::parse(&req.lighting, &req.backdrop, &req.floor, &req.tonemap)?.with_sun(&req.sun, req.north_degrees, &req.section)
+        Look::parse(&req.lighting, &req.backdrop, &req.floor, &req.tonemap)?
+            .with_sun(&req.sun, req.north_degrees, &req.section)?
+            .with_daylight(&req.sun_color, req.sun_intensity, &req.haze)
     }
 
     pub fn from_sweep(req: &pb::SweepRequest) -> anyhow::Result<Look> {
-        Look::parse(&req.lighting, &req.backdrop, &req.floor, &req.tonemap)?.with_sun(&req.sun, req.north_degrees, "")
+        Look::parse(&req.lighting, &req.backdrop, &req.floor, &req.tonemap)?
+            .with_sun(&req.sun, req.north_degrees, "")?
+            .with_daylight(&req.sun_color, req.sun_intensity, "")
     }
 
     /// Write the look into the options. `keep_background` is whether the
@@ -927,7 +960,8 @@ impl Look {
         o.lighting = self.lighting;
         o.tonemap = self.tonemap;
         o.backdrop = self.backdrop;
-        o.sun = resolve_sun(self.sun.as_ref(), self.north, None);
+        o.sun = resolve_sun(self.sun.as_ref(), self.north, None).map(|s| self.tint.apply(s));
+        o.haze = self.haze;
         o.path.ground = self.floor != Floor::None;
         o.path.ground_roughness = self.floor.roughness();
         if let Some(b) = &self.backdrop {
@@ -936,6 +970,9 @@ impl Look {
                 o.path.show_environment = true;
                 o.background = b.background(o.exposure, o.tonemap);
             }
+        } else if self.lighting == Lighting::None && !keep_background {
+            // Lights off: nothing behind the model either.
+            o.background = [0.0; 3];
         }
     }
 }
@@ -954,7 +991,19 @@ pub fn resolve_sun(request: Option<&SunSpec>, north_degrees: f64, defaults: Opti
 /// request produced: the sun, where the request named none. Run after the
 /// document is evaluated, which is the only time the defaults are known.
 pub fn apply_document_defaults(o: &mut RenderOptions, look: &Look, defaults: Option<&RenderDefaults>) {
-    o.sun = resolve_sun(look.sun.as_ref(), look.north, defaults);
+    o.sun = resolve_sun(look.sun.as_ref(), look.north, defaults).map(|s| look.tint.apply(s));
+    if o.backdrop.is_some_and(|b| b.is_sky()) {
+        // A daylight scene is exposed for its light, as a camera's meter
+        // would: a low sun and its sky are far dimmer than noon's. The
+        // request's own exposure multiplies this.
+        let sun = o.sun.unwrap_or_else(SunLight::default_sky_sun);
+        o.exposure *= sky::daylight_exposure(sun.dir);
+        if o.path.show_environment {
+            // The rasterizer's flat background: this sky's horizon.
+            let (_, horizon, _) = sky::Sky::new(sun.dir, sky::DEFAULT_TURBIDITY).gradient();
+            o.background = cadpole_core::render::tonemap_rgb(horizon, o.exposure, o.tonemap);
+        }
+    }
 }
 
 /// The camera a request means: its own, unless it names no preset
@@ -971,6 +1020,8 @@ pub fn document_camera(cam: &Option<pb::Camera>, defaults: Option<&RenderDefault
             fov_degrees: c.fov_degrees,
             orthographic: cam.as_ref().map(|c| c.orthographic).unwrap_or(false),
             fit_margin: 0.0,
+            shift: cam.as_ref().map(|c| c.shift).unwrap_or(0.0),
+            level: cam.as_ref().is_some_and(|c| c.level),
         }),
         _ => cam.clone(),
     }
@@ -1512,6 +1563,7 @@ pub fn camera_info(camera: &Camera, scene: &RenderScene, width: u32, height: u32
         bounds_min: Some(lo.to_proto()),
         bounds_max: Some(hi.to_proto()),
         bounds_px: if all { px.map(|b| b.to_vec()).unwrap_or_default() } else { Vec::new() },
+        shift: camera.shift,
     }
 }
 
@@ -3362,7 +3414,7 @@ export(plan, "plan.dxf")
             format: pb::ExportFormat::Threemf as i32,
             run_script_exports: true,
             plate_images: true,
-            plate_image_background: "sky".into(),
+            plate_image_background: "nebula".into(),
             ..Default::default()
         });
         assert!(bad.unwrap_err().to_string().contains("\"transparent\", \"studio\""));
@@ -3778,6 +3830,79 @@ export(plan, "plan.dxf")
         }
         let err = Look::from_sweep(&pb::SweepRequest { floor: "carpet".into(), ..Default::default() }).unwrap_err().to_string();
         assert!(err.contains("unknown floor"), "{err}");
+    }
+
+    /// Daylight, haze, lights off and the shift lens, from the request:
+    /// the sun's colour and strength reach the `SunLight` (the document's
+    /// sun too), `--backdrop sky` exposes for the sun's elevation, the
+    /// haze is parsed with its unit, `--lighting none` leaves the
+    /// background black, and a level camera's verticals stay vertical.
+    #[test]
+    fn render_options_map_daylight_haze_and_the_lens() {
+        use cadpole_core::render::{Backdrop, Lighting};
+        let warm = render_options_from_proto(&pb::RenderRequest { sun: "az=200,el=6".into(), ..Default::default() }).sun.unwrap();
+        let high = render_options_from_proto(&pb::RenderRequest { sun: "az=200,el=60".into(), ..Default::default() }).sun.unwrap();
+        assert!(warm.irradiance[0] / warm.irradiance[2] > 2.0 * high.irradiance[0] / high.irradiance[2], "a low sun is warmer: {warm:?} {high:?}");
+        let req = pb::RenderRequest { sun: "az=200,el=6".into(), sun_color: "6500K".into(), sun_intensity: 2.0, ..Default::default() };
+        let tinted = render_options_from_proto(&req).sun.unwrap();
+        assert!((tinted.irradiance[0] / tinted.irradiance[2] - 1.0).abs() < 0.1, "{tinted:?}");
+        let look = Look::from_render(&pb::RenderRequest { sun_color: "#ffcc88".into(), ..Default::default() }).unwrap();
+        let defaults = RenderDefaults { sun: Some(SunSpec::angles(200.0, 40.0)), north_degrees: None, camera: None };
+        let mut o = RenderOptions::default();
+        apply_document_defaults(&mut o, &look, Some(&defaults));
+        let s = o.sun.unwrap();
+        assert!(s.irradiance[0] > s.irradiance[1] && s.irradiance[1] > s.irradiance[2], "the document's sun takes the request's colour: {s:?}");
+
+        let sky = pb::RenderRequest { backdrop: "sky".into(), haze: "300m".into(), sun: "az=250,el=8".into(), ..Default::default() };
+        let look = Look::from_render(&sky).unwrap();
+        let mut o = render_options_from_proto(&sky);
+        apply_document_defaults(&mut o, &look, None);
+        assert_eq!(o.backdrop, Some(Backdrop::Sky));
+        assert!(o.path.show_environment && o.exposure > 1.3, "a low sun's sky is exposed up: {}", o.exposure);
+        assert_eq!(o.haze.map(|h| h.half_distance), Some(300_000.0));
+        let mut noon = render_options_from_proto(&pb::RenderRequest { sun: "az=180,el=70".into(), ..sky.clone() });
+        apply_document_defaults(&mut noon, &Look::from_render(&pb::RenderRequest { sun: "az=180,el=70".into(), ..sky.clone() }).unwrap(), None);
+        assert_eq!(noon.exposure, 1.0);
+
+        let dark = render_options_from_proto(&pb::RenderRequest { lighting: "none".into(), ..Default::default() });
+        assert_eq!((dark.lighting, dark.background), (Lighting::None, [0.0; 3]));
+        let custom = render_options_from_proto(&pb::RenderRequest { lighting: "none".into(), backdrop: "#203040".into(), ..Default::default() });
+        assert!(custom.path.show_environment && custom.background != [0.0; 3]);
+
+        for (bad, needle) in [
+            (pb::RenderRequest { sun_color: "warm".into(), ..Default::default() }, "sun colour"),
+            (pb::RenderRequest { haze: "far".into(), ..Default::default() }, "haze"),
+            (pb::RenderRequest { haze: "3 leagues".into(), ..Default::default() }, "haze"),
+        ] {
+            let err = render(&pb::RenderRequest { document: Some(doc("b = box(1, 1, 1)")), ..bad }).unwrap_err().to_string();
+            assert!(err.contains(needle), "{err}");
+        }
+
+        // The lens: a camera looking up at a tall box, levelled, draws its
+        // vertical edges vertical, with the target still centred.
+        let cam = Some(pb::Camera {
+            eye: Some(Vec3::new(0.0, -100.0, 2.0).to_proto()),
+            target: Some(Vec3::new(0.0, 0.0, 30.0).to_proto()),
+            fov_degrees: 40.0,
+            level: true,
+            ..Default::default()
+        });
+        let c = camera_from_proto_aspect(&cam, Vec3::ZERO, Vec3::new(10.0, 10.0, 60.0), 1.5);
+        assert!(c.shift > 0.2 && (c.target.z - c.eye.z).abs() < 1e-9, "{c:?}");
+        let (x0, _) = c.project(Vec3::new(10.0, 0.0, 0.0), 300, 200).unwrap();
+        let (x1, _) = c.project(Vec3::new(10.0, 0.0, 60.0), 300, 200).unwrap();
+        assert!((x0 - x1).abs() < 1e-6);
+        let (tx, ty) = c.project(Vec3::new(0.0, 0.0, 30.0), 300, 200).unwrap();
+        assert!((tx - 150.0).abs() < 1e-6 && (ty - 100.0).abs() < 1e-6);
+        // The document's camera keeps the request's lens.
+        let defaults = RenderDefaults {
+            sun: None,
+            north_degrees: None,
+            camera: Some(cadpole_core::context::CameraSpec { eye: Vec3::new(1.0, 2.0, 3.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 50.0 }),
+        };
+        let lens = Some(pb::Camera { shift: 0.1, level: true, ..Default::default() });
+        let c = document_camera(&lens, Some(&defaults)).unwrap();
+        assert!(c.eye.is_some() && c.level && c.shift == 0.1);
     }
 
     /// The sun: a request's `sun` becomes a `SunLight` along the

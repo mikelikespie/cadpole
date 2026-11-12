@@ -809,7 +809,7 @@ pub fn name_faces(g: &Generator, feature: &str, probes: &[FaceProbe]) -> Vec<Nam
 /// naming grammar in docs/design.md). The two caps are decided by the "flat and on the plane" test
 /// against the profile's plane and its image at the end of the path; every
 /// other face goes to the cell whose planted points it sits nearest —
-/// [`nearest_cell`], the loft's own vote — and is `side[l.s]#b` for path
+/// [`CellIndex`], the loft's own vote — and is `side[l.s]#b` for path
 /// segment `b`, with `side[l.s]` as the group alias for the whole run, or
 /// the plain `side[l.s]` when the path is one segment.
 fn name_sweep(
@@ -824,6 +824,7 @@ fn name_sweep(
     let eps = cap_eps(extent).max(1e-9);
     let keyed: Vec<(Cell, Vec<Vec3>)> =
         cells.iter().map(|(b, l, s, pts)| (Cell::Band { band: *b, l: *l, s: *s }, pts.clone())).collect();
+    let index = CellIndex::new(&keyed);
     let mut out = Vec::with_capacity(probes.len());
     for (i, p) in probes.iter().enumerate() {
         let on_cap = |plane: &Plane| -> bool {
@@ -843,7 +844,7 @@ fn name_sweep(
             continue;
         }
         let pts: Vec<Vec3> = p.samples.iter().copied().chain(std::iter::once(p.centroid)).collect();
-        match nearest_cell(&keyed, &pts) {
+        match index.nearest(&pts) {
             Some(Cell::Band { band: b, l, s: sg }) => {
                 out.push(band_name(feature, bands, b, l, sg, Style::Generic, p.normal))
             }
@@ -898,7 +899,7 @@ fn name_loft(
     let cos_cap = fmath::cos(CAP_ANGLE_DEG.to_radians());
     let height = |v: Vec3| (v - origin).dot(normal);
 
-    let cells = band_cells(sections, ruled);
+    let index = CellIndex::new(&band_cells(sections, ruled));
 
     let mut out = Vec::with_capacity(probes.len());
     for (i, p) in probes.iter().enumerate() {
@@ -918,7 +919,7 @@ fn name_loft(
             continue;
         }
         let pts: Vec<Vec3> = p.samples.iter().copied().chain(std::iter::once(p.centroid)).collect();
-        match nearest_cell(&cells, &pts) {
+        match index.nearest(&pts) {
             Some(Cell::Band { band: b, l, s: sg }) => {
                 out.push(band_name(feature, named_bands, b, l, sg, style, p.normal))
             }
@@ -1017,6 +1018,7 @@ fn name_loft_ordered(
         })
         .fold(0.0f64, |m, p| m.max(p.length()));
     let eps = cap_eps(extent).max(1e-9);
+    let index = CellIndex::new(&cells);
     let mut out = Vec::with_capacity(probes.len());
     for (i, p) in probes.iter().enumerate() {
         let on_cap = |end: usize| -> bool {
@@ -1034,7 +1036,7 @@ fn name_loft_ordered(
             continue;
         }
         let pts: Vec<Vec3> = p.samples.iter().copied().chain(std::iter::once(p.centroid)).collect();
-        match nearest_cell(&cells, &pts) {
+        match index.nearest(&pts) {
             Some(Cell::Band { band: b, l, s: sg }) => {
                 out.push(band_name(feature, named_bands, b, l, sg, style, p.normal))
             }
@@ -1052,29 +1054,156 @@ fn name_loft_ordered(
 
 /// The cell whose planted points sit closest to `pts`, by majority vote with
 /// the summed distance as the tiebreak — the 3-D twin of
-/// [`nearest_segment`], and deterministic for the same reason.
-fn nearest_cell(cells: &[(Cell, Vec<Vec3>)], pts: &[Vec3]) -> Option<Cell> {
-    let mut votes: BTreeMap<Cell, (u32, i64)> = BTreeMap::new();
-    for p in pts {
-        let mut best: Option<(Cell, f64)> = None;
+/// [`SegmentIndex`], and deterministic for the same reason. Each point's
+/// nearest planted point comes from a [`PointTree`], so naming `F` faces
+/// against `P` planted points costs `F log P`, not `F × P`.
+struct CellIndex {
+    tree: PointTree,
+    owner: Vec<Cell>,
+}
+
+impl CellIndex {
+    fn new(cells: &[(Cell, Vec<Vec3>)]) -> CellIndex {
+        let mut pts = Vec::new();
+        let mut owner = Vec::new();
         for (key, cloud) in cells {
             for c in cloud {
-                let d = (*c - *p).length();
-                if best.map(|(_, bd)| d < bd).unwrap_or(true) {
-                    best = Some((*key, d));
-                }
+                pts.push(*c);
+                owner.push(*key);
             }
         }
-        if let Some((k, d)) = best {
-            let e = votes.entry(k).or_insert((0, 0));
-            e.0 += 1;
-            e.1 += q(d);
+        CellIndex { tree: PointTree::new(pts), owner }
+    }
+
+    fn nearest(&self, pts: &[Vec3]) -> Option<Cell> {
+        let mut votes: BTreeMap<Cell, (u32, i64)> = BTreeMap::new();
+        for p in pts {
+            if let Some((i, d)) = self.tree.nearest(*p, |c| (c - *p).length(), |gap| gap) {
+                let e = votes.entry(self.owner[i]).or_insert((0, 0));
+                e.0 += 1;
+                e.1 += q(d);
+            }
+        }
+        votes
+            .into_iter()
+            .max_by_key(|(k, (n, dist))| (*n, -*dist, std::cmp::Reverse(*k)))
+            .map(|(k, _)| k)
+    }
+}
+
+/// Points per leaf of a [`PointTree`]: below this a scan beats a split.
+const TREE_LEAF: usize = 8;
+
+/// An exact nearest-point search over a fixed set of points: a k-d tree
+/// stored implicitly in one array (the median of every range is that
+/// range's node). It answers exactly what a scan of the points in their
+/// original order answers — the smallest distance, and on a tie the point
+/// that came first — because the leaves compare `(distance, original
+/// index)` and a branch is skipped only when nothing in it can come within
+/// a rounding margin of the best distance so far.
+struct PointTree {
+    pts: Vec<Vec3>,
+    /// The original index of `pts[k]`.
+    idx: Vec<usize>,
+    /// The split axis of the node at the middle of each range (0, 1, 2).
+    axis: Vec<u8>,
+}
+
+impl PointTree {
+    fn new(pts: Vec<Vec3>) -> PointTree {
+        let n = pts.len();
+        let mut order: Vec<usize> = (0..n).collect();
+        let mut axis = vec![0u8; n];
+        Self::build(&pts, &mut order, &mut axis, 0, n);
+        PointTree { pts: order.iter().map(|&i| pts[i]).collect(), idx: order, axis }
+    }
+
+    fn coord(p: Vec3, a: u8) -> f64 {
+        match a {
+            0 => p.x,
+            1 => p.y,
+            _ => p.z,
         }
     }
-    votes
-        .into_iter()
-        .max_by_key(|(k, (n, dist))| (*n, -*dist, std::cmp::Reverse(*k)))
-        .map(|(k, _)| k)
+
+    fn build(pts: &[Vec3], order: &mut [usize], axis: &mut [u8], lo: usize, hi: usize) {
+        if hi - lo <= TREE_LEAF {
+            return;
+        }
+        // Split along the widest extent of the range.
+        let (mut min, mut max) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for &i in &order[lo..hi] {
+            for a in 0..3u8 {
+                let c = Self::coord(pts[i], a);
+                min[a as usize] = min[a as usize].min(c);
+                max[a as usize] = max[a as usize].max(c);
+            }
+        }
+        let a = (0..3u8)
+            .max_by(|x, y| (max[*x as usize] - min[*x as usize]).total_cmp(&(max[*y as usize] - min[*y as usize])))
+            .unwrap_or(0);
+        let mid = (lo + hi) / 2;
+        order[lo..hi].select_nth_unstable_by(mid - lo, |x, y| {
+            Self::coord(pts[*x], a).total_cmp(&Self::coord(pts[*y], a)).then(x.cmp(y))
+        });
+        axis[mid] = a;
+        Self::build(pts, order, axis, lo, mid);
+        Self::build(pts, order, axis, mid + 1, hi);
+    }
+
+    /// The original index of the point nearest `p` under `dist`, and that
+    /// distance. `bound(gap)` must be a lower bound on `dist` for any point
+    /// whose coordinate on one axis differs from `p`'s by `gap`.
+    fn nearest(&self, p: Vec3, dist: impl Fn(Vec3) -> f64, bound: impl Fn(f64) -> f64) -> Option<(usize, f64)> {
+        let mut best: Option<(f64, usize)> = None;
+        self.search(p, &dist, &bound, 0, self.pts.len(), &mut best);
+        best.map(|(d, i)| (i, d))
+    }
+
+    fn offer(best: &mut Option<(f64, usize)>, d: f64, i: usize) {
+        let better = match *best {
+            None => true,
+            Some((bd, bi)) => d < bd || (d == bd && i < bi),
+        };
+        if better {
+            *best = Some((d, i));
+        }
+    }
+
+    fn search(
+        &self,
+        p: Vec3,
+        dist: &impl Fn(Vec3) -> f64,
+        bound: &impl Fn(f64) -> f64,
+        lo: usize,
+        hi: usize,
+        best: &mut Option<(f64, usize)>,
+    ) {
+        if hi <= lo {
+            return;
+        }
+        if hi - lo <= TREE_LEAF {
+            for k in lo..hi {
+                Self::offer(best, dist(self.pts[k]), self.idx[k]);
+            }
+            return;
+        }
+        let mid = (lo + hi) / 2;
+        let a = self.axis[mid];
+        let diff = Self::coord(p, a) - Self::coord(self.pts[mid], a);
+        Self::offer(best, dist(self.pts[mid]), self.idx[mid]);
+        let (near, far) = if diff < 0.0 { ((lo, mid), (mid + 1, hi)) } else { ((mid + 1, hi), (lo, mid)) };
+        self.search(p, dist, bound, near.0, near.1, best);
+        // A margin of a few ulps keeps a point at exactly the best distance
+        // (a tie the original order decides) from being pruned by rounding.
+        let skip = match *best {
+            Some((bd, _)) => bound(diff.abs()) * (1.0 - 1e-9) > bd,
+            None => false,
+        };
+        if !skip {
+            self.search(p, dist, bound, far.0, far.1, best);
+        }
+    }
 }
 
 /// `cut` for the face on the cutting plane, `tool[n]` for the rest of the
@@ -1127,28 +1256,41 @@ fn name_surfaces(faces: &[(SurfaceClass, String)], tol: f64, feature: &str, prob
 }
 
 /// The nearest (loop, segment) to a set of sketch-space points, by majority
-/// vote over the points; ties go to the lower (loop, segment).
-fn nearest_segment(loops: &[Vec<Vec<(f64, f64)>>], pts: &[(f64, f64)]) -> Option<(usize, usize)> {
-    let mut votes: BTreeMap<(usize, usize), (u32, i64)> = BTreeMap::new();
-    for p in pts {
-        let mut best: Option<((usize, usize), f64)> = None;
+/// vote over the points with the summed distance as the tiebreak; ties go
+/// to the lower (loop, segment). The nearest sample of each point comes
+/// from a [`PointTree`].
+struct SegmentIndex {
+    tree: PointTree,
+    owner: Vec<(usize, usize)>,
+}
+
+impl SegmentIndex {
+    fn new(loops: &[Vec<Vec<(f64, f64)>>]) -> SegmentIndex {
+        let mut pts = Vec::new();
+        let mut owner = Vec::new();
         for (l, segs) in loops.iter().enumerate() {
             for (s, sp) in segs.iter().enumerate() {
                 for c in sp {
-                    let d = fmath::powi(c.0 - p.0, 2) + fmath::powi(c.1 - p.1, 2);
-                    if best.map(|(_, bd)| d < bd).unwrap_or(true) {
-                        best = Some(((l, s), d));
-                    }
+                    pts.push(Vec3::new(c.0, c.1, 0.0));
+                    owner.push((l, s));
                 }
             }
         }
-        if let Some((k, d)) = best {
-            let e = votes.entry(k).or_insert((0, 0));
-            e.0 += 1;
-            e.1 += q(d.sqrt());
-        }
+        SegmentIndex { tree: PointTree::new(pts), owner }
     }
-    votes.into_iter().max_by_key(|(k, (n, dist))| (*n, -*dist, -(k.0 as i64), -(k.1 as i64))).map(|(k, _)| k)
+
+    fn nearest(&self, pts: &[(f64, f64)]) -> Option<(usize, usize)> {
+        let mut votes: BTreeMap<(usize, usize), (u32, i64)> = BTreeMap::new();
+        for p in pts {
+            let d2 = |c: Vec3| fmath::powi(c.x - p.0, 2) + fmath::powi(c.y - p.1, 2);
+            if let Some((i, d)) = self.tree.nearest(Vec3::new(p.0, p.1, 0.0), d2, |gap| gap * gap) {
+                let e = votes.entry(self.owner[i]).or_insert((0, 0));
+                e.0 += 1;
+                e.1 += q(d.sqrt());
+            }
+        }
+        votes.into_iter().max_by_key(|(k, (n, dist))| (*n, -*dist, -(k.0 as i64), -(k.1 as i64))).map(|(k, _)| k)
+    }
 }
 
 fn cap_eps(scale: f64) -> f64 {
@@ -1165,6 +1307,7 @@ fn name_extrude(
 ) -> Vec<NamedFace> {
     let eps = cap_eps(distance);
     let cos_cap = fmath::cos(CAP_ANGLE_DEG.to_radians());
+    let index = SegmentIndex::new(loops);
     let mut out = Vec::with_capacity(probes.len());
     for (i, p) in probes.iter().enumerate() {
         let height = |v: Vec3| (v - plane.origin).dot(plane.normal);
@@ -1191,7 +1334,7 @@ fn name_extrude(
                 (d.dot(plane.x_dir), d.dot(plane.y_dir()))
             })
             .collect();
-        match nearest_segment(loops, &pts) {
+        match index.nearest(&pts) {
             Some((l, s)) => {
                 let generic = format!("side[{l}.{s}]");
                 let meaningful = side_alias(style, p.normal);
@@ -1306,6 +1449,7 @@ fn name_revolve(
         .iter()
         .map(|segs| segs.iter().map(|sp| sp.iter().map(|(u, v)| cyl(plane.to_world(*u, *v))).collect()).collect())
         .collect();
+    let index = SegmentIndex::new(&profile);
 
     let mut out = Vec::with_capacity(probes.len());
     for (i, p) in probes.iter().enumerate() {
@@ -1326,7 +1470,7 @@ fn name_revolve(
         }
         let pts: Vec<(f64, f64)> =
             p.samples.iter().chain(std::iter::once(&p.centroid)).map(|s| cyl(*s)).collect();
-        match nearest_segment(&profile, &pts) {
+        match index.nearest(&pts) {
             Some((l, s)) => out.push(named(feature, &format!("seg[{l}.{s}]"), revolve_alias(style, s), Role::New)),
             None => out.push(NamedFace::new(full_name(feature, &format!("face[{i}]")), Role::Unmatched)),
         }
@@ -1712,6 +1856,112 @@ pub fn resolve<T: Named>(
 mod tests {
     use super::*;
     use crate::sketch::{Loop, P2};
+
+    /// The scan the k-d tree replaces: first point at the smallest distance.
+    fn scan(pts: &[Vec3], p: Vec3) -> Option<(usize, f64)> {
+        let mut best: Option<(usize, f64)> = None;
+        for (i, c) in pts.iter().enumerate() {
+            let d = (*c - p).length();
+            if best.map(|(_, bd)| d < bd).unwrap_or(true) {
+                best = Some((i, d));
+            }
+        }
+        best
+    }
+
+    /// A ruled loft through `bands + 1` regular `n`-gons, and one probe per
+    /// side face the way the tessellator would describe it: the quad's
+    /// centre and its two triangles' centroids.
+    fn polygon_loft(n: usize, bands: usize) -> (Generator, Vec<FaceProbe>) {
+        let ring = |r: f64, a: f64| Vec3::new(r * fmath::cos(a), r * fmath::sin(a), 0.0);
+        let step = std::f64::consts::TAU / n as f64;
+        let sections: Vec<crate::loft::Section> = (0..=bands)
+            .map(|b| {
+                let pts: Vec<P2> = (0..n)
+                    .map(|i| {
+                        let p = ring(20.0 + (b % 2) as f64, i as f64 * step);
+                        P2::new(p.x, p.y)
+                    })
+                    .collect();
+                crate::loft::Section::Profile(Sketch::new(Plane::XY.offset(b as f64 * 2.0)).with_loop(Loop::polygon(&pts)))
+            })
+            .collect();
+        let plan = LoftPlan::new(&sections, true, crate::loft::SectionMatch::Index).expect("a valid plan");
+        let mut probes = Vec::new();
+        for b in 0..bands {
+            for i in 0..n {
+                let corner = |k: usize, bb: usize| {
+                    ring(20.0 + (bb % 2) as f64, (k % n) as f64 * step) + Vec3::new(0.0, 0.0, bb as f64 * 2.0)
+                };
+                let (a, c, d, e) = (corner(i, b), corner(i + 1, b), corner(i + 1, b + 1), corner(i, b + 1));
+                let normal = (c - a).cross(e - a).normalized();
+                probes.push(probe(
+                    "plane",
+                    (a + c + d + e) * 0.25,
+                    normal,
+                    1.0,
+                    &[(a + c + d) * (1.0 / 3.0), (a + d + e) * (1.0 / 3.0)],
+                ));
+            }
+        }
+        (Generator::loft(&plan, "loft"), probes)
+    }
+
+    /// Naming a loft's faces grows with the face count, not its square: a
+    /// loft with eight times the bands takes nowhere near sixty-four times
+    /// as long. The ratio of two runs on the same machine, the best of
+    /// three each, so a loaded machine slows both alike.
+    #[test]
+    fn naming_a_loft_is_near_linear_in_its_faces() {
+        let time = |bands: usize| {
+            let (g, probes) = polygon_loft(64, bands);
+            let mut best = f64::INFINITY;
+            for _ in 0..3 {
+                let t = std::time::Instant::now();
+                let names = name_faces(&g, "loft", &probes);
+                best = best.min(t.elapsed().as_secs_f64());
+                for (k, nf) in names.iter().enumerate() {
+                    let (b, s) = (k / 64, k % 64);
+                    assert_eq!(nf.name, format!("loft/side[0.{s}]#{b}"));
+                }
+            }
+            best
+        };
+        let small = time(4);
+        let large = time(32);
+        assert!(large < 24.0 * small.max(1e-4), "8x the faces took {:.1}x as long ({small:.4} s, {large:.4} s)", large / small);
+    }
+
+    /// The tree answers exactly what the scan answers, ties included: a
+    /// lattice puts many points at equal distances from a lattice query, and
+    /// the first in list order has to win every time.
+    #[test]
+    fn the_point_tree_agrees_with_a_scan_including_ties() {
+        let mut rng = Rng(7);
+        let mut pts = Vec::new();
+        for i in 0..12 {
+            for j in 0..9 {
+                for k in 0..3 {
+                    pts.push(Vec3::new(i as f64, j as f64 * 0.5, k as f64));
+                }
+            }
+        }
+        // Duplicates, and a scatter off the lattice.
+        pts.extend(pts.clone().into_iter().step_by(7));
+        for _ in 0..300 {
+            pts.push(Vec3::new(rng.next() * 12.0, rng.next() * 5.0, rng.next() * 3.0));
+        }
+        let tree = PointTree::new(pts.clone());
+        let mut queries: Vec<Vec3> = pts.iter().step_by(3).copied().collect();
+        for _ in 0..500 {
+            queries.push(Vec3::new(rng.next() * 14.0 - 1.0, rng.next() * 6.0 - 0.5, rng.next() * 4.0 - 0.5));
+            queries.push(Vec3::new((rng.next() * 24.0).round() / 2.0, (rng.next() * 10.0).round() / 4.0, 1.5));
+        }
+        for q in queries {
+            let got = tree.nearest(q, |c| (c - q).length(), |g| g);
+            assert_eq!(got, scan(&pts, q), "query {q:?}");
+        }
+    }
 
     /// SplitMix64, so a failing perturbation can be reproduced.
     struct Rng(u64);

@@ -676,7 +676,7 @@ coordinates of a tie; break ties you care about with a small term in the
 objective. A `time_limit=` that stops a solve makes its answer depend on the
 clock: its status says `"time_limit"`, the point is the best found, and it is
 never memoised. A solve is also bounded by the evaluation's own budget (20 s
-in `cadpole serve`, 120 s in the CLI), passed to HiGHS as its time limit,
+in `cadpole serve`, 120 s in the CLI or what `--eval-budget-secs` sets), passed to HiGHS as its time limit,
 because the deadline cannot interrupt a native call; where the solution
 cache is on (below), a solve the budget would stop gets a window of it
 instead and, past the window, comes back `"pending"`, not `"time_limit"`.

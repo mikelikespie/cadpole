@@ -19,11 +19,16 @@
 //! solids, as the line look takes them) and the silhouettes of smooth
 //! surfaces, each painted at its own depth so a nearer surface covers it
 //! too; the cut faces and their outlines go on last, on top of everything,
-//! because nothing kept is nearer than the cut. Sorting is by each piece's
-//! centroid depth, which is exact for the horizontal surfaces a plan is made
-//! of and for the walls a section looks at; two long pieces that interleave
-//! in depth can still be painted in the wrong order, which a z-buffer would
-//! not do and a vector file cannot.
+//! because nothing kept is nearer than the cut. Sorting starts from each
+//! piece's centroid depth, which is exact for the horizontal surfaces a plan
+//! is made of and for the walls a section looks at, but not for a face at a
+//! slant to the view: a long triangle of a canted bay face can have its
+//! centroid behind a small triangle of the wall it stands in front of, and
+//! painted first, the wall shows through it in shards. So wherever two
+//! triangles, or an edge and a triangle, overlap on the paper, the one in
+//! front at a point of the overlap is painted after the other
+//! ([`depth_ordered`]); the centroid order only breaks ties and the rare
+//! cycle, which a z-buffer would resolve and a vector file cannot.
 //!
 //! **Text is the script's.** A label the script made with
 //! `extrude(text("Kitchen", ...), h)` is not drawn as its glyph outlines:
@@ -152,11 +157,11 @@ impl Default for PaintStyle {
 
 /// One thing to paint, at a depth.
 enum Piece {
-    /// A front-facing triangle of body `body`, its projected corners and
-    /// its shaded colour.
-    Tri { body: usize, pts: [P2; 3], color: Rgb },
-    /// A visible edge segment.
-    Edge { body: usize, a: P2, b: P2 },
+    /// A front-facing triangle of body `body`, its projected corners, their
+    /// depths and its shaded colour.
+    Tri { body: usize, pts: [P2; 3], depths: [f64; 3], color: Rgb },
+    /// A visible edge segment and its ends' depths.
+    Edge { body: usize, a: P2, b: P2, depths: [f64; 2] },
     /// A label, written once.
     Label { body: usize, label: usize },
 }
@@ -252,7 +257,7 @@ pub(crate) fn paint(
                 push(
                     &mut pieces,
                     (d0 + d1 + d2) / 3.0,
-                    Piece::Tri { body: bi, pts: [q0, q1, q2], color: mix_white(shade(color, facing), style.seen_lighten) },
+                    Piece::Tri { body: bi, pts: [q0, q1, q2], depths: [d0, d1, d2], color: mix_white(shade(color, facing), style.seen_lighten) },
                 );
             }
         }
@@ -273,19 +278,20 @@ pub(crate) fn paint(
                 if (a.x - bq.x).abs() + (a.y - bq.y).abs() < eps {
                     continue;
                 }
-                push(&mut pieces, (da + db) / 2.0 + eps, Piece::Edge { body: bi, a, b: bq });
+                push(&mut pieces, (da + db) / 2.0 + eps, Piece::Edge { body: bi, a, b: bq, depths: [da, db] });
             }
         }
         // Silhouettes of smooth surfaces: a mesh edge inside one face whose
         // two triangles face opposite ways.
         for (a, bq, depth) in silhouettes(&mesh, basis, eps) {
-            let (pa, _) = place(a);
-            let (pb, _) = place(bq);
-            push(&mut pieces, depth + eps, Piece::Edge { body: bi, a: pa, b: pb });
+            let (pa, da) = place(a);
+            let (pb, db) = place(bq);
+            push(&mut pieces, depth + eps, Piece::Edge { body: bi, a: pa, b: pb, depths: [da, db] });
         }
     }
 
     pieces.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+    let pieces = depth_ordered(pieces, diag * 1e-6);
 
     // Where each label lands, and whether anything nearer covers it
     // entirely: a label under a floor is not drawn, so it is not text a
@@ -378,7 +384,7 @@ pub(crate) fn paint(
     };
     for (_, _, piece) in &pieces {
         match piece {
-            Piece::Tri { body, pts, color } => {
+            Piece::Tri { body, pts, color, .. } => {
                 flush_edges(&mut edge_run, &mut out);
                 for q in pts {
                     out.eat(*q);
@@ -398,7 +404,7 @@ pub(crate) fn paint(
                     }
                 }
             }
-            Piece::Edge { body, a, b } => {
+            Piece::Edge { body, a, b, .. } => {
                 flush_tris(&mut tri_run, &mut out);
                 out.eat(*a);
                 out.eat(*b);
@@ -500,6 +506,240 @@ pub(crate) fn paint(
 /// Five points of a label's ink box -- its centre and its corners pulled a
 /// sixth of the way in -- in the view's frame: a label every one of which
 /// is under something nearer is hidden.
+/// `pieces`, sorted by centroid depth, reordered so that wherever two
+/// triangles overlap on the paper, or an edge crosses a triangle, the one
+/// nearer the eye at a point of the overlap is painted later. A topological
+/// sort over those constraints that always takes the ready piece earliest
+/// in the centroid order, so with no overlaps the order is unchanged; a
+/// cycle (three slivers that each cover the next) is broken at the
+/// earliest piece left. `tol` is the depth difference that counts: two
+/// surfaces closer than it are one surface.
+fn depth_ordered(pieces: Vec<(f64, usize, Piece)>, tol: f64) -> Vec<(f64, usize, Piece)> {
+    use std::collections::BTreeSet;
+    let n = pieces.len();
+    // Screen boxes of the pieces that take part: triangles and edges.
+    let boxes: Vec<Option<(P2, P2)>> = pieces
+        .iter()
+        .map(|(_, _, p)| match p {
+            Piece::Tri { pts, .. } => Some(bbox2(pts)),
+            Piece::Edge { a, b, .. } => Some(bbox2(&[*a, *b])),
+            Piece::Label { .. } => None,
+        })
+        .collect();
+    let all = boxes.iter().flatten().fold(None::<(P2, P2)>, |acc, (lo, hi)| match acc {
+        None => Some((*lo, *hi)),
+        Some((a, b)) => Some((P2::new(a.x.min(lo.x), a.y.min(lo.y)), P2::new(b.x.max(hi.x), b.y.max(hi.y)))),
+    });
+    let Some((lo, hi)) = all else { return pieces };
+    // A uniform grid over the paper, about four pieces to a cell.
+    let count = boxes.iter().flatten().count().max(1);
+    let side = ((count as f64 / 4.0).sqrt().ceil() as usize).clamp(1, 1024);
+    let (w, h) = ((hi.x - lo.x).max(1e-12), (hi.y - lo.y).max(1e-12));
+    let cell = |p: P2| -> (usize, usize) {
+        let cx = (((p.x - lo.x) / w) * side as f64).floor().clamp(0.0, (side - 1) as f64) as usize;
+        let cy = (((p.y - lo.y) / h) * side as f64).floor().clamp(0.0, (side - 1) as f64) as usize;
+        (cx, cy)
+    };
+    let mut grid: Vec<Vec<u32>> = vec![Vec::new(); side * side];
+    for (i, b) in boxes.iter().enumerate() {
+        let Some((blo, bhi)) = b else { continue };
+        let ((x0, y0), (x1, y1)) = (cell(*blo), cell(*bhi));
+        for cy in y0..=y1 {
+            for cx in x0..=x1 {
+                grid[cy * side + cx].push(i as u32);
+            }
+        }
+    }
+    // Constraints: `after[i]` are painted after piece i.
+    let mut after: Vec<Vec<u32>> = vec![Vec::new(); n];
+    let mut indegree = vec![0u32; n];
+    // A pair is examined once, in the first cell (row-major) both boxes
+    // share; past this many candidate pairs the centroid order stands.
+    const BUDGET: usize = 50_000_000;
+    let mut examined = 0usize;
+    'cells: for (c, members) in grid.iter().enumerate() {
+        let (cx, cy) = (c % side, c / side);
+        for (k, &i) in members.iter().enumerate() {
+            for &j in &members[k + 1..] {
+                examined += 1;
+                if examined > BUDGET {
+                    break 'cells;
+                }
+                let (bi, bj) = (boxes[i as usize].unwrap(), boxes[j as usize].unwrap());
+                let slo = P2::new(bi.0.x.max(bj.0.x), bi.0.y.max(bj.0.y));
+                let shi = P2::new(bi.1.x.min(bj.1.x), bi.1.y.min(bj.1.y));
+                if slo.x > shi.x || slo.y > shi.y || cell(slo) != (cx, cy) {
+                    continue;
+                }
+                let (pi, pj) = (&pieces[i as usize].2, &pieces[j as usize].2);
+                let Some(nearer) = nearer_where_they_overlap(pi, pj, tol) else { continue };
+                let (far, near) = if nearer == 0 { (j, i) } else { (i, j) };
+                after[far as usize].push(near);
+                indegree[near as usize] += 1;
+            }
+        }
+    }
+    // Kahn's sort, always taking the earliest ready piece (the input is in
+    // centroid order, so the index is the priority).
+    let mut ready: BTreeSet<u32> = (0..n as u32).filter(|&i| indegree[i as usize] == 0).collect();
+    let mut left: BTreeSet<u32> = (0..n as u32).collect();
+    let mut order = Vec::with_capacity(n);
+    while let Some(&first_left) = left.iter().next() {
+        let i = match ready.pop_first() {
+            Some(i) => i,
+            // A cycle: break it at the earliest piece left.
+            None => first_left,
+        };
+        if !left.remove(&i) {
+            continue;
+        }
+        order.push(i);
+        for &j in &after[i as usize] {
+            let d = &mut indegree[j as usize];
+            *d = d.saturating_sub(1);
+            if *d == 0 && left.contains(&j) {
+                ready.insert(j);
+            }
+        }
+    }
+    let mut slots: Vec<Option<(f64, usize, Piece)>> = pieces.into_iter().map(Some).collect();
+    order.into_iter().filter_map(|i| slots[i as usize].take()).collect()
+}
+
+fn bbox2(pts: &[P2]) -> (P2, P2) {
+    pts.iter().fold((P2::new(f64::MAX, f64::MAX), P2::new(f64::MIN, f64::MIN)), |(lo, hi), p| {
+        (P2::new(lo.x.min(p.x), lo.y.min(p.y)), P2::new(hi.x.max(p.x), hi.y.max(p.y)))
+    })
+}
+
+/// Which of two pieces is nearer the eye where they overlap on the paper:
+/// `Some(0)` the first, `Some(1)` the second, `None` when they do not
+/// overlap (sharing an edge is not overlapping), are not a triangle and
+/// something, or are the same surface there to within `tol`. An edge lying
+/// on a triangle counts as in front of it, since it is drawn on it.
+fn nearer_where_they_overlap(a: &Piece, b: &Piece, tol: f64) -> Option<usize> {
+    match (a, b) {
+        (Piece::Tri { pts: pa, depths: da, .. }, Piece::Tri { pts: pb, depths: db, .. }) => {
+            let at = overlap_point(pa, pb)?;
+            let (za, zb) = (plane_depth(pa, da, at)?, plane_depth(pb, db, at)?);
+            if (za - zb).abs() <= tol {
+                None
+            } else if za > zb {
+                Some(0)
+            } else {
+                Some(1)
+            }
+        }
+        (Piece::Edge { a: ea, b: eb, depths, .. }, Piece::Tri { pts, depths: dt, .. }) => {
+            let (at, ze) = segment_inside(*ea, *eb, *depths, pts)?;
+            let zt = plane_depth(pts, dt, at)?;
+            Some(if ze >= zt - tol { 0 } else { 1 })
+        }
+        (Piece::Tri { .. }, Piece::Edge { .. }) => nearer_where_they_overlap(b, a, tol).map(|k| 1 - k),
+        _ => None,
+    }
+}
+
+/// Twice the signed area of a 2-D triangle.
+fn area2(t: &[P2; 3]) -> f64 {
+    (t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[2].x - t[0].x) * (t[1].y - t[0].y)
+}
+
+/// The depth at `p` of the plane through a triangle's three projected
+/// corners and their depths; `None` for a triangle seen edge-on.
+fn plane_depth(t: &[P2; 3], d: &[f64; 3], p: P2) -> Option<f64> {
+    let a = area2(t);
+    if a.abs() <= 1e-18 {
+        return None;
+    }
+    let w1 = ((p.x - t[0].x) * (t[2].y - t[0].y) - (t[2].x - t[0].x) * (p.y - t[0].y)) / a;
+    let w2 = ((t[1].x - t[0].x) * (p.y - t[0].y) - (p.x - t[0].x) * (t[1].y - t[0].y)) / a;
+    Some(d[0] + (d[1] - d[0]) * w1 + (d[2] - d[0]) * w2)
+}
+
+/// A point inside both triangles' interiors, when their overlap has an
+/// area: the centroid of one clipped by the other. Two triangles sharing
+/// an edge or a corner clip to a sliver of no area and answer `None`.
+fn overlap_point(a: &[P2; 3], b: &[P2; 3]) -> Option<P2> {
+    let (sa, sb) = (area2(a), area2(b));
+    if sa.abs() <= 1e-18 || sb.abs() <= 1e-18 {
+        return None;
+    }
+    let mut poly: Vec<P2> = a.to_vec();
+    for k in 0..3 {
+        let (p, q) = (b[k], b[(k + 1) % 3]);
+        // Inside is the side of each edge the triangle's own area is on.
+        let side = |x: P2| ((q.x - p.x) * (x.y - p.y) - (q.y - p.y) * (x.x - p.x)) * sb.signum();
+        let mut next = Vec::with_capacity(poly.len() + 2);
+        for m in 0..poly.len() {
+            let (u, v) = (poly[m], poly[(m + 1) % poly.len()]);
+            let (su, sv) = (side(u), side(v));
+            if su >= 0.0 {
+                next.push(u);
+            }
+            if (su >= 0.0) != (sv >= 0.0) {
+                let t = su / (su - sv);
+                next.push(P2::new(u.x + (v.x - u.x) * t, u.y + (v.y - u.y) * t));
+            }
+        }
+        poly = next;
+        if poly.len() < 3 {
+            return None;
+        }
+    }
+    // The clipped polygon's area and centroid.
+    let (mut area, mut cx, mut cy) = (0.0, 0.0, 0.0);
+    for m in 0..poly.len() {
+        let (u, v) = (poly[m], poly[(m + 1) % poly.len()]);
+        let c = u.x * v.y - v.x * u.y;
+        area += c;
+        cx += (u.x + v.x) * c;
+        cy += (u.y + v.y) * c;
+    }
+    // An overlap thinner than a millionth of the smaller triangle is a
+    // shared edge seen through rounding.
+    if area.abs() <= 1e-6 * sa.abs().min(sb.abs()) {
+        return None;
+    }
+    Some(P2::new(cx / (3.0 * area), cy / (3.0 * area)))
+}
+
+/// The middle of the stretch of segment `a`–`b` strictly inside triangle
+/// `t`, and the segment's depth there; `None` when no stretch of length is
+/// inside (an edge along the triangle's border, or outside it).
+fn segment_inside(a: P2, b: P2, d: [f64; 2], t: &[P2; 3]) -> Option<(P2, f64)> {
+    let s = area2(t);
+    if s.abs() <= 1e-18 {
+        return None;
+    }
+    let (mut t0, mut t1) = (0.0f64, 1.0f64);
+    let scale = s.abs().sqrt();
+    for k in 0..3 {
+        let (p, q) = (t[k], t[(k + 1) % 3]);
+        let side = |x: P2| ((q.x - p.x) * (x.y - p.y) - (q.y - p.y) * (x.x - p.x)) * s.signum();
+        // Strictly inside, by a hair: an edge on the border is not inside.
+        let margin = 1e-9 * scale * (q.x - p.x).hypot(q.y - p.y);
+        let (sa, sb) = (side(a) - margin, side(b) - margin);
+        if sa < 0.0 && sb < 0.0 {
+            return None;
+        }
+        if sa < 0.0 || sb < 0.0 {
+            let u = sa / (sa - sb);
+            if sa < 0.0 {
+                t0 = t0.max(u);
+            } else {
+                t1 = t1.min(u);
+            }
+        }
+    }
+    let len = (b.x - a.x).hypot(b.y - a.y);
+    if t1 - t0 <= 1e-9 || len * (t1 - t0) <= 1e-9 * scale {
+        return None;
+    }
+    let u = (t0 + t1) / 2.0;
+    Some((P2::new(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u), d[0] + (d[1] - d[0]) * u))
+}
+
 fn label_samples(l: &BodyLabel, at: P2, rotation_deg: f64) -> Vec<P2> {
     let font = if l.bold { FontRef::BuiltinBold } else { FontRef::Builtin };
     let cap = l.cap_height;
@@ -697,6 +937,56 @@ mod tests {
             .find(|p| matches!(p, Prim::Path { style, closed: true, .. } if style.layer == layer::SECTION))
             .expect("a cut outline");
         assert_eq!(outline.style().color, darken(RED, 0.5));
+    }
+
+    /// The colour that ends up on top at `p`: the last fill, in paint
+    /// order, one of whose triangles holds it.
+    fn top_colour_at(d: &Drawing, items: &[Item], p: P2) -> Option<Rgb> {
+        let mut dd = d.clone();
+        dd.items = items.to_vec();
+        let mut top = None;
+        for prim in dd.flatten() {
+            if let Prim::Fill { style, outer, holes, .. } = prim {
+                for l in std::iter::once(&outer).chain(&holes) {
+                    let t = [l.segments[0].start(), l.segments[1].start(), l.segments[2].start()];
+                    if l.segments.len() == 3 && in_triangle(p, &t) {
+                        top = Some(style.color);
+                    }
+                }
+            }
+        }
+        top
+    }
+
+    /// A slab canted 5.7 degrees to the picture plane stands in front of a
+    /// small block. The slab's triangles are long, and their centroids are
+    /// farther from the eye than the block's front face, so a sort by
+    /// centroid painted the block over the slab: the shards of a canted bay
+    /// face with the wall behind it showing through. Where they overlap the
+    /// slab is nearer, so it is painted last, and the block is hidden.
+    #[test]
+    fn a_canted_face_in_front_covers_what_is_behind_it() {
+        // Seen from the south (-y), x right and z up; depth is -y.
+        let s = Sketch::new(Plane::XY).with_loop(Loop::polygon(&[
+            P2::new(0.0, 0.0),
+            P2::new(100.0, 9.9),
+            P2::new(100.0, 30.0),
+            P2::new(0.0, 30.0),
+        ]));
+        let solids = cadpole_core::kernel::extrude(&s, 50.0).expect("extrude");
+        let (mesh, topo) = cadpole_core::tessellate::tessellate(&solids[0], 0.05).expect("tess");
+        let slab = ViewBody { color: Some(BLUE), ..ViewBody::new("slab", mesh, topo) };
+        // Its front at y = 1: behind the slab, whose face is at y < 1 for
+        // x < 10.
+        let block = block("block", 0.0, 1.0, 10.0, 10.0, 4.0, 10.0, RED);
+        let basis = crate::view::ViewBasis::looking_from(Vec3::new(0.0, -1.0, 0.0), Vec3::Z);
+        let mut d = Drawing::new();
+        let g = crate::views::elevation_view(&mut d, &[block, slab], &basis, &color_opts());
+        for (x, z) in [(5.0, 15.0), (2.0, 11.0), (8.0, 19.0), (9.5, 12.0)] {
+            let top = top_colour_at(&d, &g.items, P2::new(x, z)).expect("something is painted there");
+            assert_ne!(top.0, top.2, "at ({x}, {z}) the top fill is {top:?}");
+            assert!(top.2 > top.0, "the slab (blue) is on top at ({x}, {z}), not the block behind it: {top:?}");
+        }
     }
 
     #[test]

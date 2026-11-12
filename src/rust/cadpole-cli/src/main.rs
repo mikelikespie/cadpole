@@ -128,6 +128,13 @@ struct Cli {
     /// never more); the browser and the apps keep 512 MB.
     #[arg(long, global = true, env = "CADPOLE_MAX_HEAP_MB", value_name = "MB")]
     max_heap_mb: Option<u64>,
+    /// Wall-clock budget for one script evaluation, in seconds: 120 by
+    /// default, so a script that never ends still stops and says so. Raise
+    /// it for a model that is slow by design (a fine SDF mesh for a print);
+    /// 0 means no limit. Applies to every command that evaluates a script
+    /// except `cadpole serve`, which has its own `--eval-deadline-ms`.
+    #[arg(long, global = true, env = "CADPOLE_EVAL_BUDGET_SECS", value_name = "SECS")]
+    eval_budget_secs: Option<u64>,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -141,6 +148,12 @@ static HEAP_BYTES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
 /// See [`HEAP_BYTES`].
 pub(crate) fn heap_bytes() -> usize {
     HEAP_BYTES.get().copied().unwrap_or(cadpole_engine::Limits::DEFAULT_HEAP_BYTES)
+}
+
+/// `--eval-budget-secs` as a deadline in milliseconds: the batch budget
+/// when unset, 0 (no deadline) when asked for.
+fn eval_deadline_ms_of(secs: Option<u64>) -> u64 {
+    secs.map_or(cadpole_engine::Limits::batch().deadline_ms, |s| s.saturating_mul(1000))
 }
 
 /// `--max-heap-mb` in bytes: at least 1 MB, never "no cap".
@@ -325,6 +338,30 @@ struct ViewArgs {
     /// 0, meaning +y is north).
     #[arg(long, value_name = "DEG")]
     north: Option<f64>,
+    /// The sun's colour: `auto` (the default) follows its elevation
+    /// through the air, near white high up, orange near the horizon;
+    /// `#rrggbb` or a colour temperature such as `3500K` sets it, keeping
+    /// the brightness.
+    #[arg(long, value_name = "auto|#RRGGBB|KELVIN")]
+    sun_color: Option<String>,
+    /// Multiplier on the sun's irradiance (default 1).
+    #[arg(long, value_name = "X")]
+    sun_intensity: Option<f64>,
+    /// Path tracing: aerial perspective, `<distance>[unit][,#rrggbb]`: at
+    /// that distance half of what the camera sees is haze (`400m`,
+    /// `1200ft`; a bare number is mm). Coloured by the sky at the horizon
+    /// unless a colour is given; camera rays only, so no shadow dims.
+    #[arg(long, value_name = "DIST")]
+    haze: Option<String>,
+    /// A shift lens: slide the frame up the image plane by this fraction
+    /// of its height (negative: down) without turning the camera.
+    #[arg(long, value_name = "FRACTION", allow_negative_numbers = true)]
+    shift: Option<f64>,
+    /// Level the camera and shift the lens so the target stays centred,
+    /// as an architectural photographer does: vertical edges stay
+    /// vertical.
+    #[arg(long)]
+    level: bool,
     /// Cut every body by a plane for this image only, capped: `z=40`
     /// removes everything above z = 40 (`x=`, `y=` likewise); `-x=22`
     /// removes the -x side instead.
@@ -1404,6 +1441,7 @@ fn camera_json(cameras: &[pb::CameraInfo]) -> String {
                 "fov_degrees": c.fov_degrees,
                 "orthographic": c.orthographic,
                 "ortho_height": c.ortho_height,
+                "shift": c.shift,
                 "near": c.near,
                 "far": c.far,
                 "view": c.view,
@@ -1602,10 +1640,15 @@ fn camera(view: &ViewArgs) -> anyhow::Result<Option<pb::Camera>> {
         Some(f) if f.is_finite() && f > 0.0 && f < 180.0 => f,
         Some(f) => anyhow::bail!("--fov {f}: a vertical field of view in degrees, above 0 and below 180"),
     };
+    let shift = match view.shift {
+        None => 0.0,
+        Some(s) if s.is_finite() && s.abs() <= 2.0 => s,
+        Some(s) => anyhow::bail!("--shift {s}: a fraction of the frame height, -2 to 2"),
+    };
     let Some(eye) = &view.eye else {
         let preset = view.view.clone().unwrap_or_default();
         view_preset(&preset)?;
-        return Ok(Some(pb::Camera { preset, fov_degrees, ..Default::default() }));
+        return Ok(Some(pb::Camera { preset, fov_degrees, shift, level: view.level, ..Default::default() }));
     };
     let eye = parse_xyz(eye, "--eye")?;
     let target = view.target.as_deref().map(|t| parse_xyz(t, "--target")).transpose()?;
@@ -1615,7 +1658,7 @@ fn camera(view: &ViewArgs) -> anyhow::Result<Option<pb::Camera>> {
             anyhow::bail!("--eye and --target coincide");
         }
     }
-    Ok(Some(pb::Camera { preset: String::new(), eye: Some(eye), target, up, fov_degrees, ..Default::default() }))
+    Ok(Some(pb::Camera { preset: String::new(), eye: Some(eye), target, up, fov_degrees, shift, level: view.level, ..Default::default() }))
 }
 
 /// `--view`: a preset the renderer knows or a finite `az=,el=` pair. The
@@ -2215,6 +2258,7 @@ fn sweep_unsupported(view: &ViewArgs) -> Vec<&'static str> {
     not(view.bloom, "--bloom");
     not(view.edge_break.is_some(), "--edge-break");
     not(view.denoise, "--denoise");
+    not(view.haze.is_some(), "--haze");
     not(view.compare_edges, "--compare-edges");
     not(view.stats, "--stats");
     out
@@ -2254,6 +2298,8 @@ fn sweep_request(eval: &EvalArgs, view: &ViewArgs, tile: Option<&str>, cols: Opt
         cols: cols.unwrap_or(0),
         sun: view.sun.clone().unwrap_or_default(),
         north_degrees: view.north.unwrap_or(0.0),
+        sun_color: view.sun_color.clone().unwrap_or_default(),
+        sun_intensity: view.sun_intensity.unwrap_or(0.0),
         samples: view.samples.unwrap_or(0),
         threads: view.threads.unwrap_or(0),
         tolerance: eval.tolerance.unwrap_or(0.0),
@@ -2400,6 +2446,9 @@ fn render_request(eval: &EvalArgs, view: &ViewArgs, size: (u32, u32)) -> anyhow:
         camera: camera(view)?,
         sun: view.sun.clone().unwrap_or_default(),
         north_degrees: view.north.unwrap_or(0.0),
+        sun_color: view.sun_color.clone().unwrap_or_default(),
+        sun_intensity: view.sun_intensity.unwrap_or(0.0),
+        haze: view.haze.clone().unwrap_or_default(),
         section: view.section.clone().unwrap_or_default(),
         samples: view.samples.unwrap_or(0),
         threads: view.threads.unwrap_or(0),
@@ -2842,10 +2891,11 @@ fn run() -> anyhow::Result<ExitCode> {
     let _ = HEAP_BYTES.set(cli.max_heap_mb.map(heap_bytes_of).unwrap_or(cadpole_engine::Limits::DEFAULT_HEAP_BYTES));
     // A one-shot CLI run is not a server, but it is still not allowed to hang:
     // `cadpole eval` on a script with an infinite loop must stop and say so
-    // (docs/security.md, "Starlark sandbox"). `cadpole serve` replaces this with
-    // its own, shorter budget.
+    // (docs/security.md, "Starlark sandbox"). `--eval-budget-secs` moves the
+    // budget; `cadpole serve` replaces it with its own, shorter one.
     cadpole_engine::limits::set_default_limits(cadpole_engine::Limits {
         max_heap_bytes: heap_bytes(),
+        deadline_ms: eval_deadline_ms_of(cli.eval_budget_secs),
         ..cadpole_engine::Limits::batch()
     });
     match cli.cmd {
@@ -3074,6 +3124,9 @@ fn run() -> anyhow::Result<ExitCode> {
                     transparent: render.transparent,
                     shadow_catcher: render.shadow_catcher,
                     supersample: render.supersample,
+                    sun_color: render.sun_color.clone(),
+                    sun_intensity: render.sun_intensity,
+                    haze: render.haze.clone(),
                     ..Default::default()
                 };
                 let resp: pb::AnimateResponse = call("Animate", &req, &host)?;
@@ -4070,6 +4123,33 @@ mod tests {
         assert_eq!(heap_bytes_of(2048), 2048 * 1024 * 1024);
         assert_eq!(heap_bytes_of(0), 1024 * 1024, "0 is 1 MB, not unlimited");
         assert_eq!(cadpole_engine::Limits::DEFAULT_HEAP_BYTES, 512 * 1024 * 1024);
+    }
+
+    /// `--eval-budget-secs` is a global flag in seconds, before or after the
+    /// subcommand, on every evaluating command; `CADPOLE_EVAL_BUDGET_SECS`
+    /// sets it too; 0 is no deadline; absent it is the 120 s batch budget.
+    #[test]
+    fn the_eval_budget_is_a_global_flag_in_seconds() {
+        for args in [
+            vec!["cadpole", "--eval-budget-secs", "900", "eval", "x.star"],
+            vec!["cadpole", "export", "x.star", "-o", "x.3mf", "--eval-budget-secs", "900"],
+            vec!["cadpole", "render", "x.star", "--eval-budget-secs", "900", "-o", "x.png"],
+            vec!["cadpole", "check", "x.star", "--eval-budget-secs", "900", "--layer", "kit"],
+            vec!["cadpole", "plate", "x.star", "--eval-budget-secs", "900", "-o", "x.3mf"],
+            vec!["cadpole", "test", "x.star", "--eval-budget-secs", "900"],
+            vec!["cadpole", "sweep", "x.star", "--param", "a=1,2", "--eval-budget-secs", "900", "-o", "s.png"],
+        ] {
+            let cli = Cli::try_parse_from(&args).unwrap_or_else(|e| panic!("{args:?}: {e}"));
+            assert_eq!(cli.eval_budget_secs, Some(900), "{args:?}");
+        }
+        assert_eq!(eval_deadline_ms_of(Some(900)), 900_000);
+        assert_eq!(eval_deadline_ms_of(Some(0)), 0, "0 is no deadline");
+        assert_eq!(eval_deadline_ms_of(None), 120_000, "unset is the batch budget");
+        assert_eq!(eval_deadline_ms_of(Some(u64::MAX)), u64::MAX, "saturates, does not wrap");
+        // The env var, through clap's own lookup: a command that names it.
+        let cmd = <Cli as clap::CommandFactory>::command();
+        let arg = cmd.get_arguments().find(|a| a.get_id() == "eval_budget_secs").expect("the flag exists");
+        assert_eq!(arg.get_env().and_then(|e| e.to_str()), Some("CADPOLE_EVAL_BUDGET_SECS"));
     }
 
     /// The per-body line `cadpole export` prints is a format scripts read, so

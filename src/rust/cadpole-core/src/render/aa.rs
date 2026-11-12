@@ -1036,6 +1036,7 @@ mod tests {
             up: crate::geom::Vec3::Z,
             fov_degrees: 90.0,
             orthographic,
+            shift: 0.0,
         };
         View::new(&cam, w, h)
     }
@@ -1064,7 +1065,7 @@ mod tests {
         let mesh = quad_mesh([a, b, c, d]);
         let mat = Material::default();
         let items = [Item::new(&mesh, &mat, &[])];
-        let cam = Camera { eye: crate::geom::Vec3::ZERO, target: crate::geom::Vec3::new(0.0, 10.0, 0.0), up: crate::geom::Vec3::Z, fov_degrees: 90.0, orthographic: true };
+        let cam = Camera { eye: crate::geom::Vec3::ZERO, target: crate::geom::Vec3::new(0.0, 10.0, 0.0), up: crate::geom::Vec3::Z, fov_degrees: 90.0, orthographic: true, shift: 0.0 };
         let frame = render_frame(&items, &cam, &RenderOptions { width: 64, height: 64, ..Default::default() });
         assert_eq!(frame.item.iter().filter(|&&i| i != NO_ITEM).count(), 4096);
     }
@@ -1127,7 +1128,7 @@ mod tests {
         // A single quad covering the whole 200x130 frame (spans several tile
         // rows and columns, including partial tiles): every pixel is covered.
         let (w, h) = (200u32, 130u32);
-        let cam = Camera { eye: crate::geom::Vec3::ZERO, target: crate::geom::Vec3::new(0.0, 10.0, 0.0), up: crate::geom::Vec3::Z, fov_degrees: 60.0, orthographic: false };
+        let cam = Camera { eye: crate::geom::Vec3::ZERO, target: crate::geom::Vec3::new(0.0, 10.0, 0.0), up: crate::geom::Vec3::Z, fov_degrees: 60.0, orthographic: false, shift: 0.0 };
         let view = View::new(&cam, w, h);
         let px = |sx: f32, sy: f32| view.unproject(sx, sy, 20.0);
         let mesh = quad_mesh([px(-2.0, -2.0), px(w as f32 + 2.0, -2.0), px(w as f32 + 2.0, h as f32 + 2.0), px(-2.0, h as f32 + 2.0)]);

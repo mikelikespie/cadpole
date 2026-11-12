@@ -1121,6 +1121,11 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
     /// curve is exact, it needs no sections at all, and it tessellates far
     /// more cheaply than any loft of circles can.
     ///
+    /// `fit="monotone"` (with `ruled=False`) passes through the sections in
+    /// tangent-continuous cubic pieces that never overshoot between them,
+    /// where the default `"interpolate"` fit is one curvature-continuous cubic
+    /// that can bulge past sections that change sharply.
+    ///
     /// The result is an exact B-rep solid. Face names: `start` and `end` for
     /// the two end caps, `side[l.s]` for the face swept from segment `s` of
     /// loop `l`, and — for a **ruled** loft through more than two sections —
@@ -1145,6 +1150,7 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
     fn loft<'v>(
         #[starlark(require = pos)] sections: UnpackList<Value<'v>>,
         #[starlark(require = named, default = true)] ruled: bool,
+        #[starlark(require = named, default = "interpolate")] fit: &str,
         #[starlark(require = named, default = "index")] r#match: &str,
         #[starlark(require = named)] cap: Option<Value<'v>>,
         #[starlark(require = named)] name: Option<&str>,
@@ -1153,6 +1159,12 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
     ) -> anyhow::Result<Value<'v>> {
         let heap = eval.heap();
         let matching = cadpole_core::loft::SectionMatch::parse(r#match)?;
+        let fit = cadpole_core::skin::Fit::parse(fit).ok_or_else(|| {
+            anyhow::anyhow!("loft: fit must be one of \"interpolate\", \"monotone\" (a `fit` member), got {fit:?}")
+        })?;
+        if ruled && fit != cadpole_core::skin::Fit::Interpolate {
+            anyhow::bail!("loft: fit=\"{}\" is how a smooth loft passes through its sections; pass ruled=False with it", fit.name());
+        }
         let caps = loft_caps(cap)?;
         if sections.items.len() < 2 {
             anyhow::bail!("loft: needs at least two sections, got {}", sections.items.len());
@@ -1172,7 +1184,7 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         let st = store(eval)?;
         let mut ctx = st.ctx.borrow_mut();
         let ids =
-            ctx.loft("loft", &secs, &features, ruled, matching, caps, BTreeMap::new(), name.map(str::to_owned), span)?;
+            ctx.loft("loft", &secs, &features, ruled, fit, matching, caps, BTreeMap::new(), name.map(str::to_owned), span)?;
         crate::layers::tag_ids(&mut ctx, layer, &ids, "loft")?;
         bodies_value(heap, &ctx, ids)
     }
@@ -3758,12 +3770,46 @@ mod tests {
             "Topological name grammar",
             "8.2 Bracket with fillets",
             "8.4 Organic vase",
+            "8.6 A lithophane lamp shade",
         ] {
             let src = reference_block(heading);
             let ctx = eval_with(&src, &[]);
             let errs = messages(&ctx, Severity::Error);
             assert!(errs.is_empty(), "the block under {heading:?} fails:\n{src}\n{errs:?}");
         }
+    }
+
+    /// A smooth loft through closed spline curves whose shape changes
+    /// sharply between sections close together: the cubic overshoots, its
+    /// continuation past the patch passes back through a corner, and the
+    /// tessellator's inversion of that corner used to land a span outside
+    /// the patch, so the face's boundary did not close. Both fits build a
+    /// solid now, and the monotone one stays inside the sections' extent.
+    #[test]
+    fn a_smooth_loft_through_sharply_changing_spline_sections_tessellates() {
+        let src = concat!(
+            "def lens(z, a, t):\n",
+            "    yc = (t - 1.2) / 2.0\n",
+            "    b = (t + 1.2) / 2.0\n",
+            "    return [(8 + a * math.cos(k * 22.5), yc + b * math.sin(k * 22.5), z) for k in range(16)]\n",
+            "secs = [(0.0, 2.3, -0.2), (1.0, 2.3, 2.2), (2.6, 1.6, 1.45), (4.0, 0.9, 0.7)]\n",
+            "cur = []\n",
+            "for (e, a, t) in secs:\n",
+            "    pts = lens(10 - e, a, t)\n",
+            "    cur.append(curve(pts[0]).spline(pts[1:]).close())\n",
+            "g = loft(list(reversed(cur)), ruled=False, name=\"g\")\n",
+            "assert_solid(g)\n",
+            "m = loft(list(reversed(cur)), ruled=False, fit=fit.monotone, name=\"m\")\n",
+            "assert_solid(m)\n",
+            "lo, hi = m.bbox()\n",
+            "assert_true(hi[0] <= 10.3 + 1e-3 and lo[0] >= 5.7 - 1e-3, msg=str((lo, hi)))\n",
+            "assert_true(g.bbox()[1][0] > 10.3 + 0.05, msg=\"the global fit overshoots here\")\n",
+        );
+        let ctx = eval_with(src, &[]);
+        let errs = messages(&ctx, Severity::Error);
+        assert!(errs.is_empty(), "{errs:?}");
+        let ctx = eval_with("a = sketch(XY).rect(4, 4)\nb = sketch(XY.offset(5)).rect(2, 2)\nloft([a, b], fit=\"monotone\")\n", &[]);
+        assert!(messages(&ctx, Severity::Error).iter().any(|e| e.contains("ruled=False")), "{:?}", ctx.diagnostics);
     }
 
     fn doc_of(name: &str) -> String {

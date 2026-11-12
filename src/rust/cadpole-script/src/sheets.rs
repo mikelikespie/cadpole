@@ -217,6 +217,10 @@ pub struct KSheetView {
     pub ty: f64,
     pub clip: (f64, f64, f64, f64),
     pub bounds: Option<(f64, f64, f64, f64)>,
+    /// Model space to the view's frame, so a method may take a 3-D model
+    /// point; `None` for a view with no projection behind it.
+    #[allocative(skip)]
+    pub frame: Option<cadpole_drawing::Frame>,
 }
 starlark_simple_value!(KSheetView);
 
@@ -232,6 +236,23 @@ impl KSheetView {
     }
     fn to_paper(&self, p: P2) -> P2 {
         self.xform().apply(p)
+    }
+    /// A point of the view's frame from `(x, y)` (frame coordinates, as
+    /// every view method takes) or `(x, y, z)` (a model point, projected
+    /// the way the view projects the model: on an axonometric, the corner
+    /// of a body lands on the drawn corner).
+    fn frame_point(&self, v: &VecArg, what: &str) -> anyhow::Result<P2> {
+        if v.items.len() != 3 {
+            return p2(v, what);
+        }
+        let p = crate::check::vec3(v, what)?;
+        match &self.frame {
+            Some(f) => Ok(f.to_frame(p)),
+            None => anyhow::bail!("{what}: a 3-D model point needs a view that projects the model; give (x, y) in the view's frame"),
+        }
+    }
+    fn frame_points(&self, v: &UnpackList<VecArg>, what: &str) -> anyhow::Result<Vec<P2>> {
+        v.items.iter().map(|p| self.frame_point(p, what)).collect()
     }
 }
 
@@ -659,6 +680,7 @@ fn place_view<'v>(
         st.ctx.borrow_mut().diagnostics.push(cadpole_core::context::Diagnostic::warning(format!("{what}: {n}")).with_span(span.clone()));
     }
     let model_bounds = cropped_bounds(geometry.bounds, place.crop, what)?;
+    let frame = geometry.frame;
     let (group, scale, tx, ty, clip, bounds) = with_sheet(eval, sheet, |set, d| {
         let area = set.drawing_area();
         let s = match scale {
@@ -715,7 +737,7 @@ fn place_view<'v>(
         set.sheets[sheet.index].views += 1;
         Ok(())
     })?;
-    Ok(KSheetView { set: sheet.set, sheet: sheet.index, group, scale, tx, ty, clip, bounds })
+    Ok(KSheetView { set: sheet.set, sheet: sheet.index, group, scale, tx, ty, clip, bounds, frame })
 }
 
 /// The name of the group inside a view that `under=True` draws into.
@@ -2015,9 +2037,12 @@ impl<'v> StarlarkValue<'v> for KSheetView {
 
 #[starlark_module]
 fn sheet_view_methods(builder: &mut MethodsBuilder) {
-    /// The paper point a model point of this view's frame lands on.
+    /// The paper point a point lands on: `(x, y)` in this view's frame, or
+    /// `(x, y, z)`, a model point projected as the view projects the model
+    /// (a corner of a body on an axonometric lands where the corner is
+    /// drawn), so a callout can be placed on the geometry.
     fn point<'v>(this: &KSheetView, #[starlark(require = pos)] p: VecArg, heap: Heap<'v>) -> anyhow::Result<Value<'v>> {
-        let q = this.to_paper(p2(&p, "point")?);
+        let q = this.to_paper(this.frame_point(&p, "point")?);
         Ok(heap.alloc((q.x, q.y)))
     }
 
@@ -2047,7 +2072,8 @@ fn sheet_view_methods(builder: &mut MethodsBuilder) {
         Ok(NoneType)
     }
 
-    /// A polyline through model points of this view's frame; weight and
+    /// A polyline through points of this view's frame (or 3-D model points,
+    /// projected as the view projects the model); weight and
     /// dash in paper mm. `under=True` paints it beneath the view's own line
     /// work.
     #[allow(clippy::too_many_arguments)]
@@ -2063,7 +2089,7 @@ fn sheet_view_methods(builder: &mut MethodsBuilder) {
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<NoneType> {
         let heap = eval.heap();
-        let pts = points_arg(&points, "polyline: point")?;
+        let pts = this.frame_points(&points, "polyline: point")?;
         if pts.len() < 2 {
             anyhow::bail!("polyline: needs at least 2 points");
         }
@@ -2082,8 +2108,9 @@ fn sheet_view_methods(builder: &mut MethodsBuilder) {
         Ok(NoneType)
     }
 
-    /// Text at a model point of this view's frame; `size` in paper mm,
-    /// the rest as `Sheet.text`. Returns the measured width in paper mm.
+    /// Text at a point of this view's frame, or at a 3-D model point
+    /// projected as the view projects the model; `size` in paper mm, the
+    /// rest as `Sheet.text`. Returns the measured width in paper mm.
     #[allow(clippy::too_many_arguments)]
     fn text<'v>(
         this: &KSheetView,
@@ -2097,7 +2124,7 @@ fn sheet_view_methods(builder: &mut MethodsBuilder) {
         #[starlark(require = named)] color: Option<Value<'v>>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<f64> {
-        let at = p2(&at, "text: at")?;
+        let at = this.frame_point(&at, "text: at")?;
         let size = num(&size, "text: size")?;
         let rotation = num(&rotation, "text: rotation")?;
         let anchor = anchor_arg(align, valign, "text")?;
@@ -2110,8 +2137,10 @@ fn sheet_view_methods(builder: &mut MethodsBuilder) {
         })
     }
 
-    /// A label with a leader, both ends model points of this view's frame:
-    /// the text at `at`, the arrow at `to`.
+    /// A label with a leader, both ends points of this view's frame or 3-D
+    /// model points (projected as the view projects the model, so the
+    /// arrow can sit on a body's corner in an axonometric): the text at
+    /// `at`, the arrow at `to`.
     fn label<'v>(
         this: &KSheetView,
         #[starlark(require = pos)] text: &str,
@@ -2120,8 +2149,8 @@ fn sheet_view_methods(builder: &mut MethodsBuilder) {
         #[starlark(require = named, default = UnpackFloat(2.0))] size: UnpackFloat,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<NoneType> {
-        let at = p2(&at, "label: at")?;
-        let to = p2(&to, "label: to")?;
+        let at = this.frame_point(&at, "label: at")?;
+        let to = this.frame_point(&to, "label: to")?;
         let size = num(&size, "label: size")?;
         with_view(eval, this, |set, d, g| {
             let l = d.layer(cadpole_drawing::layer::TEXT);
@@ -2265,6 +2294,42 @@ mod tests {
     }
 
     const HOUSE: &str = "house = box(9000, 6000, 5000, name=\"house\")\n";
+
+    /// A 3-D model point lands where the view draws it: on a south
+    /// elevation (x, y, z) is the frame's (x, z) whatever y is, and on an
+    /// axonometric the eight corners of a box span exactly the paper
+    /// bounds of the drawn box. Labels, text and polylines take the same
+    /// points.
+    #[test]
+    fn a_view_takes_three_d_model_points() {
+        let src = format!(
+            "{HOUSE}\
+             s = sheet_set(\"demo\", size=sheet.arch_d, scale=\"1:48\")\n\
+             b = s.sheet(\"A1.0\", \"VIEWS\")\n\
+             e = b.elevation_view(house, direction=\"south\", at=(400, 100))\n\
+             assert_eq(e.point((1000, 0, 2500)), e.point((1000, 2500)))\n\
+             assert_eq(e.point((1000, 4000, 2500)), e.point((1000, 2500)))\n\
+             for az, el in [(45, 30), (30, 20), (-60, 45)]:\n\
+             \x20   ax = b.axon_view(house, az=az, el=el, box=(600, 300, 780, 500), look=\"color\" if az == 30 else \"lines\")\n\
+             \x20   ps = [ax.point((x, y, z)) for x in (0, 9000) for y in (0, 6000) for z in (0, 5000)]\n\
+             \x20   x0, y0, x1, y1 = ax.bounds\n\
+             \x20   assert_true(abs(min([p[0] for p in ps]) - x0) < 1e-6 and abs(max([p[0] for p in ps]) - x1) < 1e-6, msg=str((ps, ax.bounds)))\n\
+             \x20   assert_true(abs(min([p[1] for p in ps]) - y0) < 1e-6 and abs(max([p[1] for p in ps]) - y1) < 1e-6, msg=str((ps, ax.bounds)))\n\
+             \x20   ax.label(\"ROOF\", at=(9000, 6000, 7000), to=(9000, 6000, 5000))\n\
+             \x20   ax.text(\"CORNER\", at=(0, 0, 5000))\n\
+             \x20   ax.polyline([(0, 0, 0), (9000, 0, 0), (9000, 0, 5000)])\n\
+             x = b.section_view(house, plane=\"y=3000\", at=(400, 300))\n\
+             assert_eq(x.point((1000, 3000, 2500)), x.point((1000, 5000, 2500)))\n\
+             export(s, \"views.pdf\")\n"
+        );
+        let ev = eval(&src);
+        assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+        let src = format!(
+            "{HOUSE}s = sheet_set(\"demo\", size=sheet.arch_d, scale=\"1:48\")\nb = s.sheet(\"A1.0\", \"V\")\n\
+             ax = b.axon_view(house, box=(600, 300, 780, 500))\nax.point((1, 2, 3, 4))\n"
+        );
+        assert!(!errors(&eval(&src)).is_empty(), "four numbers is not a point");
+    }
 
     /// The whole vocabulary on two sheets, one export, and the file the
     /// host writes from it: a two-page PDF whose text reads back.

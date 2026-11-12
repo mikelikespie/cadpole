@@ -651,7 +651,7 @@ cup_bore = extrude(sketch(plane(origin=(X_CUP0 - 1.0, R_SW, 0.0), normal=(1, 0, 
 cup_slot = pattern_circular(box(1.0, 1.6, 0.5, at=(X_CUP0 + 0.5, R_SW + 1.0, -0.25), name="swirler_slot"), 6, axis=(1, 0, 0), origin=(0.0, R_SW, 0.0), merge=True, name="swirler_slots")
 liner_blank_cups = union([liner_blank] + at_injectors(cup, "swirler"), kernel="mesh", name="liner_domed")
 cone_slope = (LINER_R_EXIT - LINER_R_OUT) / (X_L1 - X_LC)
-cone_tilt = -math.degrees(math.atan(-cone_slope))  # the cone's outward normal, turned from the radial toward -x
+cone_tilt = -math.atan(-cone_slope)  # the cone's outward normal, turned from the radial toward -x
 
 
 def liner_r(x):

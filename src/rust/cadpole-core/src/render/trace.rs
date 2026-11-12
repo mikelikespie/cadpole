@@ -1587,6 +1587,11 @@ struct Seg {
     /// it did not (`Bsdf::nee_useful`), the BSDF path is the only estimator
     /// and carries weight 1.
     nee: bool,
+    /// The nearest hit this branch accepts: `Tracer::eps` for a ray leaving
+    /// an opaque surface, and the much finer [`Tracer::fine_eps`] for one
+    /// that has just crossed into or out of a see-through solid, so the far
+    /// face of a thin pane is not stepped over.
+    tmin: f32,
 }
 
 pub(crate) struct Tracer<'a> {
@@ -1642,6 +1647,8 @@ pub(crate) struct Tracer<'a> {
     eps: f32,
     far: f32,
     bvh_stats: BvhStats,
+    /// [`RenderOptions::haze`].
+    haze: Option<super::Haze>,
 }
 
 /// The smallest offset that moves a point of `scene` to a different f32:
@@ -1822,6 +1829,7 @@ impl<'a> Tracer<'a> {
             eps: (scene.diag * 1e-4).max(magnitude_eps(scene)).max(1e-5),
             far: scene.diag * 1e4 + 1e4,
             bvh_stats,
+            haze: opts.haze.filter(|h| h.half_distance > 0.0 && h.half_distance.is_finite()),
         }
     }
 
@@ -2199,6 +2207,28 @@ impl<'a> Tracer<'a> {
         add(s.p, scale(s.ng, sign * self.eps * 4.0))
     }
 
+    /// The offset a ray crossing a see-through surface at `p` steps off it
+    /// by: 64 ulps of the point's largest coordinate, which is all the
+    /// error a hit point rebuilt from barycentrics carries, and never more
+    /// than [`Tracer::eps`].
+    #[inline]
+    fn fine_eps(&self, p: [f32; 3]) -> f32 {
+        let m = p[0].abs().max(p[1].abs()).max(p[2].abs());
+        (m * f32::EPSILON * 64.0).max(1e-5).min(self.eps)
+    }
+
+    /// The scale of what the camera is looking at, once the camera is
+    /// known: `eps` follows the nearer of the scene's size and the
+    /// distance to the camera's target, so a sky dome or a far hill in the
+    /// scene does not make the offsets near the subject metres long. It
+    /// never drops below what f32 resolves at the scene's coordinates.
+    fn with_subject_distance(mut self, scene: &Scene, dist: f32) -> Self {
+        if dist.is_finite() && dist > 0.0 && dist < scene.diag {
+            self.eps = (dist * 1e-4).max(magnitude_eps(scene)).max(1e-5);
+        }
+        self
+    }
+
     /// How far short of a light a shadow ray stops. Comfortably more than
     /// the `4 * eps` [`Tracer::offset_origin`] pushes the ray start, and
     /// still ~1e-3 of the scene, so it cannot skip a real occluder.
@@ -2247,6 +2277,7 @@ impl<'a> Tracer<'a> {
             through: true,
             caustic: false,
             nee: true,
+            tmin: self.eps,
         };
         stack.clear();
         loop {
@@ -2287,6 +2318,7 @@ impl<'a> Tracer<'a> {
             mut through,
             mut caustic,
             mut nee,
+            mut tmin,
         } = seg;
         let mut hit_anything = false;
         let clamp = if self.pt.clamp > 0.0 { self.pt.clamp } else { f32::INFINITY };
@@ -2301,7 +2333,7 @@ impl<'a> Tracer<'a> {
             // what the eye sees — through a clear guide, or in a mirror —
             // and it sees guide geometry. After that it is light
             // transport, and guides are not there.
-            let hit = self.intersect(o, d, self.eps, self.far, travelled, view, !caustic);
+            let hit = self.intersect(o, d, tmin, self.far, travelled, view, !caustic);
 
             // --- travel through a medium, if we are inside one
             if let Some(m) = medium {
@@ -2386,6 +2418,9 @@ impl<'a> Tracer<'a> {
             }
             hit_anything = true;
             travelled += dot(sub(s.p, o), d).abs();
+            if depth == 0 && seen.first_t.is_none() {
+                seen.first_t = Some(travelled);
+            }
             if depth == 0 && !first.set {
                 *first = FirstHit { n: s.ns, albedo: s.mat.base_color, dist: travelled, set: true };
             }
@@ -2397,7 +2432,13 @@ impl<'a> Tracer<'a> {
                 let pdf_l = self.tri_light_pdf(s.tri, d, dist, cos_l);
                 let w = self.mis_weight(specular, caustic, nee, prev_pdf, pdf_l);
                 let term = scale(mul(beta, s.mat.emissive), w);
-                *l = add(*l, indirect(depth, term));
+                // Emission the eye sees down a pure specular chain — a lamp
+                // through a window, in a mirror, inside a glass shade — is
+                // what the camera sees, not a caustic, and goes in exactly
+                // as a lamp seen directly does. Clamped, a small bright lamp
+                // behind glass averaged into its pixel at a fraction of its
+                // brightness and read as switched off.
+                *l = add(*l, if caustic { indirect(depth, term) } else { term });
             }
 
             if depth >= self.pt.max_bounces {
@@ -2468,6 +2509,7 @@ impl<'a> Tracer<'a> {
                             through: false,
                             caustic,
                             nee,
+                            tmin: self.eps,
                         });
                         let e2 = bsdf.eta * bsdf.eta;
                         forced = Some(BsdfSample {
@@ -2499,7 +2541,18 @@ impl<'a> Tracer<'a> {
             if bs.transmitted {
                 medium = if s.entering { Medium::new(&s.mat) } else { None };
             }
-            o = self.offset_origin(&s, wi);
+            if bs.transmitted {
+                // Into or out of a see-through solid: step off the surface
+                // by a few ulps of the point rather than a share of the
+                // scene, or a pane thinner than that share has no far face.
+                let e = self.fine_eps(s.p);
+                let sign = if dot(wi, s.ng) < 0.0 { -1.0 } else { 1.0 };
+                o = add(s.p, scale(s.ng, sign * e * 4.0));
+                tmin = e;
+            } else {
+                o = self.offset_origin(&s, wi);
+                tmin = self.eps;
+            }
             d = wi;
             prev_pdf = bs.pdf;
             specular = bs.specular;
@@ -2558,6 +2611,25 @@ impl<'a> Tracer<'a> {
         if !self.occluded_light(origin, dir, self.eps, self.far) {
             seen.lit += sky;
         }
+    }
+
+    /// Aerial perspective on a camera ray that met a surface `t` away along
+    /// `d`: what it saw, mixed toward the haze's colour by the share of the
+    /// light the air between replaced. The haze's colour is its own, or
+    /// the environment at the horizon in the ray's direction, so distant
+    /// things fade into the sky behind them, warmer toward the sun.
+    fn hazed(&self, c: [f32; 3], d: [f32; 3], t: f32) -> [f32; 3] {
+        let Some(h) = &self.haze else { return c };
+        let tr = h.transmittance(t);
+        let air = match h.color {
+            Some(col) => col,
+            None => {
+                let r = (d[0] * d[0] + d[1] * d[1]).sqrt();
+                let horizon = if r > 1e-6 { normalize([d[0] / r, d[1] / r, d[2].max(0.03)]) } else { [0.0, 0.0, 1.0] };
+                env(&self.lights, horizon)
+            }
+        };
+        add(scale(c, tr), scale(air, 1.0 - tr))
     }
 
     /// MIS weight for a light found by following the BSDF.
@@ -2789,6 +2861,9 @@ struct Seen {
     /// What that point receives with the model in the way, and without.
     lit: f32,
     open: f32,
+    /// How far along the camera ray the first surface is: what the haze
+    /// attenuates by.
+    first_t: Option<f32>,
 }
 
 /// What the camera ray saw first: the guide the denoiser stops its filter
@@ -3061,7 +3136,7 @@ pub(crate) fn trace_layers(items: &[Item<'_>], cam: &Camera, opts: &RenderOption
     let samples = opts.samples.max(1);
 
     let t0 = super::aa::now_ms();
-    let tracer = Tracer::new(items, &scene, opts, view.azimuth());
+    let tracer = Tracer::new(items, &scene, opts, view.azimuth()).with_subject_distance(&scene, view.focus);
     let t1 = super::aa::now_ms();
 
     let n = (w as usize) * (h as usize);
@@ -3103,6 +3178,10 @@ pub(crate) fn trace_layers(items: &[Item<'_>], cam: &Camera, opts: &RenderOption
                 let mut first = FirstHit::default();
                 let mut seen = Seen::default();
                 let (c, hit) = tracer.radiance(o, d, &view, &mut smp, &mut branches, &mut crossings, &mut first, &mut seen);
+                let c = match seen.first_t {
+                    Some(t) if hit => tracer.hazed(c, d, t),
+                    _ => c,
+                };
                 if seen.caught {
                     caught += 1;
                     lit += seen.lit;
@@ -3410,6 +3489,7 @@ mod tests {
             up: Vec3::Z,
             fov_degrees: 30.0,
             orthographic: false,
+            shift: 0.0,
         };
         let opts = env_only_opts(128, 128, 96);
         let glass = Material {
@@ -3488,6 +3568,7 @@ mod tests {
                 up: Vec3::Y,
                 fov_degrees: 20.0,
                 orthographic: true,
+                shift: 0.0,
             };
             let mat = mat(d);
             trace(&[Item::new(&m, &mat, &[])], &cam, &opts).mean(10, 10, 14, 14)
@@ -3521,7 +3602,7 @@ mod tests {
         let lamp = quad([-60.0, -60.0, -20.0], [60.0, -60.0, -20.0], [60.0, 60.0, -20.0], [-60.0, 60.0, -20.0]);
         let red = Material { base_color: [0.0; 3], emissive: [4.0, 0.0, 0.0], ..Material::default() };
         let slab = box_mesh([-140.0, -140.0, 0.0], [140.0, 140.0, 3.0]);
-        let cam = Camera { eye: Vec3::new(0.0, 0.0, 200.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 24.0, orthographic: true };
+        let cam = Camera { eye: Vec3::new(0.0, 0.0, 200.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 24.0, orthographic: true, shift: 0.0 };
         let opts = RenderOptions {
             path: PathTraceOptions { direct_scale: 0.0, ground: false, clamp: 0.0, ..PathTraceOptions::default() },
             ..base_opts(12, 12, 24)
@@ -3565,6 +3646,7 @@ mod tests {
             up: Vec3::Y,
             fov_degrees: 24.0,
             orthographic: true,
+            shift: 0.0,
         };
         let opts = RenderOptions {
             path: PathTraceOptions { direct_scale: 0.0, ground: false, clamp: 0.0, ..PathTraceOptions::default() },
@@ -3622,6 +3704,7 @@ mod tests {
             up: Vec3::Z,
             fov_degrees: 40.0,
             orthographic: false,
+            shift: 0.0,
         };
         let opts = RenderOptions {
             path: PathTraceOptions { direct_scale: 0.0, ground: false, clamp: 0.0, ..PathTraceOptions::default() },
@@ -3675,6 +3758,7 @@ mod tests {
             up: Vec3::Z,
             fov_degrees: 40.0,
             orthographic: false,
+            shift: 0.0,
         };
         let opts = RenderOptions {
             path: PathTraceOptions {
@@ -3755,6 +3839,7 @@ mod tests {
             up: Vec3::Z,
             fov_degrees: 44.0,
             orthographic: false,
+            shift: 0.0,
         };
         let opts = RenderOptions {
             path: PathTraceOptions { direct_scale: 0.0, ground: false, clamp: 0.0, ..PathTraceOptions::default() },
@@ -4178,6 +4263,7 @@ mod tests {
             up: Vec3::Z,
             fov_degrees: 24.0,
             orthographic: false,
+            shift: 0.0,
         };
         // The scene needs one item for a floor to exist at all; a tiny box
         // far off to the side gives the floor its height and stays out of
@@ -4204,7 +4290,7 @@ mod tests {
         // A sharp emissive edge behind the focus plane blurs at f/1.
         let far = quad([-40.0, 200.0, -40.0], [0.0, 200.0, -40.0], [0.0, 200.0, 40.0], [-40.0, 200.0, 40.0]);
         let lamp = Material { base_color: [0.0; 3], emissive: [4.0, 4.0, 4.0], ..Material::default() };
-        let cam = Camera { eye: Vec3::new(0.0, -60.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 30.0, orthographic: false };
+        let cam = Camera { eye: Vec3::new(0.0, -60.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 30.0, orthographic: false, shift: 0.0 };
         let opts = RenderOptions {
             path: PathTraceOptions { direct_scale: 0.0, ground: false, clamp: 0.0, ..PathTraceOptions::default() },
             ..base_opts(96, 32, 64)
@@ -4242,7 +4328,7 @@ mod tests {
         // bisector normal is (0, -1, 1) / sqrt 2, and the camera sits on it.
         let along = Vec3::new(0.0, -1.0, 1.0).normalized();
         let edge_mid = Vec3::new(0.0, -10.0, 12.0);
-        let cam = Camera { eye: edge_mid + along * 80.0, target: edge_mid, up: Vec3::Z, fov_degrees: 20.0, orthographic: false };
+        let cam = Camera { eye: edge_mid + along * 80.0, target: edge_mid, up: Vec3::Z, fov_degrees: 20.0, orthographic: false, shift: 0.0 };
         // A 16 mm panel 20 mm behind the camera, facing the box.
         let pc = cam.eye + along * 20.0;
         let (ex, ey) = (Vec3::X, along.cross(Vec3::X).normalized());
@@ -4365,7 +4451,7 @@ mod tests {
     fn machined_grooves_are_filtered_at_the_primary_hit() {
         let disc = quad([-20.0, 0.0, -20.0], [20.0, 0.0, -20.0], [20.0, 0.0, 20.0], [-20.0, 0.0, 20.0]);
         let frames = [super::super::FaceFrame { axis_point: [0.0; 3], axis: [0.0, 1.0, 0.0], origin: [0.0; 3], dir: [1.0, 0.0, 0.0], turned: true }];
-        let cam = Camera { eye: Vec3::new(0.0, -90.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 28.0, orthographic: false };
+        let cam = Camera { eye: Vec3::new(0.0, -90.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 28.0, orthographic: false, shift: 0.0 };
         let opts = base_opts(96, 96, 1);
         let view = View::new(&cam, 96, 96);
         // A pixel is about 0.47 mm on the disc; the pitch is 0.02 mm.
@@ -4400,7 +4486,7 @@ mod tests {
         // grooves are the only structure.
         let disc = quad([-20.0, 0.0, -20.0], [20.0, 0.0, -20.0], [20.0, 0.0, 20.0], [-20.0, 0.0, 20.0]);
         let frames = [super::super::FaceFrame { axis_point: [0.0; 3], axis: [0.0, 1.0, 0.0], origin: [0.0; 3], dir: [1.0, 0.0, 0.0], turned: true }];
-        let cam = Camera { eye: Vec3::new(0.0, -90.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 28.0, orthographic: false };
+        let cam = Camera { eye: Vec3::new(0.0, -90.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 28.0, orthographic: false, shift: 0.0 };
         let opts = |w: u32, h: u32, spp: u32| RenderOptions {
             path: PathTraceOptions { direct_scale: 0.0, ground: false, clamp: 0.0, max_bounces: 2, show_environment: true, ..PathTraceOptions::default() },
             ..base_opts(w, h, spp)
@@ -4945,5 +5031,228 @@ mod tests {
         let items = [Item::new(&mesh, &guide, &edges)];
         let t = Tracer::new(&items, &scene, &opts, 0.0);
         assert!(t.tri_lights.is_empty(), "a guide alone is no light");
+    }
+
+    // -----------------------------------------------------------------
+    // Daylight, haze, glass and the dark room.
+
+    fn compass(az: f64, el: f64) -> Vec3 {
+        crate::sun::direction(az, el)
+    }
+
+    fn warmth(c: [f32; 3]) -> f32 {
+        c[0] / c[2].max(1e-6)
+    }
+
+    /// A camera at the origin looking along a compass direction.
+    fn looking(az: f64, el: f64, fov: f64) -> Camera {
+        Camera { eye: Vec3::ZERO, target: compass(az, el) * 1000.0, up: Vec3::Z, fov_degrees: fov, orthographic: false, shift: 0.0 }
+    }
+
+    /// `--backdrop sky` with a sun low in the west: the sky toward the sun
+    /// is brighter and warmer than the sky opposite, and the zenith is
+    /// blue. The frames stop short of the sun's own disc.
+    #[test]
+    fn the_sky_backdrop_warms_toward_a_low_sun() {
+        let opts = RenderOptions {
+            backdrop: Some(Backdrop::Sky),
+            sun: Some(super::super::SunLight::new(compass(270.0, 6.0))),
+            path: PathTraceOptions { show_environment: true, ground: false, ..PathTraceOptions::default() },
+            ..base_opts(24, 16, 4)
+        };
+        let sky = |az: f64, el: f64| trace(&[], &looking(az, el, 8.0), &opts).mean(0, 0, 24, 16);
+        let toward = sky(270.0, 12.0);
+        let away = sky(90.0, 12.0);
+        let overhead = sky(0.0, 85.0);
+        assert!(lum(toward) > 1.3 * lum(away), "toward the sun {toward:?}, away {away:?}");
+        assert!(warmth(toward) > 1.3 * warmth(away) && warmth(toward) > 1.0, "toward the sun is warm: {toward:?} vs {away:?}");
+        assert!(overhead[2] > 1.2 * overhead[0], "the zenith is blue: {overhead:?}");
+        // The rig is off: the sun is the only cone.
+        let t = Tracer::new(&[], &Scene::from_items(&[]), &opts, 0.0);
+        assert_eq!(t.cones.len(), 1, "under the sky only the sun is a light");
+        // With no sun named the sky brings its own.
+        let t = Tracer::new(&[], &Scene::from_items(&[]), &RenderOptions { sun: None, ..opts.clone() }, 0.0);
+        assert_eq!(t.cones.len(), 1, "the sky's default sun");
+    }
+
+    /// The sun takes the colour of the air it crosses: a white floor under
+    /// a sun 8° up is far warmer, and per unit of sin(elevation) dimmer,
+    /// than under one 60° up; a colour temperature overrides the colour
+    /// and keeps the brightness.
+    #[test]
+    fn a_low_sun_lights_warmer_and_dimmer_than_a_high_one() {
+        use super::super::{SunLight, SunTint};
+        let floor = quad([-50.0, -50.0, 0.0], [50.0, -50.0, 0.0], [50.0, 50.0, 0.0], [-50.0, 50.0, 0.0]);
+        let white = Material { base_color: [0.8, 0.8, 0.8], roughness: 1.0, ..Material::default() };
+        let cam = Camera { eye: Vec3::new(0.0, 0.0, 100.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 30.0, orthographic: true, shift: 0.0 };
+        let lit = |sun: SunLight| {
+            let opts = RenderOptions {
+                lighting: Lighting::None,
+                sun: Some(sun),
+                path: PathTraceOptions { ground: false, ..PathTraceOptions::default() },
+                ..base_opts(8, 8, 16)
+            };
+            trace(&[Item::new(&floor, &white, &[])], &cam, &opts).mean(2, 2, 6, 6)
+        };
+        let high = lit(SunLight::new(compass(180.0, 60.0)));
+        let low = lit(SunLight::new(compass(180.0, 8.0)));
+        assert!(warmth(high) < 1.25, "a high sun is near white: {high:?}");
+        assert!(warmth(low) > 2.0 * warmth(high), "a low sun is orange: {low:?} vs {high:?}");
+        let per_sin = |c: [f32; 3], el: f64| lum(c) / (el.to_radians().sin() as f32);
+        assert!(per_sin(low, 8.0) < 0.75 * per_sin(high, 60.0), "the low sun is dimmer: {low:?} vs {high:?}");
+        let tint = SunTint::parse("6500K", 0.0).unwrap();
+        let neutral = lit(tint.apply(SunLight::new(compass(180.0, 8.0))));
+        assert!((warmth(neutral) - 1.0).abs() < 0.15, "6500 K is white whatever the elevation: {neutral:?}");
+        assert!((lum(neutral) - lum(low)).abs() < 0.05 * lum(low), "the colour keeps the brightness");
+        let double = lit(SunTint::parse("auto", 2.0).unwrap().apply(SunLight::new(compass(180.0, 8.0))));
+        assert!((lum(double) / lum(low) - 2.0).abs() < 0.05);
+    }
+
+    /// Haze replaces what the camera sees with the air's colour by
+    /// distance, on camera rays alone: a block 400 m off fades nearly into
+    /// the sky, while a block 6 m off and the sun's shadow beside it change
+    /// only by the little air in front of them: the shadow ray is not
+    /// hazed.
+    #[test]
+    fn haze_fades_the_distance_and_leaves_the_shadows_alone() {
+        use super::super::{Haze, SunLight};
+        let near = box_mesh([-600.0, 6000.0, 0.0], [600.0, 7200.0, 1500.0]);
+        let far = box_mesh([-40_000.0, 400_000.0, 0.0], [40_000.0, 480_000.0, 100_000.0]);
+        let mat = Material { base_color: [0.05, 0.05, 0.05], roughness: 0.9, ..Material::default() };
+        let items = [Item::new(&near, &mat, &[]), Item::new(&far, &mat, &[])];
+        let cam = Camera {
+            eye: Vec3::new(0.0, 0.0, 1700.0),
+            target: Vec3::new(0.0, 6600.0, 900.0),
+            up: Vec3::Z,
+            fov_degrees: 40.0,
+            orthographic: false,
+            shift: 0.0,
+        };
+        let (w, h) = (64u32, 48u32);
+        let clear = RenderOptions {
+            backdrop: Some(Backdrop::Sky),
+            sun: Some(SunLight::new(compass(240.0, 35.0))),
+            path: PathTraceOptions { show_environment: true, ..PathTraceOptions::default() },
+            ..base_opts(w, h, 32)
+        };
+        let hazy = RenderOptions { haze: Haze::parse("100m").unwrap(), ..clear.clone() };
+        let a = trace(&items, &cam, &clear);
+        let b = trace(&items, &cam, &hazy);
+        let view = View::new(&cam, w, h);
+        let at = |hdr: &Hdr, p: [f32; 3]| {
+            let s = view.project(p).unwrap();
+            hdr.mean(s[0] as u32 - 1, s[1] as u32 - 1, s[0] as u32 + 2, s[1] as u32 + 2)
+        };
+        let near_face = [0.0, 6000.0, 700.0];
+        let far_face = [12_000.0, 400_000.0, 30_000.0];
+        let shadow = [1100.0, 6800.0, 0.0];
+        let t = Tracer::new(&items, &Scene::from_items(&items), &hazy, view.azimuth());
+        let air_toward = |p: [f32; 3]| {
+            let d = normalize([p[0], p[1], p[2] - 1700.0]);
+            let r = (d[0] * d[0] + d[1] * d[1]).sqrt();
+            lum(env(&t.lights, normalize([d[0] / r, d[1] / r, d[2].max(0.03)])))
+        };
+        // What the haze alone does to a point: its own radiance through
+        // the air between, plus the air. A shadow ray dimmed by the haze
+        // would come out darker than this.
+        let expected = |c: f32, p: [f32; 3]| {
+            let dist = ((p[0] * p[0] + p[1] * p[1] + (p[2] - 1700.0) * (p[2] - 1700.0)) as f32).sqrt();
+            let tr = 0.5f32.powf(dist / 100_000.0);
+            c * tr + air_toward(p) * (1.0 - tr)
+        };
+        for (name, p) in [("near block", near_face), ("shadow on the near ground", shadow)] {
+            let (c0, c1) = (lum(at(&a, p)), lum(at(&b, p)));
+            let want = expected(c0, p);
+            assert!((c1 - want).abs() < 0.05 * want, "{name}: clear {c0}, hazy {c1}, camera-ray haze alone gives {want}");
+        }
+        let air = air_toward(far_face);
+        let (f0, f1) = (lum(at(&a, far_face)), lum(at(&b, far_face)));
+        assert!((f1 - air).abs() < 0.1 * air && (f0 - air).abs() > 0.5 * air, "the far block fades to the air ({air}): {f0} -> {f1}");
+        assert!(Haze::parse("1200ft,#c0c8d0").unwrap().unwrap().half_distance > 365_000.0);
+        assert!(Haze::parse("12 parsecs").is_err() && Haze::parse("").unwrap().is_none());
+    }
+
+    /// A small bright lamp behind a clear window shows at its own
+    /// brightness, less the two surfaces' reflection, rather than clipped
+    /// to the firefly limit as if it were a caustic.
+    #[test]
+    fn a_lamp_behind_glass_shows_at_its_own_brightness() {
+        let lamp = quad([-10.0, -10.0, -30.0], [10.0, -10.0, -30.0], [10.0, 10.0, -30.0], [-10.0, 10.0, -30.0]);
+        let glow = Material { base_color: [0.0; 3], emissive: [40.0, 30.0, 20.0], ..Material::default() };
+        let pane = box_mesh([-40.0, -40.0, -3.0], [40.0, 40.0, 3.0]);
+        let glass = Material { base_color: [1.0; 3], roughness: 0.0, transmission: 1.0, ior: 1.5, ..Material::default() };
+        let cam = Camera { eye: Vec3::new(0.0, 0.0, 200.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 24.0, orthographic: true, shift: 0.0 };
+        let opts = RenderOptions {
+            lighting: Lighting::None,
+            path: PathTraceOptions { ground: false, ..PathTraceOptions::default() },
+            ..base_opts(32, 32, 16)
+        };
+        let total = |h: &Hdr| lum(h.mean(0, 0, 32, 32));
+        let bare = total(&trace(&[Item::new(&lamp, &glow, &[])], &cam, &opts));
+        let behind = total(&trace(&[Item::new(&lamp, &glow, &[]), Item::new(&pane, &glass, &[])], &cam, &opts));
+        assert!(bare > 0.0);
+        assert!(behind > 0.85 * bare && behind < 1.0 * bare, "the lamp through the window: {behind} against {bare}");
+    }
+
+    /// Light leaves a lit room through its window: the ground outside is
+    /// lit in front of a clear pane and dark in front of an opaque one.
+    #[test]
+    fn a_lit_room_lights_the_ground_through_its_window() {
+        // A wall in y 0..4 with a 40 x 30 opening, a ceiling-high lamp
+        // inside facing the window, and the ground at z = 0.
+        let wall = [
+            box_mesh([-80.0, 0.0, 0.0], [-20.0, 4.0, 60.0]),
+            box_mesh([20.0, 0.0, 0.0], [80.0, 4.0, 60.0]),
+            box_mesh([-20.0, 0.0, 0.0], [20.0, 4.0, 10.0]),
+            box_mesh([-20.0, 0.0, 40.0], [20.0, 4.0, 60.0]),
+        ];
+        let pane = box_mesh([-20.0, 1.5, 10.0], [20.0, 2.5, 40.0]);
+        let lamp = quad([-30.0, 60.0, 5.0], [30.0, 60.0, 5.0], [30.0, 60.0, 55.0], [-30.0, 60.0, 55.0]);
+        let paint = Material { base_color: [0.5; 3], roughness: 0.9, ..Material::default() };
+        let glow = Material { base_color: [0.0; 3], emissive: [6.0, 4.5, 3.0], ..Material::default() };
+        let cam = Camera { eye: Vec3::new(0.0, -40.0, 200.0), target: Vec3::new(0.0, -40.0, 0.0), up: Vec3::Y, fov_degrees: 24.0, orthographic: true, shift: 0.0 };
+        let opts = RenderOptions { lighting: Lighting::None, ..base_opts(24, 24, 32) };
+        let ground = |pane_mat: &Material| {
+            let mut items: Vec<Item<'_>> = wall.iter().map(|m| Item::new(m, &paint, &[])).collect();
+            items.push(Item::new(&pane, pane_mat, &[]));
+            items.push(Item::new(&lamp, &glow, &[]));
+            lum(trace(&items, &cam, &opts).mean(8, 6, 16, 14))
+        };
+        let clear = ground(&Material { base_color: [1.0; 3], roughness: 0.0, transmission: 1.0, ior: 1.5, ..Material::default() });
+        let shut = ground(&paint);
+        assert!(clear > 5.0 * shut + 1e-3, "the window lets the room's light out: clear {clear}, opaque {shut}");
+    }
+
+    /// `--lighting none`: no rig and a black environment, so a scene with
+    /// nothing emissive is black, background included, and an emissive
+    /// panel is what lights it.
+    #[test]
+    fn lights_off_leaves_only_what_the_scene_emits() {
+        let block = box_mesh([-10.0, -10.0, 0.0], [10.0, 10.0, 20.0]);
+        let panel = quad([-30.0, -30.0, 40.0], [-30.0, 30.0, 40.0], [30.0, 30.0, 40.0], [30.0, -30.0, 40.0]);
+        let mat = Material { base_color: [0.7; 3], roughness: 0.6, ..Material::default() };
+        let glow = Material { base_color: [0.0; 3], emissive: [3.0; 3], ..Material::default() };
+        let (lo, hi) = (Vec3::new(-30.0, -30.0, 0.0), Vec3::new(30.0, 30.0, 40.0));
+        let cam = Camera::preset("iso", lo, hi, 0.3);
+        let opts = RenderOptions {
+            lighting: Lighting::None,
+            path: PathTraceOptions { show_environment: true, ..PathTraceOptions::default() },
+            ..base_opts(32, 24, 16)
+        };
+        let t = Tracer::new(&[], &Scene::from_items(&[]), &opts, 0.0);
+        assert!(t.cones.is_empty(), "no rig lights");
+        for d in [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]] {
+            assert_eq!(env(&t.lights, d), [0.0; 3], "a black environment");
+        }
+        let dark = trace(&[Item::new(&block, &mat, &[])], &cam, &opts);
+        assert!(dark.px.iter().all(|c| lum(*c) < 1e-6), "nothing lights the block, the floor or the sky");
+        // The panel faces down, away from the camera: what the camera sees
+        // lit is the block's top and the floor.
+        let lit = trace(&[Item::new(&block, &mat, &[]), Item::new(&panel, &glow, &[])], &cam, &opts);
+        assert!(lum(lit.mean(0, 0, 32, 24)) > 0.02, "the panel lights the scene");
+        // A backdrop colour is the environment again.
+        let custom = RenderOptions { backdrop: Some(Backdrop::Color([0.0, 0.0, 0.2])), ..opts.clone() };
+        let t = Tracer::new(&[], &Scene::from_items(&[]), &custom, 0.0);
+        assert!(t.cones.is_empty() && env(&t.lights, [1.0, 0.0, 0.0])[2] > 0.1);
     }
 }

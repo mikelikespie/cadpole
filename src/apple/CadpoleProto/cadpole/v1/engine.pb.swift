@@ -1159,6 +1159,17 @@ public struct Cadpole_V1_Camera {
   /// Extra padding around the fitted model, as a fraction of its size.
   public var fitMargin: Double = 0
 
+  /// A perspective-control (shift) lens: the frame slides up the image
+  /// plane by this fraction of its height (negative: down) while the view
+  /// direction stays put. 0 is an ordinary lens.
+  public var shift: Double = 0
+
+  /// Level the camera as an architectural photographer does: the view is
+  /// turned horizontal and the lens shifted so the target stays at the
+  /// centre of the frame, so vertical edges come out vertical instead of
+  /// converging. Adds to `shift`.
+  public var level: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1424,15 +1435,20 @@ public struct Cadpole_V1_RenderRequest {
   /// behind. "product": a neutral catalogue rig that turns with the camera —
   /// key 40° to camera-left and 40° up, a large soft fill 55° to the right,
   /// a narrow rim behind — over a brighter grey surround, so a white part
-  /// renders white and a glossy face has something to reflect. Both
-  /// backends honour it.
+  /// renders white and a glossy face has something to reflect. "none":
+  /// no rig and a black environment (unless `backdrop` names one), so only
+  /// the sun and the scene's emissive bodies light it -- a lit room at
+  /// night. Both backends honour it.
   public var lighting: String {
     get {return _storage._lighting}
     set {_uniqueStorage()._lighting = newValue}
   }
 
   /// The surround: "studio" (a grey cyclorama with a soft top light),
-  /// "white", "black" or "#rrggbb". Sets the environment the path tracer
+  /// "white", "black", "#rrggbb", or "sky": an analytic clear daylight sky
+  /// driven by the sun (a default one at 35° when there is none), warm
+  /// toward a low sun and glowing along the horizon, which replaces the
+  /// rig so the sun and the sky are the only lights. Sets the environment the path tracer
   /// shows and reflects, the colour of its floor, and — unless `background`
   /// is given — the rasterizer's background to the same tone, so the two
   /// backends agree. Empty keeps the rig's own gradient, the dark floor and
@@ -1569,6 +1585,32 @@ public struct Cadpole_V1_RenderRequest {
   public var layers: [Cadpole_V1_LayerState] {
     get {return _storage._layers}
     set {_uniqueStorage()._layers = newValue}
+  }
+
+  /// The sun's colour. Empty or "auto" (the default) follows its elevation
+  /// through the atmosphere: near white at 60°, yellow by 20°, orange by 5°,
+  /// red and faint at the horizon. "#rrggbb" or a colour temperature such
+  /// as "3500K" sets it instead, keeping the brightness the elevation gives.
+  public var sunColor: String {
+    get {return _storage._sunColor}
+    set {_uniqueStorage()._sunColor = newValue}
+  }
+
+  /// Multiplier on the sun's irradiance (0 = 1).
+  public var sunIntensity: Double {
+    get {return _storage._sunIntensity}
+    set {_uniqueStorage()._sunIntensity = newValue}
+  }
+
+  /// Path tracing: aerial perspective. "<distance>[unit][,#rrggbb]" -- at
+  /// that distance from the camera half of what is seen is haze (`400m`,
+  /// `1200ft`; a bare number is mm). The haze takes the colour of the
+  /// environment at the horizon in each direction, or the colour given.
+  /// Only camera rays are attenuated, so it dims no shadow and costs
+  /// nothing. Empty is clear air.
+  public var haze: String {
+    get {return _storage._haze}
+    set {_uniqueStorage()._haze = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -1806,6 +1848,13 @@ public struct Cadpole_V1_CameraInfo {
   public var boundsPx: [Double] {
     get {return _storage._boundsPx}
     set {_uniqueStorage()._boundsPx = newValue}
+  }
+
+  /// The lens shift, as a fraction of the frame height the frame slid up
+  /// (`Camera.shift`, after `level`); `projection` already includes it.
+  public var shift: Double {
+    get {return _storage._shift}
+    set {_uniqueStorage()._shift = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -3180,6 +3229,8 @@ extension Cadpole_V1_Camera: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     5: .same(proto: "orthographic"),
     6: .standard(proto: "fov_degrees"),
     7: .standard(proto: "fit_margin"),
+    8: .same(proto: "shift"),
+    9: .same(proto: "level"),
   ]
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -3195,6 +3246,8 @@ extension Cadpole_V1_Camera: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
       case 5: try { try decoder.decodeSingularBoolField(value: &self.orthographic) }()
       case 6: try { try decoder.decodeSingularDoubleField(value: &self.fovDegrees) }()
       case 7: try { try decoder.decodeSingularDoubleField(value: &self.fitMargin) }()
+      case 8: try { try decoder.decodeSingularDoubleField(value: &self.shift) }()
+      case 9: try { try decoder.decodeSingularBoolField(value: &self.level) }()
       default: break
       }
     }
@@ -3226,6 +3279,12 @@ extension Cadpole_V1_Camera: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     if self.fitMargin != 0 {
       try visitor.visitSingularDoubleField(value: self.fitMargin, fieldNumber: 7)
     }
+    if self.shift != 0 {
+      try visitor.visitSingularDoubleField(value: self.shift, fieldNumber: 8)
+    }
+    if self.level != false {
+      try visitor.visitSingularBoolField(value: self.level, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3237,6 +3296,8 @@ extension Cadpole_V1_Camera: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     if lhs.orthographic != rhs.orthographic {return false}
     if lhs.fovDegrees != rhs.fovDegrees {return false}
     if lhs.fitMargin != rhs.fitMargin {return false}
+    if lhs.shift != rhs.shift {return false}
+    if lhs.level != rhs.level {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3293,6 +3354,9 @@ extension Cadpole_V1_RenderRequest: SwiftProtobuf.Message, SwiftProtobuf._Messag
     46: .standard(proto: "shadow_catcher"),
     47: .same(proto: "supersample"),
     50: .same(proto: "layers"),
+    51: .standard(proto: "sun_color"),
+    52: .standard(proto: "sun_intensity"),
+    53: .same(proto: "haze"),
   ]
 
   fileprivate class _StorageClass {
@@ -3344,6 +3408,9 @@ extension Cadpole_V1_RenderRequest: SwiftProtobuf.Message, SwiftProtobuf._Messag
     var _shadowCatcher: Bool = false
     var _supersample: UInt32 = 0
     var _layers: [Cadpole_V1_LayerState] = []
+    var _sunColor: String = String()
+    var _sunIntensity: Double = 0
+    var _haze: String = String()
 
     static let defaultInstance = _StorageClass()
 
@@ -3398,6 +3465,9 @@ extension Cadpole_V1_RenderRequest: SwiftProtobuf.Message, SwiftProtobuf._Messag
       _shadowCatcher = source._shadowCatcher
       _supersample = source._supersample
       _layers = source._layers
+      _sunColor = source._sunColor
+      _sunIntensity = source._sunIntensity
+      _haze = source._haze
     }
   }
 
@@ -3464,6 +3534,9 @@ extension Cadpole_V1_RenderRequest: SwiftProtobuf.Message, SwiftProtobuf._Messag
         case 46: try { try decoder.decodeSingularBoolField(value: &_storage._shadowCatcher) }()
         case 47: try { try decoder.decodeSingularUInt32Field(value: &_storage._supersample) }()
         case 50: try { try decoder.decodeRepeatedMessageField(value: &_storage._layers) }()
+        case 51: try { try decoder.decodeSingularStringField(value: &_storage._sunColor) }()
+        case 52: try { try decoder.decodeSingularDoubleField(value: &_storage._sunIntensity) }()
+        case 53: try { try decoder.decodeSingularStringField(value: &_storage._haze) }()
         default: break
         }
       }
@@ -3620,6 +3693,15 @@ extension Cadpole_V1_RenderRequest: SwiftProtobuf.Message, SwiftProtobuf._Messag
       if !_storage._layers.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._layers, fieldNumber: 50)
       }
+      if !_storage._sunColor.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sunColor, fieldNumber: 51)
+      }
+      if _storage._sunIntensity != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._sunIntensity, fieldNumber: 52)
+      }
+      if !_storage._haze.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._haze, fieldNumber: 53)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3677,6 +3759,9 @@ extension Cadpole_V1_RenderRequest: SwiftProtobuf.Message, SwiftProtobuf._Messag
         if _storage._shadowCatcher != rhs_storage._shadowCatcher {return false}
         if _storage._supersample != rhs_storage._supersample {return false}
         if _storage._layers != rhs_storage._layers {return false}
+        if _storage._sunColor != rhs_storage._sunColor {return false}
+        if _storage._sunIntensity != rhs_storage._sunIntensity {return false}
+        if _storage._haze != rhs_storage._haze {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -3782,6 +3867,7 @@ extension Cadpole_V1_CameraInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     19: .standard(proto: "bounds_min"),
     20: .standard(proto: "bounds_max"),
     21: .standard(proto: "bounds_px"),
+    22: .same(proto: "shift"),
   ]
 
   fileprivate class _StorageClass {
@@ -3806,6 +3892,7 @@ extension Cadpole_V1_CameraInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
     var _boundsMin: Cadpole_V1_Vec3? = nil
     var _boundsMax: Cadpole_V1_Vec3? = nil
     var _boundsPx: [Double] = []
+    var _shift: Double = 0
 
     static let defaultInstance = _StorageClass()
 
@@ -3833,6 +3920,7 @@ extension Cadpole_V1_CameraInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       _boundsMin = source._boundsMin
       _boundsMax = source._boundsMax
       _boundsPx = source._boundsPx
+      _shift = source._shift
     }
   }
 
@@ -3872,6 +3960,7 @@ extension Cadpole_V1_CameraInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
         case 19: try { try decoder.decodeSingularMessageField(value: &_storage._boundsMin) }()
         case 20: try { try decoder.decodeSingularMessageField(value: &_storage._boundsMax) }()
         case 21: try { try decoder.decodeRepeatedDoubleField(value: &_storage._boundsPx) }()
+        case 22: try { try decoder.decodeSingularDoubleField(value: &_storage._shift) }()
         default: break
         }
       }
@@ -3947,6 +4036,9 @@ extension Cadpole_V1_CameraInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
       if !_storage._boundsPx.isEmpty {
         try visitor.visitPackedDoubleField(value: _storage._boundsPx, fieldNumber: 21)
       }
+      if _storage._shift != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._shift, fieldNumber: 22)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3977,6 +4069,7 @@ extension Cadpole_V1_CameraInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
         if _storage._boundsMin != rhs_storage._boundsMin {return false}
         if _storage._boundsMax != rhs_storage._boundsMax {return false}
         if _storage._boundsPx != rhs_storage._boundsPx {return false}
+        if _storage._shift != rhs_storage._shift {return false}
         return true
       }
       if !storagesAreEqual {return false}

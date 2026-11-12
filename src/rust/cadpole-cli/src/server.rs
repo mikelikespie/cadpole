@@ -3809,19 +3809,27 @@ mod tests {
 
         // A job that outlives its budget is abandoned with a 504 that says
         // what to do about it, rather than holding the caller for ever.
+        // The job runs until the test lets it go, so it overruns whatever the
+        // machine's load.
         let app = app_with_render_gate(1, Duration::from_millis(100));
+        let (release, held) = std::sync::mpsc::channel::<()>();
         let (status, why) = rt
-            .block_on(render_job(&app, "render", || std::thread::sleep(Duration::from_millis(600))))
-            .expect_err("a 600 ms job under a 100 ms budget must not succeed");
+            .block_on(render_job(&app, "render", move || {
+                let _ = held.recv();
+            }))
+            .expect_err("a job that never finishes inside a 100 ms budget must not succeed");
         assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
         assert!(why.contains("100 ms budget"), "{why}");
         assert!(why.contains("--render-budget-ms"), "the refusal says which knob to turn: {why}");
 
-        // The slot is released even though the work was abandoned, so the
-        // next caller is not stuck behind a job nobody is waiting for.
-        let quick = rt.block_on(render_job(&app, "render", || 7u8)).expect("the gate reopens");
-        assert_eq!(quick, 7);
+        // The slot is released even though the work was abandoned and is
+        // still running, so the next caller is not stuck behind a job nobody
+        // is waiting for. (Checked on the semaphore itself: a second job
+        // would have to finish inside the same 100 ms budget, which a loaded
+        // machine does not promise.)
+        assert_eq!(app.render_slots.available_permits(), 1, "the gate reopens while the abandoned job still runs");
         assert_eq!(app.render_waiting.load(Ordering::SeqCst), 0, "the waiting count comes back to zero");
+        release.send(()).unwrap();
 
         // And with the queue full, a further caller is refused rather than
         // added to it -- the work never starts.
@@ -4320,8 +4328,16 @@ mod tests {
         let a = agent();
         // The router was built with a 64 KB cap.
         let big = serde_json::json!({"path": "main.star", "source": "#".repeat(200_000), "base_revision": 1});
-        let code = status_of(a.put(&format!("{base}/api/session/script")).send_json(&big));
-        assert!(code == 413 || code == 400, "an oversized body returned {code}");
+        // The server refuses on the declared length, before reading the body,
+        // and closes. A client still writing the body can see that close
+        // (EPIPE, or a reset that discards the 413 over TCP) before it reads
+        // the answer; either way the request was refused.
+        match a.put(&format!("{base}/api/session/script")).send_json(&big) {
+            Ok(r) => panic!("an oversized body was accepted: {}", r.status()),
+            Err(ureq::Error::StatusCode(code)) => assert!(code == 413 || code == 400, "an oversized body returned {code}"),
+            Err(ureq::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset) => {}
+            Err(e) => panic!("an oversized body failed some other way: {e}"),
+        }
         assert_eq!(
             app_source(&_app),
             SRC,
@@ -4612,30 +4628,50 @@ mod tests {
     fn the_event_stream_sends_frames_only_when_asked() {
         use std::io::Read as _;
         let (base, app) = serve_for_test(None, std::env::temp_dir().join("cadpole-http-test-live"));
-        let read_for = |query: &str| {
+        // Each reader says when its response has started: the handler has
+        // returned by then, so both of its subscriptions exist. It reads
+        // until it has every whole event it is waiting for; the timeout is
+        // only a bound on a broken server. Events and frames come through two
+        // channels, merged, so neither is assumed to arrive first.
+        let (connected, ready) = std::sync::mpsc::channel::<()>();
+        let read_until = |query: &str, kinds: &'static [&'static str]| {
             let url = format!("{base}/api/events?after=0{query}");
+            let connected = connected.clone();
             std::thread::spawn(move || {
-                let r = agent().get(&url).config().timeout_global(Some(Duration::from_millis(1500))).build().call().unwrap();
+                let r = agent().get(&url).config().timeout_global(Some(Duration::from_secs(60))).build().call().unwrap();
+                connected.send(()).unwrap();
                 let mut body = r.into_body().into_reader();
                 let mut text = Vec::new();
                 let mut buf = [0u8; 4096];
-                // Read until the timeout ends the stream.
-                while let Ok(n) = body.read(&mut buf) {
-                    if n == 0 {
-                        break;
+                let has_all = |t: &[u8]| {
+                    let t = String::from_utf8_lossy(t);
+                    let whole = t.rsplit_once("\n\n").map_or("", |(done, _)| done);
+                    kinds.iter().all(|k| whole.split("\n\n").any(|e| e.lines().any(|l| l.strip_prefix("event: ") == Some(*k))))
+                };
+                while !has_all(&text) {
+                    match body.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => text.extend_from_slice(&buf[..n]),
                     }
-                    text.extend_from_slice(&buf[..n]);
                 }
                 String::from_utf8_lossy(&text).into_owned()
             })
         };
-        let (plain, live) = (read_for(""), read_for("&live=1"));
-        std::thread::sleep(Duration::from_millis(500));
+        // The plain reader waits for an event sent after the live reader has
+        // seen everything, so a frame wrongly sent to it has long arrived.
+        let (plain, live) = (read_until("", &["message", "test_done"]), read_until("&live=1", &["message", "reply_stream"]));
+        ready.recv().unwrap();
+        ready.recv().unwrap();
         let author = ServerHost { app: app.clone(), by: "listener:1".into(), role: cadpole_ops::capability::Role::Listener };
         let now = std::time::Instant::now();
         let seq = author.stream_reply_at(&piece(0, "Mak"), now).unwrap().seq;
         author.stream_reply_at(&ending(seq, "ing.", pb::ReplyFinish::Done), now).unwrap();
-        let (plain, live) = (plain.join().unwrap(), live.join().unwrap());
+        let live = live.join().unwrap();
+        {
+            let mut st = app.state.lock().unwrap();
+            app.emit(&mut st, "test_done", serde_json::json!({}));
+        }
+        let plain = plain.join().unwrap();
 
         assert!(!plain.contains("reply_stream"), "a reader that did not ask sees no frame: {plain}");
         assert!(plain.contains("event: message") && plain.contains("Making."), "it sees the finished message: {plain}");
@@ -4930,17 +4966,18 @@ mod tests {
     /// itself. `spec/revisions.qnt` states the rule over what
     /// the writer *observed* rather than over what it sent.
     ///
-    /// The margins are deliberately enormous. The interfering write happens
-    /// once the commit is certainly done (it is a few microseconds behind a
-    /// lock) and while the evaluation certainly is not; what is asserted is a
-    /// number, never a duration, so a loaded machine makes the window wider
-    /// rather than the test flakier.
+    /// The interfering write waits for the commit's `script_changed` event,
+    /// not for a fixed time, so it always lands after the commit; and the
+    /// evaluation it must land inside is millions of interpreter steps, so a
+    /// loaded machine makes that window wider rather than the test flakier.
+    /// What is asserted is a number, never a duration.
     #[test]
     fn a_writer_is_told_its_own_revision_not_one_another_writer_produced() {
         use cadpole_ops::Host as _;
         let h = Arc::new(host(SRC));
         let slow = "t = 0\nfor i in range(1500):\n    for j in range(1500):\n        t = t + 1\nb = box(1,1,1)\n";
         let before = h.app.state.lock().unwrap().revision;
+        let mut events = h.app.events.subscribe();
 
         let writer = {
             let h = h.clone();
@@ -4952,7 +4989,12 @@ mod tests {
 
         // Let the write commit, then move the session on underneath it while
         // it is out of the lock evaluating.
-        std::thread::sleep(Duration::from_millis(150));
+        loop {
+            let ev = events.blocking_recv().expect("the session's events");
+            if ev.kind == "script_changed" {
+                break;
+            }
+        }
         h.set_params(&pb::SetParamsRequest {
             overrides: [("w".to_owned(), pb::ParamValue { value: Some(pb::param_value::Value::Number(41.0)) })].into(),
             ..Default::default()
@@ -5760,21 +5802,46 @@ mod tests {
     /// takes twenty-one times longer on the single large buffer.
     ///
     /// An absolute bound (`ms < 400`) is a statement about the machine, and
-    /// fails on a loaded one. Comparing two equal-length measurements survives
-    /// that,
-    /// where a bare ratio of a long sample to a short one does not -- the
-    /// long sample is proportionally likelier to be descheduled, which is a
-    /// property of the scheduler and not of the hash. Best of two, since
-    /// contention can only ever inflate a sample.
+    /// fails on a loaded one. So is wall time at all: a sample the scheduler
+    /// takes the CPU away from in the middle grows by however long it waited,
+    /// which says nothing about the hash. Each sample is this thread's CPU
+    /// time, which only counts the time it actually ran; best of two, since
+    /// contention (cache, memory bandwidth) can only ever inflate a sample.
     #[test]
     fn hashing_the_whole_bundle_is_cheap_enough_to_poll() {
         const MB: usize = 1024 * 1024;
+        /// This thread's CPU time, in ms.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        fn cpu_ms() -> f64 {
+            #[repr(C)]
+            struct Timespec {
+                sec: i64,
+                nsec: i64,
+            }
+            unsafe extern "C" {
+                fn clock_gettime(clock: i32, ts: *mut Timespec) -> i32;
+            }
+            #[cfg(target_os = "linux")]
+            const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
+            #[cfg(target_os = "macos")]
+            const CLOCK_THREAD_CPUTIME_ID: i32 = 16;
+            let mut ts = Timespec { sec: 0, nsec: 0 };
+            // SAFETY: `ts` is a valid `struct timespec` (64-bit `time_t` and
+            // `long` on both platforms) for the duration of the call.
+            assert_eq!(unsafe { clock_gettime(CLOCK_THREAD_CPUTIME_ID, &mut ts) }, 0);
+            ts.sec as f64 * 1000.0 + ts.nsec as f64 / 1e6
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        fn cpu_ms() -> f64 {
+            thread_local!(static T0: std::time::Instant = std::time::Instant::now());
+            T0.with(|t| t.elapsed().as_secs_f64() * 1000.0)
+        }
         fn best_of_two_ms(mut run: impl FnMut()) -> f64 {
             (0..2)
                 .map(|_| {
-                    let t0 = std::time::Instant::now();
+                    let t0 = cpu_ms();
                     run();
-                    t0.elapsed().as_secs_f64() * 1000.0
+                    cpu_ms() - t0
                 })
                 .fold(f64::INFINITY, f64::min)
         }
@@ -6001,6 +6068,7 @@ mod tests {
         assert!(path.exists(), "a live server's socket is never removed");
         drop(live);
         assert!(path.exists(), "a dropped listener leaves its file, as a crash would");
+        crate::runtime::leave_dead_socket(&path);
         let again = rt.block_on(async { bind_agent_socket(&path) });
         assert!(again.is_ok(), "a stale socket of ours is replaced: {:?}", again.err());
         drop(again);

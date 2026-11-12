@@ -1213,7 +1213,7 @@ fn build_region(
     // sweep is the extrude face for face. The side faces use the start
     // wires forwards and the end wires backwards (`connect_wires`, and the
     // loft's layout), which is what the two caps' directions answer to.
-    let start_cap = builder::try_attach_plane(start_wires)
+    let start_cap = kernel::planar_face(start_wires, &spec.profile.plane)
         .map_err(|e| CadpoleError::kernel(format!("sweep_along: the start cap: {e}")))?;
     let start_surface = start_cap.surface();
     shell.push(start_cap.inverse());

@@ -198,7 +198,10 @@ operands' named surfaces as triangles in a uniform grid).
 1. **Generators.** Naming is geometric, not positional: a cap is a planar
    face every one of whose sample points sits at 0 or at `distance` along the
    sweep, and a side is attributed to the `(loop, segment)` whose curve its
-   points are nearest in sketch coordinates.
+   points are nearest in sketch coordinates. The nearest planted point comes
+   from an exact k-d tree that breaks ties in list order, so naming `F`
+   faces costs `F log F`: a loft through sixty sections of sixty points
+   names its 3,600 side faces in a few milliseconds.
 2. **Transforms** (`translate`, `rotate`, `copy`, patterns, `mirror`,
    `scale`): faces map 1:1 and names are kept, so `lid/end` stays `lid/end`
    after a translate and `blk/top` is still `blk/top` in a mirror image.
@@ -613,6 +616,24 @@ no RNG and no global state, and builds for wasm32.
   surface up to resampling, and the measured error is reported on every call.
   By default both operations are exact B-rep constructions instead.
 
+### Height fields
+
+`heightfield(...)` and `lithophane(...)` (`cadpole_core::heightfield`) make
+a wall whose thickness follows a grid of values on a plane, a cylinder or a
+revolved profile. The body is the image of the parameter box
+`[0, U] × [0, V] × [0, 1]` under `B(u, v) + w · t(u, v) · N(u, v)`: base
+point, wall thickness, unit normal on the relief side. Each of the box's six
+faces is triangulated on one structured grid and wound by the box's outward
+normal, and the whole mesh flipped when the map reverses orientation (a
+relief in a bore). Closedness is therefore a property of the indexing, with
+no weld, search or boolean, and the cost is one pass over the grid: a
+million triangles in a fraction of a second. A full turn shares its seam
+column; a back that is straight in `v` (a plane's, a cylinder's) is one
+strip of long quads fanned onto the side walls at the open ends, so it adds
+no T-junction. The values are settled by the script layer before the op —
+a picture decoded and resampled, a function called per node — and the op is
+keyed by a hash of them.
+
 ### Tessellation
 
 `cadpole_core::brepmesh` polylines every edge once, with one vertex id per
@@ -637,7 +658,8 @@ the original surface.
 ### Deadlines and limits
 
 `cadpole_script::limits` bounds an evaluation: a wall-clock `Deadline` (off
-in the library, 20 s in `cadpole serve`, 120 s in the CLI), a step count, a
+in the library, 20 s in `cadpole serve`, 120 s in the CLI unless
+`--eval-budget-secs` says otherwise), a step count, a
 recursion depth, a heap cap, a cap on `print` lines, and source nesting and
 `load()` depth caps. The deadline is polled by the Starlark evaluator and
 checked at the top of every Cadpole builtin, so it bounds a script to "budget
@@ -1206,10 +1228,13 @@ hold across verbs:
   stderr.
 - Exit code `0` is success, `1` means the document has errors (the output
   still describes them), `2` is a usage error.
-- Two flags apply to every verb: `--max-asset-mb N` (`CADPOLE_MAX_ASSET_MB`),
-  the largest asset a native run reads from `./assets` beside a script, and
+- Three flags apply to every verb: `--max-asset-mb N` (`CADPOLE_MAX_ASSET_MB`),
+  the largest asset a native run reads from `./assets` beside a script,
   `--max-heap-mb N` (`CADPOLE_MAX_HEAP_MB`), the Starlark heap one script may
-  fill (512 MB by default).
+  fill (512 MB by default), and `--eval-budget-secs N`
+  (`CADPOLE_EVAL_BUDGET_SECS`), the wall clock one evaluation may take (120 s
+  by default, 0 for none; a fine SDF mesh for a print can need more).
+  `cadpole serve` keeps its own budget, `--eval-deadline-ms`.
 
 `cadpole serve` mints a session token and a listener token on every start,
 `0600` in a `0700` directory under `$XDG_RUNTIME_DIR/cadpole`. Every route

@@ -384,7 +384,7 @@ fn the_layers_are_exactly_what_the_slicer_argument_asks_for() {
     let prusa = write(&two_body_scene(&a, &b, Slicer::Prusa));
     let z = open(&prusa.bytes);
     assert!(z.get(PRUSA_MODEL_CONFIG).is_some());
-    assert!(z.get(PRUSA_PRINT_CONFIG).is_some());
+    assert!(z.get(PRUSA_PRINT_CONFIG).is_none(), "never the print profile");
     assert!(z.get(BAMBU_MODEL_CONFIG).is_none(), "bambu is opt-in");
     let xml = z.text(MODEL_PART).unwrap();
     assert!(xml.contains("slic3rpe:Version3mf"), "the project marker");
@@ -399,6 +399,30 @@ fn the_layers_are_exactly_what_the_slicer_argument_asks_for() {
     assert!(z.text(MODEL_PART).unwrap().contains("BambuStudio:3mfVersion"));
 }
 
+/// No layer writes PrusaSlicer's print profile part. A stub of it (a couple
+/// of `;` lines naming the colours) is what made Bambu Studio refuse a
+/// default export as "invalid config": a slicer loads that part as the whole
+/// print profile. Every `.config` part that is written is one we fill
+/// completely: XML for the per-object configs, JSON for Bambu's project.
+#[test]
+fn no_layer_writes_a_stub_print_profile() {
+    let a = box_mesh(Vec3::ZERO, Vec3::new(10.0, 10.0, 10.0));
+    let b = box_mesh(Vec3::new(0.0, 0.0, 10.0), Vec3::new(10.0, 10.0, 12.0));
+    for slicer in [Slicer::Core, Slicer::Prusa, Slicer::Bambu, Slicer::default()] {
+        let z = open(&write(&two_body_scene(&a, &b, slicer)).bytes);
+        assert!(z.get(PRUSA_PRINT_CONFIG).is_none(), "{slicer:?}: {:?}", z.names);
+        for name in z.names.iter().filter(|n| n.ends_with(".config")) {
+            let text = z.text(name).unwrap();
+            if name.as_str() == BAMBU_PROJECT_CONFIG {
+                assert!(text.trim_start().starts_with('{'), "{slicer:?} {name}: JSON: {text}");
+            } else {
+                roxmltree::Document::parse(&text).unwrap_or_else(|e| panic!("{slicer:?} {name}: not XML ({e}): {text}"));
+            }
+            assert!(!text.lines().all(|l| l.trim().is_empty() || l.starts_with(';')), "{slicer:?} {name}: a comment-only stub");
+        }
+    }
+}
+
 #[test]
 fn the_slicer_configs_carry_the_filament_of_each_body() {
     let (a, b) = (box_mesh(Vec3::ZERO, Vec3::new(10.0, 10.0, 4.0)), box_mesh(Vec3::new(0.0, 0.0, 4.0), Vec3::new(10.0, 10.0, 6.0)));
@@ -408,9 +432,6 @@ fn the_slicer_configs_carry_the_filament_of_each_body() {
     assert!(prusa.contains("<volume firstid=\"0\" lastid=\"11\">"), "{prusa}");
     assert!(prusa.contains("key=\"extruder\" value=\"2\""), "{prusa}");
     assert!(prusa.contains("value=\"ModelPart\""), "{prusa}");
-
-    let print = z.text(PRUSA_PRINT_CONFIG).unwrap();
-    assert!(print.contains("; filament_colour = #C98A6B;#0078BF"), "{print}");
 
     let bambu = z.text(BAMBU_MODEL_CONFIG).unwrap();
     assert!(bambu.contains("<part id=\"1\" subtype=\"normal_part\">"), "{bambu}");

@@ -9,7 +9,7 @@
       "type": "string"
     },
     "backdrop": {
-      "description": "The surround: \"studio\" (a grey cyclorama with a soft top light),\n\"white\", \"black\" or \"#rrggbb\". Sets the environment the path tracer\nshows and reflects, the colour of its floor, and — unless `background`\nis given — the rasterizer's background to the same tone, so the two\nbackends agree. Empty keeps the rig's own gradient, the dark floor and\nthe default background.",
+      "description": "The surround: \"studio\" (a grey cyclorama with a soft top light),\n\"white\", \"black\", \"#rrggbb\", or \"sky\": an analytic clear daylight sky\ndriven by the sun (a default one at 35° when there is none), warm\ntoward a low sun and glowing along the horizon, which replaces the\nrig so the sun and the sky are the only lights. Sets the environment the path tracer\nshows and reflects, the colour of its floor, and — unless `background`\nis given — the rasterizer's background to the same tone, so the two\nbackends agree. Empty keeps the rig's own gradient, the dark floor and\nthe default background.",
       "examples": [
         "studio"
       ],
@@ -80,6 +80,10 @@
         "fov_degrees": {
           "type": "number"
         },
+        "level": {
+          "description": "Level the camera as an architectural photographer does: the view is\nturned horizontal and the lens shifted so the target stays at the\ncentre of the frame, so vertical edges come out vertical instead of\nconverging. Adds to `shift`.",
+          "type": "boolean"
+        },
         "orthographic": {
           "type": "boolean"
         },
@@ -89,6 +93,10 @@
             "iso"
           ],
           "type": "string"
+        },
+        "shift": {
+          "description": "A perspective-control (shift) lens: the frame slides up the image\nplane by this fraction of its height (negative: down) while the view\ndirection stays put. 0 is an ordinary lens.",
+          "type": "number"
         },
         "target": {
           "properties": {
@@ -190,6 +198,13 @@
       ],
       "type": "string"
     },
+    "haze": {
+      "description": "Path tracing: aerial perspective. \"<distance>[unit][,#rrggbb]\" -- at\nthat distance from the camera half of what is seen is haze (`400m`,\n`1200ft`; a bare number is mm). The haze takes the colour of the\nenvironment at the horizon in each direction, or the colour given.\nOnly camera rays are attenuated, so it dims no shadow and costs\nnothing. Empty is clear air.",
+      "examples": [
+        "400m"
+      ],
+      "type": "string"
+    },
     "height": {
       "description": "Image height in pixels (0 = 600).",
       "examples": [
@@ -227,7 +242,7 @@
       "type": "array"
     },
     "lighting": {
-      "description": "The light rig (docs/views.md, \"The product shot\"). \"studio\" (the\ndefault, and the look of every image before it): a warm key from the\nfront-left in world space, a cool fill, a rim from behind — the\nengineering look, which reads form well but lights a `back` view from\nbehind. \"product\": a neutral catalogue rig that turns with the camera —\nkey 40° to camera-left and 40° up, a large soft fill 55° to the right,\na narrow rim behind — over a brighter grey surround, so a white part\nrenders white and a glossy face has something to reflect. Both\nbackends honour it.",
+      "description": "The light rig (docs/views.md, \"The product shot\"). \"studio\" (the\ndefault, and the look of every image before it): a warm key from the\nfront-left in world space, a cool fill, a rim from behind — the\nengineering look, which reads form well but lights a `back` view from\nbehind. \"product\": a neutral catalogue rig that turns with the camera —\nkey 40° to camera-left and 40° up, a large soft fill 55° to the right,\na narrow rim behind — over a brighter grey surround, so a white part\nrenders white and a glossy face has something to reflect. \"none\":\nno rig and a black environment (unless `backdrop` names one), so only\nthe sun and the scene's emissive bodies light it -- a lit room at\nnight. Both backends honour it.",
       "examples": [
         "product"
       ],
@@ -331,6 +346,17 @@
         "38,-121,2026-12-21,12:00,-8"
       ],
       "type": "string"
+    },
+    "sun_color": {
+      "description": "The sun's colour. Empty or \"auto\" (the default) follows its elevation\nthrough the atmosphere: near white at 60°, yellow by 20°, orange by 5°,\nred and faint at the horizon. \"#rrggbb\" or a colour temperature such\nas \"3500K\" sets it instead, keeping the brightness the elevation gives.",
+      "examples": [
+        "3500K"
+      ],
+      "type": "string"
+    },
+    "sun_intensity": {
+      "description": "Multiplier on the sun's irradiance (0 = 1).",
+      "type": "number"
     },
     "supersample": {
       "description": "Render at this many times the size in each direction and filter down\n(1 to 4; 0 = 1). For edges finer than the samples resolve: thin\nfeatures, and the rasterizer's fixed 8 positions per pixel. Costs the\nsquare of it in the rasterizer; the path tracer spreads the same\n`samples` over the finer grid.",

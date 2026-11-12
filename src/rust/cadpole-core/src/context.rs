@@ -1911,6 +1911,7 @@ impl Context {
         sections: &[crate::loft::Section],
         sketch_features: &[FeatureId],
         ruled: bool,
+        fit: crate::skin::Fit,
         matching: crate::loft::SectionMatch,
         caps: [crate::loft::Cap; 2],
         mut args: BTreeMap<String, String>,
@@ -1918,6 +1919,9 @@ impl Context {
         span: Option<Span>,
     ) -> Result<Vec<BodyId>> {
         args.insert("ruled".into(), ruled.to_string());
+        if fit != crate::skin::Fit::Interpolate {
+            args.insert("fit".into(), fit.name().to_owned());
+        }
         args.insert("match".into(), matching.name().to_owned());
         args.insert(
             "cap".into(),
@@ -1936,8 +1940,12 @@ impl Context {
         // recorded with the op and replayed on a hit like everything else.
         let mut key = KeyBuilder::new("loft");
         key.str(kind).put(&fid).put(sections).bool(ruled).put(&matching).put(&caps);
+        if fit != crate::skin::Fit::Interpolate {
+            key.str(fit.name());
+        }
         let produced = self.memoised("loft", &fid, span.clone(), key.finish(), |ctx| {
-            let plan = crate::loft::LoftPlan::with_caps(sections, ruled, matching, caps)?;
+            let mut plan = crate::loft::LoftPlan::with_caps(sections, ruled, matching, caps)?;
+            plan.fit = fit;
             ctx.set_feature_arg(&fid, "sections", plan.describe());
             for w in &plan.warnings {
                 ctx.push_note(Severity::Warning, w.clone(), &fid, span.clone(), true);
@@ -4008,6 +4016,7 @@ mod tests {
                 &foot_sections(),
                 &[],
                 true,
+                crate::skin::Fit::Interpolate,
                 crate::loft::SectionMatch::Index,
                 [crate::loft::Cap::Plane; 2],
                 BTreeMap::new(),
@@ -4048,6 +4057,7 @@ mod tests {
                 &foot_sections(),
                 &[],
                 true,
+                crate::skin::Fit::Interpolate,
                 crate::loft::SectionMatch::Index,
                 [crate::loft::Cap::Plane; 2],
                 BTreeMap::new(),

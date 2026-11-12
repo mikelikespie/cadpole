@@ -83,6 +83,38 @@ const ALPHA: f64 = 0.5;
 /// rational *quadratics* — quadratic in v for no reason at all.
 pub const MAX_V_DEGREE: usize = 3;
 
+/// How a smooth loft passes through its sections in the section direction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Fit {
+    /// One cubic through every section at once: curvature-continuous, a
+    /// global fit, and free to overshoot between sections that change
+    /// sharply.
+    Interpolate,
+    /// A cubic Hermite piece between each pair of sections, with tangents
+    /// limited per coordinate (Fritsch–Carlson, Brodlie's weighted harmonic
+    /// mean) so that a coordinate that is monotone across the sections stays
+    /// monotone between them and one that turns at a section turns there:
+    /// no overshoot, tangent-continuous, local. Between two sections that
+    /// share a value the surface holds it.
+    Monotone,
+}
+
+impl Fit {
+    /// Both, in documentation order; the vocabulary reads this list.
+    pub const ALL: [Fit; 2] = [Fit::Interpolate, Fit::Monotone];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Fit::Interpolate => "interpolate",
+            Fit::Monotone => "monotone",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Fit> {
+        Fit::ALL.into_iter().find(|f| f.name() == s)
+    }
+}
+
 /// Two knots this close together are one knot.
 ///
 /// Absolute, but applied only after every knot vector has been normalised to
@@ -396,7 +428,9 @@ pub struct VDirection {
     params: Vec<f64>,
     knots: KnotVec,
     degree: usize,
-    lu: Banded,
+    /// The factored interpolation matrix of a global fit; `None` for a
+    /// monotone one, whose control points are written down directly.
+    lu: Option<Banded>,
 }
 
 impl VDirection {
@@ -408,6 +442,14 @@ impl VDirection {
     /// ruled loft, which is the honest answer — there is nothing to be smooth
     /// between.
     pub fn new(columns: &[Compatible], max_degree: usize) -> Result<VDirection> {
+        VDirection::with_fit(columns, max_degree, Fit::Interpolate)
+    }
+
+    /// [`VDirection::new`] with the fit chosen. A monotone fit through three
+    /// or more sections is cubic with a triple knot at every inner section
+    /// (one Bézier piece per pair, sharing the section's point); through two
+    /// it is the ruled loft, as the global fit is.
+    pub fn with_fit(columns: &[Compatible], max_degree: usize, fit: Fit) -> Result<VDirection> {
         let Some(first) = columns.first() else {
             return Err(CadpoleError::invalid("a skinned loft needs at least one section curve"));
         };
@@ -423,6 +465,20 @@ impl VDirection {
         let k = sections - 1;
         let degree = max_degree.min(k).max(1);
         let params = section_params(columns, k);
+        if fit == Fit::Monotone && degree == MAX_V_DEGREE {
+            if let Some(s) = params.windows(2).position(|w| !(w[1] > w[0])) {
+                return Err(CadpoleError::invalid(format!(
+                    "loft sections {s} and {} are in the same place; a monotone fit needs them apart",
+                    s + 1
+                )));
+            }
+            let mut v = vec![0.0; 4];
+            for p in &params[1..k] {
+                v.extend([*p; 3]);
+            }
+            v.extend([1.0; 4]);
+            return Ok(VDirection { params, knots: KnotVec::from(v), degree: 3, lu: None });
+        }
         let knots = averaged_knots(&params, degree);
 
         // A[k][l] = N_{l,q}(v_k). One matrix for every column of the loft.
@@ -445,7 +501,7 @@ impl VDirection {
             }
         }
         lu.factor()?;
-        Ok(VDirection { params, knots, degree, lu })
+        Ok(VDirection { params, knots, degree, lu: Some(lu) })
     }
 
     /// The parameter each section sits at: `S(u, v_k) = C_k(u)`.
@@ -481,7 +537,10 @@ impl VDirection {
             for (k, r) in rhs.iter_mut().enumerate() {
                 *r = column.points[k][i];
             }
-            let solved = self.lu.solve(&rhs);
+            let solved = match &self.lu {
+                Some(lu) => lu.solve(&rhs),
+                None => hermite(&self.params, &rhs),
+            };
             for p in &solved {
                 if !(p.w > MIN_WEIGHT) {
                     return Err(CadpoleError::invalid(format!(
@@ -499,6 +558,40 @@ impl VDirection {
             |e| CadpoleError::kernel(format!("skinning: the surface is not well formed ({e})")),
         )
     }
+}
+
+/// The control points of the monotone cubic through `pts` at `params`:
+/// for each pair of sections the Bézier piece `P_s, P_s + h·m_s/3,
+/// P_{s+1} − h·m_{s+1}/3, P_{s+1}`, the shared ends written once.
+///
+/// The tangent `m` at an inner section is set coordinate by coordinate
+/// (the weight too: it is interpolated like any other coordinate): zero
+/// where the coordinate turns or stands still on either side, else Brodlie's
+/// weighted harmonic mean of the two slopes, which never exceeds three times
+/// either and so keeps each piece monotone. The end tangents are the end
+/// slopes.
+fn hermite(params: &[f64], pts: &[Vector4]) -> Vec<Vector4> {
+    let k = pts.len() - 1;
+    let h: Vec<f64> = (0..k).map(|s| params[s + 1] - params[s]).collect();
+    let d: Vec<Vector4> = (0..k).map(|s| (pts[s + 1] - pts[s]) / h[s]).collect();
+    let mut m = vec![Vector4::new(0.0, 0.0, 0.0, 0.0); k + 1];
+    m[0] = d[0];
+    m[k] = d[k - 1];
+    for s in 1..k {
+        let (w1, w2) = (2.0 * h[s] + h[s - 1], h[s] + 2.0 * h[s - 1]);
+        for c in 0..4 {
+            let (a, b) = (d[s - 1][c], d[s][c]);
+            m[s][c] = if a * b > 0.0 { (w1 + w2) / (w1 / a + w2 / b) } else { 0.0 };
+        }
+    }
+    let mut out = Vec::with_capacity(3 * k + 1);
+    out.push(pts[0]);
+    for s in 0..k {
+        out.push(pts[s] + m[s] * (h[s] / 3.0));
+        out.push(pts[s + 1] - m[s + 1] * (h[s] / 3.0));
+        out.push(pts[s + 1]);
+    }
+    out
 }
 
 /// One parameter per section, centripetal and averaged across every
@@ -587,6 +680,43 @@ mod tests {
         )
     }
 
+    /// A monotone fit passes through every section and never leaves the
+    /// range the sections span, coordinate by coordinate, where the global
+    /// cubic through a step overshoots: sections at x = 0, 0, 10, 10 stay
+    /// at 0 across the first gap and within [0, 10] everywhere.
+    #[test]
+    fn a_monotone_fit_does_not_overshoot_a_step() {
+        let xs = [0.0, 0.0, 10.0, 10.0];
+        let curves: Vec<_> = xs.iter().enumerate().map(|(k, x)| line([*x, 0.0, k as f64], [*x, 5.0, k as f64])).collect();
+        let c = make_compatible(curves).unwrap();
+        let sample = |fit: Fit| {
+            let v = VDirection::with_fit(std::slice::from_ref(&c), MAX_V_DEGREE, fit).unwrap();
+            let surf = v.skin(&c).unwrap();
+            let surf = truck_modeling::NurbsSurface::new(surf);
+            for (k, p) in v.params().iter().enumerate() {
+                let q = surf.subs(0.5, *p);
+                assert!((q.x - xs[k]).abs() < 1e-9 && (q.z - k as f64).abs() < 1e-9, "{fit:?} section {k}: {q:?}");
+            }
+            let mut lo = f64::MAX;
+            let mut hi = f64::MIN;
+            let mut first_gap = 0.0f64;
+            for i in 0..=200 {
+                let t = i as f64 / 200.0;
+                let q = surf.subs(0.5, t);
+                lo = lo.min(q.x);
+                hi = hi.max(q.x);
+                if t <= v.params()[1] {
+                    first_gap = first_gap.max(q.x.abs());
+                }
+            }
+            (lo, hi, first_gap)
+        };
+        let (lo, hi, gap) = sample(Fit::Monotone);
+        assert!(lo >= -1e-9 && hi <= 10.0 + 1e-9 && gap < 1e-9, "monotone: {lo} .. {hi}, {gap}");
+        let (lo, hi, _) = sample(Fit::Interpolate);
+        assert!(lo < -0.1 || hi > 10.1, "the global cubic was expected to overshoot: {lo} .. {hi}");
+    }
+
     /// Compatibility only ever adds representation, never moves the curve: a
     /// degree-1 line made compatible with a knotted cubic is still that line.
     #[test]
@@ -619,7 +749,7 @@ mod tests {
         assert_eq!(v.degree(), 1);
         assert_eq!(v.knots().as_slice(), &[0.0, 0.0, 1.0, 1.0]);
         let rhs = vec![Vector4::new(1.5, -2.5, 3.5, 1.0), Vector4::new(-4.0, 0.25, 9.0, 0.5)];
-        let got = v.lu.solve(&rhs);
+        let got = v.lu.as_ref().expect("a global fit").solve(&rhs);
         // Bit for bit, not "near": this is what makes a ruled loft's solid
         // identical to the one the homotopy built.
         assert_eq!(got[0], rhs[0]);

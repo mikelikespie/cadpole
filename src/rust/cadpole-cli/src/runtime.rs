@@ -279,6 +279,21 @@ pub fn socket_is_live(path: &Path) -> bool {
     std::os::unix::net::UnixStream::connect(path).is_ok()
 }
 
+/// For tests: make `path` the socket file a crashed server leaves behind,
+/// one nothing listens on. Dropping the listener is not enough in a test
+/// process: a child another test is spawning at that moment holds a copy
+/// of every descriptor until it execs, close-on-exec or not, so the
+/// "crashed" socket can still accept a connection. The listening socket is
+/// unlinked instead, and a datagram socket bound in its place, which no
+/// stream connection ever reaches, whoever holds a copy of it.
+#[cfg(all(test, unix))]
+pub(crate) fn leave_dead_socket(path: &Path) {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::remove_file(path).unwrap();
+    drop(std::os::unix::net::UnixDatagram::bind(path).unwrap());
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+}
+
 #[cfg(not(unix))]
 pub fn socket_is_live(_path: &Path) -> bool {
     false
@@ -739,13 +754,27 @@ pub fn unix_request(
         head.push_str(&format!("Content-Length: {}\r\n", b.len()));
     }
     head.push_str("\r\n");
-    s.write_all(head.as_bytes()).map_err(SendError::Io)?;
-    if let Some(b) = body {
-        s.write_all(b).map_err(SendError::Io)?;
-    }
+    // A server may answer before it has read the whole request -- a route
+    // that does not exist, a refused token, a body over the limit -- and,
+    // the connection being `Connection: close`, close it at once. The rest
+    // of the request then fails with EPIPE (or ECONNRESET), but the answer
+    // is already in this socket's receive buffer: read it. Only when there
+    // is no complete answer is the write error the result.
+    let sent = s.write_all(head.as_bytes()).and_then(|()| body.map_or(Ok(()), |b| s.write_all(b)));
+    let sent = match sent {
+        Err(e) if !matches!(e.kind(), std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset) => {
+            return Err(SendError::Io(e));
+        }
+        other => other,
+    };
     let mut raw = Vec::new();
-    s.read_to_end(&mut raw).map_err(SendError::Io)?;
-    parse_response(&raw).map_err(|e| SendError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+    let read = s.read_to_end(&mut raw);
+    match (sent, read, parse_response(&raw)) {
+        (_, Ok(_), Ok(answer)) => Ok(answer),
+        (Err(write), _, _) => Err(SendError::Io(write)),
+        (Ok(()), Err(e), _) => Err(SendError::Io(e)),
+        (Ok(()), Ok(_), Err(e)) => Err(SendError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))),
+    }
 }
 
 #[cfg(not(unix))]
@@ -903,6 +932,43 @@ mod tests {
         l
     }
 
+    /// A server that answers from the head alone and closes, leaving most of
+    /// the body unread, is heard: the client's write fails with EPIPE, and
+    /// the answer it already has is the result. The body is far larger than
+    /// a socket buffer, so the close always lands mid-write.
+    #[cfg(unix)]
+    #[test]
+    fn an_answer_sent_before_the_body_is_read_is_still_the_answer() {
+        let dir = tmp("early");
+        prepare_private_dir(&dir).unwrap();
+        let path = dir.join("early.sock");
+        let l = bind(&path);
+        let server = std::thread::spawn(move || {
+            let (mut c, _) = l.accept().unwrap();
+            let (mut seen, mut buf) = (Vec::new(), [0u8; 4096]);
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = c.read(&mut buf).unwrap();
+                assert!(n > 0, "the head arrives");
+                seen.extend_from_slice(&buf[..n]);
+            }
+            c.write_all(b"HTTP/1.1 413 Payload Too Large\r\ncontent-length: 8\r\nconnection: close\r\n\r\ntoo long").unwrap();
+        });
+        let body = vec![b'x'; 16 << 20];
+        let got = unix_request(&path, "POST", "/api/ops/SetScript", &[], Some(&body), Duration::from_secs(30));
+        server.join().unwrap();
+        assert_eq!(got.unwrap(), (413, b"too long".to_vec()));
+        // A server that closes without answering is still a lost connection.
+        let l = {
+            let _ = std::fs::remove_file(&path);
+            bind(&path)
+        };
+        let server = std::thread::spawn(move || drop(l.accept().unwrap()));
+        let got = unix_request(&path, "POST", "/x", &[], Some(&body), Duration::from_secs(30));
+        server.join().unwrap();
+        assert!(matches!(got, Err(SendError::Io(_))), "{:?}", got.map_err(|e| e.to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Zero, one and two servers, and a crashed one, by discovery alone.
     #[cfg(unix)]
     #[test]
@@ -931,6 +997,7 @@ mod tests {
 
         // b crashes: its socket file stays, nothing answers it.
         drop(lb);
+        leave_dead_socket(&b.socket());
         assert!(b.socket().exists());
         let after = discover_in(&dir, Some(Path::new("/work/two")), None).unwrap();
         assert_eq!(after.record.instance, "aaaaaaaaaaaa", "a dead server is never chosen");

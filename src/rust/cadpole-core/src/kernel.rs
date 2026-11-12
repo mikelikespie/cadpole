@@ -60,13 +60,39 @@ pub(crate) fn loop_to_wire(l: &Loop, plane: &Plane) -> Result<Wire> {
     Ok(wire)
 }
 
+/// A planar face bounded by `wires`, which lie on the sketch plane `plane`.
+///
+/// The kernel's own fit (`builder::try_attach_plane`) is tried first, so
+/// every face it already makes stays as it was, to the bit. It estimates a
+/// normal from the wires' points and then demands every point lie within
+/// 1e-6 mm of the plane through them: on an axis plane the points share a
+/// coordinate exactly and that holds, but on a canted one the estimate is
+/// off by rounding, and across a sketch a few metres wide an error of
+/// 1e-10 radians is already more than 1e-6 mm, so a perfectly planar region
+/// was refused as "not on one plane". The plane is known, so when the fit
+/// fails the face is given it. Outlines run counter-clockwise and holes
+/// clockwise in sketch coordinates (`Sketch::regions`), which is the
+/// orientation a face with the sketch's normal wants.
+pub(crate) fn planar_face(wires: &[Wire], plane: &Plane) -> std::result::Result<Face, String> {
+    match builder::try_attach_plane(wires) {
+        Ok(f) => Ok(f),
+        Err(fit) => {
+            let surface = truck_modeling::Plane::new(
+                plane.origin.point(),
+                plane.to_world(1.0, 0.0).point(),
+                plane.to_world(0.0, 1.0).point(),
+            );
+            Face::try_new(wires.to_vec(), Surface::Plane(surface)).map_err(|e| format!("{fit}; on the sketch plane: {e}"))
+        }
+    }
+}
+
 fn region_to_face(r: &Region, plane: &Plane) -> Result<truck_modeling::Face> {
     let mut wires = vec![loop_to_wire(&r.outer, plane)?];
     for h in &r.holes {
         wires.push(loop_to_wire(h, plane)?);
     }
-    builder::try_attach_plane(&wires)
-        .map_err(|e| CadpoleError::kernel(format!("cannot make planar face: {e}")))
+    planar_face(&wires, plane).map_err(|e| CadpoleError::kernel(format!("cannot make planar face: {e}")))
 }
 
 /// Extrude every region of the sketch by `distance` along the plane normal
@@ -373,7 +399,7 @@ pub fn loft(plan: &LoftPlan) -> Result<Vec<KSolid>> {
                 }
             }
         }
-        out.push(guarded("loft", std::panic::AssertUnwindSafe(|| stitch(&rungs, up, plan.ruled)))??);
+        out.push(guarded("loft", std::panic::AssertUnwindSafe(|| stitch(&rungs, up, plan.ruled, plan.fit)))??);
     }
     Ok(out)
 }
@@ -390,7 +416,7 @@ pub fn loft(plan: &LoftPlan) -> Result<Vec<KSolid>> {
 /// skinner either way: pairwise at degree 1 — one face per band, which is the
 /// ruled surface truck's `homotopy` builds, bit for bit — or all of them at
 /// once at degree 3, which is one face per column of the whole loft.
-fn stitch(rungs: &[Rung<'_>], up: Vec3, ruled: bool) -> Result<KSolid> {
+fn stitch(rungs: &[Rung<'_>], up: Vec3, ruled: bool, fit: crate::skin::Fit) -> Result<KSolid> {
     let mut shell = Shell::new();
     if let Rung::Wires { wires, .. } = &rungs[0] {
         shell.push(cap(wires, -up)?);
@@ -406,12 +432,12 @@ fn stitch(rungs: &[Rung<'_>], up: Vec3, ruled: bool) -> Result<KSolid> {
     if ruled {
         for (k, pair) in profiles.windows(2).enumerate() {
             shell.extend(
-                side_faces(pair, 1)
+                side_faces(pair, 1, crate::skin::Fit::Interpolate)
                     .map_err(|e| CadpoleError::kernel(format!("loft band {k}: {e}")))?,
             );
         }
     } else if profiles.len() >= 2 {
-        shell.extend(side_faces(&profiles, crate::skin::MAX_V_DEGREE)?);
+        shell.extend(side_faces(&profiles, crate::skin::MAX_V_DEGREE, fit)?);
     }
     let last = rungs.len() - 1;
     if let (Rung::Wires { wires, loops, plane }, Rung::Apex(v)) = (&rungs[last - 1], &rungs[last]) {
@@ -445,7 +471,7 @@ fn stitch(rungs: &[Rung<'_>], up: Vec3, ruled: bool) -> Result<KSolid> {
 /// interpolation matrix is shared. The textbook algorithm averages over the
 /// columns of one surface; averaging over the loft is the same computation with a
 /// wider sum, and it is what makes the faces meet exactly.
-fn side_faces(rungs: &[&Rung<'_>], max_v_degree: usize) -> Result<Vec<Face>> {
+fn side_faces(rungs: &[&Rung<'_>], max_v_degree: usize, fit: crate::skin::Fit) -> Result<Vec<Face>> {
     let mut sections: Vec<&[Wire]> = Vec::with_capacity(rungs.len());
     for r in rungs {
         match r {
@@ -490,7 +516,7 @@ fn side_faces(rungs: &[&Rung<'_>], max_v_degree: usize) -> Result<Vec<Face>> {
             nets.push(crate::skin::make_compatible(curves)?);
         }
     }
-    let vdir = crate::skin::VDirection::new(&nets, max_v_degree)?;
+    let vdir = crate::skin::VDirection::with_fit(&nets, max_v_degree, fit)?;
 
     // A spoke is shared by the two faces that meet along it, keyed by the pair
     // of vertices it joins — the same bookkeeping `try_wire_homotopy` does.
@@ -544,7 +570,7 @@ pub(crate) fn skin_through_wires(stations: &[Vec<Wire>], max_v_degree: usize) ->
         .map(|ws| Rung::Wires { wires: ws.clone(), loops: Vec::new(), plane: Plane::XY })
         .collect();
     let refs: Vec<&Rung<'_>> = rungs.iter().collect();
-    side_faces(&refs, max_v_degree)
+    side_faces(&refs, max_v_degree, crate::skin::Fit::Interpolate)
 }
 
 /// Sweep `profile` (as drawn) along `path` under `frame`, with no twist or
@@ -705,10 +731,10 @@ fn stitch_ordered(rungs: &[Rung<'_>], plan: &LoftPlan) -> Result<KSolid> {
     let profiles: Vec<&Rung<'_>> = rungs.iter().filter(|r| matches!(r, Rung::Curve { .. })).collect();
     if plan.ruled {
         for (k, pair) in profiles.windows(2).enumerate() {
-            shell.extend(side_faces(pair, 1).map_err(|e| CadpoleError::kernel(format!("loft band {k}: {e}")))?);
+            shell.extend(side_faces(pair, 1, crate::skin::Fit::Interpolate).map_err(|e| CadpoleError::kernel(format!("loft band {k}: {e}")))?);
         }
     } else if profiles.len() >= 2 {
-        shell.extend(side_faces(&profiles, crate::skin::MAX_V_DEGREE)?);
+        shell.extend(side_faces(&profiles, crate::skin::MAX_V_DEGREE, plan.fit)?);
     }
     if let (Rung::Curve { wire, curve, .. }, Rung::Apex(v)) = (&rungs[last - 1], &rungs[last]) {
         shell.extend(apex_fan(wire, &curve_geoms(curve, true), v, true)?);
@@ -3094,6 +3120,72 @@ mod tests {
         let solids = extrude(&box_sketch(10.0, 20.0), 5.0).unwrap();
         assert_eq!(solids.len(), 1);
         assert_eq!(solids[0].face_iter().count(), 6);
+    }
+
+    /// A sketch on a canted plane is as good as one on an axis plane. The
+    /// kernel's own plane fit refused a clapboard profile -- a sawtooth 30 mm
+    /// deep and ten metres tall, drawn across a wall turned 45 degrees in
+    /// plan -- as "not on one plane": its normal estimate is off by
+    /// rounding, and over ten metres that is more than its 1e-6 mm. The
+    /// profile extrudes both ways to a closed solid of the right volume, as
+    /// do a gable with a round hole on the same wall, on a roof pitched 45
+    /// degrees and on a plane tilted on every axis, and each revolves.
+    #[test]
+    fn a_sketch_on_a_canted_plane_makes_faces() {
+        let s2 = 3.0 / 18f64.sqrt(); // a 3 ft by 3 ft bay side, normalised
+        let wall = Plane::new(Vec3::new(12.0 * 304.8, 14.0 * 304.8, 0.0), Vec3::new(s2, -s2, 0.0), Vec3::new(s2, s2, 0.0)).unwrap();
+        // Drawn in feet, as a building script draws it, and scaled to mm.
+        let ft = |v: f64| v * 304.8;
+        let mut clapboard = vec![P2::new(-0.0, ft(8.2))];
+        for k in 0..66 {
+            let z = 8.2 + 0.5 * k as f64;
+            clapboard.extend([P2::new(-ft(0.1), ft(z + 0.004)), P2::new(-ft(0.1), ft(z + 0.06)), P2::new(-ft(0.035), ft(z + 0.5))]);
+        }
+        clapboard.push(P2::new(-0.0, ft(8.2 + 33.0)));
+        let shoelace = |pts: &[P2]| {
+            (0..pts.len()).map(|i| {
+                let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+                a.x * b.y - b.x * a.y
+            }).sum::<f64>().abs() / 2.0
+        };
+        let sk = Sketch::new(wall).with_loop(Loop::polygon(&clapboard));
+        let outer = &sk.face_regions().unwrap()[0].outer;
+        let fit = builder::try_attach_plane(&[loop_to_wire(outer, &wall).unwrap()]);
+        assert!(fit.is_err(), "the kernel's fit takes the clapboard now; the test no longer covers the fallback");
+        for depth in [30.0, -30.0] {
+            let solids = extrude(&sk, depth).unwrap_or_else(|e| panic!("clapboard depth {depth}: {e}"));
+            assert!(is_watertight(&solids[0]));
+            let (v, want) = (volume_of(&solids[0]), shoelace(&clapboard) * 30.0);
+            assert!((v - want).abs() < 1e-3 * want, "clapboard depth {depth}: volume {v}, want {want}");
+        }
+
+        let planes = [
+            wall,
+            Plane::new(Vec3::new(-2500.0, 4100.0, 7300.0), Vec3::new(0.0, -1.0, 1.0), Vec3::X).unwrap(),
+            Plane::new(Vec3::new(10.0, 20.0, 30.0), Vec3::new(1.0, 1.0, 1.0), Vec3::new(1.0, -1.0, 0.0)).unwrap(),
+        ];
+        let gable = [
+            P2::new(0.0, 0.0),
+            P2::new(3657.6, 0.0),
+            P2::new(3657.6, 2743.2),
+            P2::new(1828.8, 3962.4),
+            P2::new(0.0, 2743.2),
+        ];
+        let r = 457.2;
+        let want_area = shoelace(&gable) - std::f64::consts::PI * r * r;
+        for plane in planes {
+            let sk = Sketch::new(plane).with_loop(Loop::polygon(&gable)).with_loop(Loop::circle(P2::new(1828.8, 1371.6), r));
+            for depth in [139.7, -139.7] {
+                let solids = extrude(&sk, depth).unwrap_or_else(|e| panic!("{plane:?} depth {depth}: {e}"));
+                assert_eq!(solids.len(), 1);
+                assert!(is_watertight(&solids[0]), "{plane:?}");
+                let (v, want) = (volume_of(&solids[0]), want_area * 139.7);
+                assert!((v - want).abs() < 2e-3 * want, "{plane:?} depth {depth}: volume {v}, want {want}");
+            }
+            let rev = revolve(&sk, plane.to_world(-100.0, 0.0), plane.y_dir(), std::f64::consts::FRAC_PI_2)
+                .unwrap_or_else(|e| panic!("{plane:?} revolve: {e}"));
+            assert_eq!(rev.len(), 1);
+        }
     }
 
     #[test]

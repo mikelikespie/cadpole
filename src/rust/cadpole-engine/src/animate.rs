@@ -94,6 +94,9 @@ pub fn render_request_of(req: &pb::AnimateRequest) -> pb::RenderRequest {
         transparent: req.transparent,
         shadow_catcher: req.shadow_catcher,
         supersample: req.supersample,
+        sun_color: req.sun_color.clone(),
+        sun_intensity: req.sun_intensity,
+        haze: req.haze.clone(),
         ..Default::default()
     }
 }
@@ -536,6 +539,8 @@ pub fn animate(req: &pb::AnimateRequest) -> anyhow::Result<pb::AnimateResponse> 
             fov_degrees: first.fov_degrees,
             orthographic: first.orthographic,
             fit_margin: margin,
+            shift: first.shift,
+            level: false,
         }),
     })
 }
@@ -719,7 +724,7 @@ mod tests {
         // The frames differ (the camera moved) and the middle one is the
         // turn's midpoint.
         assert_ne!(r.frames[0].png, r.frames[2].png);
-        let base = Camera { eye: Vec3::new(0.0, -100.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 35.0, orthographic: false };
+        let base = Camera { eye: Vec3::new(0.0, -100.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 35.0, orthographic: false, shift: 0.0 };
         let mid = frame_camera(&base, base_key, Some(CameraKey { az: Some(45.0), el: Some(0.0), fov: None, eye: None, target: None, zoom: None, pan: None }), 0.5, 100.0, 1.0);
         assert!((mid.eye.length() - 100.0).abs() < 1e-9, "the distance is kept: {:?}", mid.eye);
         assert!((mid.eye.x - 100.0 / 2f64.sqrt()).abs() < 1e-9 && (mid.eye.y + 100.0 / 2f64.sqrt()).abs() < 1e-9, "{:?}", mid.eye);

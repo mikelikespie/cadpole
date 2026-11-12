@@ -570,6 +570,18 @@ public struct Cadpole_V1_SweepRequest {
     set {_uniqueStorage()._layers = newValue}
   }
 
+  /// The sun's colour and strength, as `RenderRequest.sun_color` and
+  /// `RenderRequest.sun_intensity`.
+  public var sunColor: String {
+    get {return _storage._sunColor}
+    set {_uniqueStorage()._sunColor = newValue}
+  }
+
+  public var sunIntensity: Double {
+    get {return _storage._sunIntensity}
+    set {_uniqueStorage()._sunIntensity = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -909,6 +921,23 @@ public struct Cadpole_V1_AnimateRequest {
   public var layers: [Cadpole_V1_LayerState] {
     get {return _storage._layers}
     set {_uniqueStorage()._layers = newValue}
+  }
+
+  /// The sun's colour and strength and the haze, as `RenderRequest.sun_color`,
+  /// `RenderRequest.sun_intensity` and `RenderRequest.haze`.
+  public var sunColor: String {
+    get {return _storage._sunColor}
+    set {_uniqueStorage()._sunColor = newValue}
+  }
+
+  public var sunIntensity: Double {
+    get {return _storage._sunIntensity}
+    set {_uniqueStorage()._sunIntensity = newValue}
+  }
+
+  public var haze: String {
+    get {return _storage._haze}
+    set {_uniqueStorage()._haze = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -5035,6 +5064,8 @@ extension Cadpole_V1_SweepRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
     34: .standard(proto: "shadow_catcher"),
     35: .same(proto: "supersample"),
     50: .same(proto: "layers"),
+    51: .standard(proto: "sun_color"),
+    52: .standard(proto: "sun_intensity"),
   ]
 
   fileprivate class _StorageClass {
@@ -5074,6 +5105,8 @@ extension Cadpole_V1_SweepRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
     var _shadowCatcher: Bool = false
     var _supersample: UInt32 = 0
     var _layers: [Cadpole_V1_LayerState] = []
+    var _sunColor: String = String()
+    var _sunIntensity: Double = 0
 
     static let defaultInstance = _StorageClass()
 
@@ -5116,6 +5149,8 @@ extension Cadpole_V1_SweepRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
       _shadowCatcher = source._shadowCatcher
       _supersample = source._supersample
       _layers = source._layers
+      _sunColor = source._sunColor
+      _sunIntensity = source._sunIntensity
     }
   }
 
@@ -5170,6 +5205,8 @@ extension Cadpole_V1_SweepRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
         case 34: try { try decoder.decodeSingularBoolField(value: &_storage._shadowCatcher) }()
         case 35: try { try decoder.decodeSingularUInt32Field(value: &_storage._supersample) }()
         case 50: try { try decoder.decodeRepeatedMessageField(value: &_storage._layers) }()
+        case 51: try { try decoder.decodeSingularStringField(value: &_storage._sunColor) }()
+        case 52: try { try decoder.decodeSingularDoubleField(value: &_storage._sunIntensity) }()
         default: break
         }
       }
@@ -5290,6 +5327,12 @@ extension Cadpole_V1_SweepRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
       if !_storage._layers.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._layers, fieldNumber: 50)
       }
+      if !_storage._sunColor.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sunColor, fieldNumber: 51)
+      }
+      if _storage._sunIntensity != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._sunIntensity, fieldNumber: 52)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -5335,6 +5378,8 @@ extension Cadpole_V1_SweepRequest: SwiftProtobuf.Message, SwiftProtobuf._Message
         if _storage._shadowCatcher != rhs_storage._shadowCatcher {return false}
         if _storage._supersample != rhs_storage._supersample {return false}
         if _storage._layers != rhs_storage._layers {return false}
+        if _storage._sunColor != rhs_storage._sunColor {return false}
+        if _storage._sunIntensity != rhs_storage._sunIntensity {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -5394,6 +5439,9 @@ extension Cadpole_V1_AnimateRequest: SwiftProtobuf.Message, SwiftProtobuf._Messa
     46: .standard(proto: "shadow_catcher"),
     47: .same(proto: "supersample"),
     50: .same(proto: "layers"),
+    51: .standard(proto: "sun_color"),
+    52: .standard(proto: "sun_intensity"),
+    53: .same(proto: "haze"),
   ]
 
   fileprivate class _StorageClass {
@@ -5444,6 +5492,9 @@ extension Cadpole_V1_AnimateRequest: SwiftProtobuf.Message, SwiftProtobuf._Messa
     var _shadowCatcher: Bool = false
     var _supersample: UInt32 = 0
     var _layers: [Cadpole_V1_LayerState] = []
+    var _sunColor: String = String()
+    var _sunIntensity: Double = 0
+    var _haze: String = String()
 
     static let defaultInstance = _StorageClass()
 
@@ -5497,6 +5548,9 @@ extension Cadpole_V1_AnimateRequest: SwiftProtobuf.Message, SwiftProtobuf._Messa
       _shadowCatcher = source._shadowCatcher
       _supersample = source._supersample
       _layers = source._layers
+      _sunColor = source._sunColor
+      _sunIntensity = source._sunIntensity
+      _haze = source._haze
     }
   }
 
@@ -5562,6 +5616,9 @@ extension Cadpole_V1_AnimateRequest: SwiftProtobuf.Message, SwiftProtobuf._Messa
         case 46: try { try decoder.decodeSingularBoolField(value: &_storage._shadowCatcher) }()
         case 47: try { try decoder.decodeSingularUInt32Field(value: &_storage._supersample) }()
         case 50: try { try decoder.decodeRepeatedMessageField(value: &_storage._layers) }()
+        case 51: try { try decoder.decodeSingularStringField(value: &_storage._sunColor) }()
+        case 52: try { try decoder.decodeSingularDoubleField(value: &_storage._sunIntensity) }()
+        case 53: try { try decoder.decodeSingularStringField(value: &_storage._haze) }()
         default: break
         }
       }
@@ -5715,6 +5772,15 @@ extension Cadpole_V1_AnimateRequest: SwiftProtobuf.Message, SwiftProtobuf._Messa
       if !_storage._layers.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._layers, fieldNumber: 50)
       }
+      if !_storage._sunColor.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sunColor, fieldNumber: 51)
+      }
+      if _storage._sunIntensity != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._sunIntensity, fieldNumber: 52)
+      }
+      if !_storage._haze.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._haze, fieldNumber: 53)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -5771,6 +5837,9 @@ extension Cadpole_V1_AnimateRequest: SwiftProtobuf.Message, SwiftProtobuf._Messa
         if _storage._shadowCatcher != rhs_storage._shadowCatcher {return false}
         if _storage._supersample != rhs_storage._supersample {return false}
         if _storage._layers != rhs_storage._layers {return false}
+        if _storage._sunColor != rhs_storage._sunColor {return false}
+        if _storage._sunIntensity != rhs_storage._sunIntensity {return false}
+        if _storage._haze != rhs_storage._haze {return false}
         return true
       }
       if !storagesAreEqual {return false}

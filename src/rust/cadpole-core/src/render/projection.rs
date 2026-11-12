@@ -92,6 +92,17 @@ impl Camera {
                 0.0,
             )
         };
+        // A shifted lens slides the frame up the image plane by `shift`
+        // frame heights, which is 2 * shift in normalised device units.
+        let mut projection = projection;
+        let s = if self.shift.is_finite() { self.shift } else { 0.0 };
+        if s != 0.0 {
+            if self.orthographic {
+                projection[7] = -2.0 * s;
+            } else {
+                projection[6] = 2.0 * s;
+            }
+        }
         Projection { view, projection, near, far, ortho_height }
     }
 
@@ -111,7 +122,8 @@ impl Camera {
             }
             focal / z
         };
-        Some((width as f64 * 0.5 + x * scale, height as f64 * 0.5 - y * scale))
+        let shift = if self.shift.is_finite() { self.shift } else { 0.0 };
+        Some((width as f64 * 0.5 + x * scale, height as f64 * (0.5 + shift) - y * scale))
     }
 }
 
@@ -156,8 +168,8 @@ mod tests {
         }
         let mat = Material { base_color: [0.9, 0.9, 0.9], ..Material::default() };
         let (w, h) = (240u32, 160u32);
-        for orthographic in [false, true] {
-            let cam = Camera { eye: Vec3::new(60.0, -80.0, 50.0), target: Vec3::new(0.0, 0.0, 5.0), up: Vec3::Z, fov_degrees: 30.0, orthographic };
+        for (orthographic, shift) in [(false, 0.0), (true, 0.0), (false, 0.18), (true, -0.1)] {
+            let cam = Camera { eye: Vec3::new(60.0, -80.0, 50.0), target: Vec3::new(0.0, 0.0, 5.0), up: Vec3::Z, fov_degrees: 30.0, orthographic, shift };
             let opts = RenderOptions {
                 width: w,
                 height: h,
@@ -191,8 +203,24 @@ mod tests {
             assert!(m.near > 0.0 && m.far > m.near);
             assert_eq!(m.ortho_height > 0.0, orthographic);
         }
+        // A levelled camera keeps verticals vertical and its target where
+        // it was, at the centre of the frame.
+        let tilted = Camera { eye: Vec3::new(10.0, -60.0, 2.0), target: Vec3::new(14.0, 0.0, 14.0), up: Vec3::Z, fov_degrees: 40.0, orthographic: false, shift: 0.0 };
+        let level = tilted.levelled();
+        assert!(level.shift > 0.1, "looking up becomes a rise: {}", level.shift);
+        let (tx, ty) = level.project(tilted.target, w, h).unwrap();
+        assert!((tx - w as f64 * 0.5).abs() < 1e-6 && (ty - h as f64 * 0.5).abs() < 1e-6, "the target stays centred: ({tx}, {ty})");
+        for cam in [&tilted, &level] {
+            let (x0, _) = cam.project(Vec3::new(25.0, 10.0, 0.0), w, h).unwrap();
+            let (x1, _) = cam.project(Vec3::new(25.0, 10.0, 30.0), w, h).unwrap();
+            if std::ptr::eq(cam, &level) {
+                assert!((x1 - x0).abs() < 1e-6, "a vertical edge is vertical under the shift lens: {x0} vs {x1}");
+            } else {
+                assert!((x1 - x0).abs() > 2.0, "a tilted camera makes verticals converge: {x0} vs {x1}");
+            }
+        }
         // Behind a perspective camera there is no pixel.
-        let cam = Camera { eye: Vec3::new(0.0, -10.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 30.0, orthographic: false };
+        let cam = Camera { eye: Vec3::new(0.0, -10.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 30.0, orthographic: false, shift: 0.0 };
         assert_eq!(cam.project(Vec3::new(0.0, -20.0, 0.0), 10, 10), None);
     }
 }

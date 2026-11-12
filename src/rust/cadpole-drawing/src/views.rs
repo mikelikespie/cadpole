@@ -131,6 +131,28 @@ pub struct ViewGeometry {
     pub items: Vec<Item>,
     pub bounds: Option<(P2, P2)>,
     pub notes: Vec<String>,
+    /// How a model point lands in the frame, for the views that project the
+    /// model (all of them here), so a script can attach a label to a 3-D
+    /// point of the geometry.
+    pub frame: Option<Frame>,
+}
+
+/// The map from model space to a view's 2D frame: the orthographic
+/// projection through `basis`, less `shift` (where the frame's origin is).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frame {
+    pub basis: ViewBasis,
+    pub shift: P2,
+}
+
+impl Frame {
+    /// Where the model point `p` lands in the frame. Depth is dropped: in an
+    /// orthographic view every point along the line of sight lands on the
+    /// same frame point.
+    pub fn to_frame(&self, p: Vec3) -> P2 {
+        let (q, _) = self.basis.project(p);
+        P2::new(q.x - self.shift.x, q.y - self.shift.y)
+    }
 }
 
 impl ViewGeometry {
@@ -282,6 +304,24 @@ pub fn section_view(
     let n = plane.normal.normalized();
     let basis = ViewBasis::looking_from(n, plane.y_dir());
     let shift = basis.project(plane.origin).0;
+    let mut out = section_lines(d, bodies, plane, depth, beyond, opts, n, &basis, shift);
+    out.frame = Some(Frame { basis, shift });
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn section_lines(
+    d: &mut Drawing,
+    bodies: &[ViewBody],
+    plane: &Plane,
+    depth: Option<f64>,
+    beyond: bool,
+    opts: &ViewOptions,
+    n: Vec3,
+    basis: &ViewBasis,
+    shift: P2,
+) -> ViewGeometry {
+    let basis = *basis;
     if opts.look == Look::Color {
         let mut clips = vec![HalfSpace::new(plane.origin, -n)];
         if let Some(depth) = depth.filter(|v| v.is_finite() && *v > 0.0) {
@@ -394,11 +434,14 @@ pub fn plan_view(d: &mut Drawing, bodies: &[ViewBody], cut_z: f64, opts: &ViewOp
 /// `basis`, hidden lines as `opts.hidden` says. The frame is the basis's
 /// screen: for a south elevation x is the model's x and y its z.
 pub fn elevation_view(d: &mut Drawing, bodies: &[ViewBody], basis: &ViewBasis, opts: &ViewOptions) -> ViewGeometry {
-    if opts.look == Look::Color {
-        return crate::painted::paint(d, bodies, &[], basis, P2::new(0.0, 0.0), None, opts);
-    }
-    let mut out = ViewGeometry::default();
-    project_bodies(d, bodies, &[], &Mesh::default(), basis, P2::new(0.0, 0.0), opts, &mut out);
+    let mut out = if opts.look == Look::Color {
+        crate::painted::paint(d, bodies, &[], basis, P2::new(0.0, 0.0), None, opts)
+    } else {
+        let mut out = ViewGeometry::default();
+        project_bodies(d, bodies, &[], &Mesh::default(), basis, P2::new(0.0, 0.0), opts, &mut out);
+        out
+    };
+    out.frame = Some(Frame { basis: *basis, shift: P2::new(0.0, 0.0) });
     out
 }
 

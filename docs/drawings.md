@@ -256,9 +256,10 @@ as `cadpole bake` does. In a sheet set the same views take
 plan in drafting lines and a colour section on one sheet.
 
 Known limits: the colours are the materials', not a render's lit and
-tone-mapped ones; the order is by each triangle's centroid depth, exact for
-a plan's level surfaces and a section's walls, not for two long pieces that
-interleave in depth; no shadows.
+tone-mapped ones; wherever two triangles overlap on the paper the one in
+front at the overlap is painted last (a canted face over the wall behind it
+included), but three pieces that each cover the next have no right order in
+a vector file and are painted by centroid depth; no shadows.
 
 ## Not implemented
 

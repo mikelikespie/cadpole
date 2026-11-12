@@ -239,7 +239,7 @@ mod tests {
     /// pixel per row, so the edge crosses every sub-pixel position.
     fn sheet() -> (crate::tessellate::Mesh, Camera) {
         let mesh = quad([-1.0, -1.2, 0.0], [0.4, -1.2, 0.0], [0.8, 1.2, 0.0], [-1.0, 1.2, 0.0]);
-        let cam = Camera { eye: Vec3::new(0.0, 0.0, 10.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 20.0, orthographic: true };
+        let cam = Camera { eye: Vec3::new(0.0, 0.0, 10.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 20.0, orthographic: true, shift: 0.0 };
         (mesh, cam)
     }
 
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn the_shadow_catcher_writes_the_ground_shadow_as_alpha_alone() {
         let mesh = box_mesh([-1.0, -1.0, 0.0], [1.0, 1.0, 1.0]);
-        let cam = Camera { eye: Vec3::new(0.0, 0.0, 12.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 30.0, orthographic: true };
+        let cam = Camera { eye: Vec3::new(0.0, 0.0, 12.0), target: Vec3::ZERO, up: Vec3::Y, fov_degrees: 30.0, orthographic: true, shift: 0.0 };
         let mat = Material { base_color: [0.8, 0.8, 0.8], ..Material::default() };
         for backend in BACKENDS {
             let base = RenderOptions { path: PathTraceOptions::default(), ..opts(backend) };

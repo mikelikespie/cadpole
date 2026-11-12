@@ -16,7 +16,7 @@
 //!
 //! **One source of truth.** Each [`Vocabulary`] is built from the same Rust
 //! list its parser reads — `SectionMatch::ALL`, `Cap::ALL`,
-//! `KernelChoice::ALL`, `Monotone::ALL`, `material_preset_names()`, and the
+//! `Fit::ALL`, `KernelChoice::ALL`, `Monotone::ALL`, `material_preset_names()`, and the
 //! `FACE_KINDS`/`EDGE_KINDS` the selectors check — so the namespace cannot
 //! offer a spelling the parser refuses or miss one it accepts. The tests at
 //! the bottom hold that in both directions. `hand` is the one whose parser
@@ -52,6 +52,7 @@ use cadpole_core::emboss::{Kind as EmbossKind, Method};
 use cadpole_core::export::Flavor;
 use cadpole_core::kernel::KernelChoice;
 use cadpole_core::loft::{Cap, SectionMatch};
+use cadpole_core::skin::Fit;
 use cadpole_core::render::material_preset_names;
 use cadpole_core::sketch2d::Join;
 use cadpole_core::sweep::Frame;
@@ -122,6 +123,7 @@ pub fn all() -> Vec<Vocabulary> {
         Vocabulary::new("kind", "faces() and edges()", kinds()),
         Vocabulary::new("match", "loft()", SectionMatch::ALL.iter().map(|m| m.name()).collect()),
         Vocabulary::new("cap", "loft()", Cap::ALL.iter().map(|c| c.name()).collect()),
+        Vocabulary::new("fit", "loft(ruled=False, fit=)", Fit::ALL.iter().map(|f| f.name()).collect()),
         // `sweep_frame`, not `frame`: `frame()` is the global that
         // reads a frame off named faces, and a vocabulary cannot be called.
         Vocabulary::new("sweep_frame", "sweep_along(frame=) and pattern_along(frame=)", Frame::ALL.iter().map(|f| f.name()).collect()),
@@ -527,7 +529,7 @@ mod tests {
         assert_eq!(
             names,
             [
-                "kind", "match", "cap", "sweep_frame", "kernel", "preset", "monotone", "hand", "join", "along", "ease", "flavor",
+                "kind", "match", "cap", "fit", "sweep_frame", "kernel", "preset", "monotone", "hand", "join", "along", "ease", "flavor",
                 "sheet", "repair", "dxf_units", "emboss", "wrap", "terrain", "units"
             ]
         );

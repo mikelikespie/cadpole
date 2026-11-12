@@ -50,6 +50,7 @@ mod projection;
 pub use projection::Projection;
 pub mod section;
 mod shading;
+pub mod sky;
 #[cfg(test)]
 pub(crate) mod testing;
 mod textures;
@@ -79,9 +80,38 @@ pub struct Camera {
     pub up: Vec3,
     pub fov_degrees: f64,
     pub orthographic: bool,
+    /// Vertical lens shift, as a fraction of the frame height: the picture
+    /// is the camera's own frame slid up by this much (negative: down) on
+    /// the image plane, as a perspective-control lens does. The view
+    /// direction does not change, so a level camera with a shift keeps
+    /// every vertical edge vertical. 0 is an ordinary lens.
+    pub shift: f64,
 }
 
 impl Camera {
+    /// The same picture taken as an architectural photographer takes it:
+    /// the camera turned level (its view direction projected onto the
+    /// horizontal) and the lens shifted so the target stays where it was
+    /// in the frame, at the centre. Verticals come out vertical instead of
+    /// converging. A camera looking straight up or down, or an
+    /// orthographic one, is returned as it is.
+    pub fn levelled(&self) -> Camera {
+        let d = self.target - self.eye;
+        let horiz = Vec3::new(d.x, d.y, 0.0);
+        let h = horiz.length();
+        if self.orthographic || h < 1e-9 * d.length().max(1e-12) {
+            return self.clone();
+        }
+        let tan_e = d.z / h;
+        let tan_half = (self.fov_degrees.to_radians() * 0.5).tan().max(1e-9);
+        Camera {
+            target: Vec3::new(self.target.x, self.target.y, self.eye.z),
+            up: Vec3::Z,
+            shift: self.shift + tan_e / (2.0 * tan_half),
+            ..self.clone()
+        }
+    }
+
     /// Unit view direction for a preset name, or `None` if the name is not one.
     ///
     /// Separate from [`Camera::preset`] so the angular form can be tested
@@ -205,7 +235,7 @@ impl Camera {
         let fov = Camera::preset_fov(preset);
         let dist = radius * (1.0 + margin) / (fov.to_radians() / 2.0).sin();
         let up = if dir.z.abs() > 0.99 { Vec3::Y } else { Vec3::Z };
-        Camera { eye: center + dir * dist, target: center, up, fov_degrees: fov, orthographic: false }
+        Camera { eye: center + dir * dist, target: center, up, fov_degrees: fov, orthographic: false, shift: 0.0 }
     }
 
     /// A camera that frames the box tightly for a given image aspect ratio.
@@ -533,6 +563,11 @@ pub enum Lighting {
     /// behind — that turns with the camera so a `--view back` shot is not
     /// lit from behind, over a brighter grey surround.
     Product,
+    /// No rig at all: the three studio lights are off and the environment
+    /// is black unless a [`Backdrop`] names one. What lights the scene is
+    /// its own emissive bodies and the sun, if one is given — a lit room at
+    /// night, a lamp on a dark table.
+    None,
 }
 
 impl Lighting {
@@ -540,6 +575,7 @@ impl Lighting {
         match s {
             "" | "studio" => Some(Lighting::Studio),
             "product" | "catalogue" | "catalog" => Some(Lighting::Product),
+            "none" | "off" | "dark" => Some(Lighting::None),
             _ => None,
         }
     }
@@ -548,11 +584,12 @@ impl Lighting {
         match self {
             Lighting::Studio => "studio",
             Lighting::Product => "product",
+            Lighting::None => "none",
         }
     }
 
     pub fn names() -> &'static [&'static str] {
-        &["studio", "product"]
+        &["studio", "product", "none"]
     }
 }
 
@@ -576,6 +613,13 @@ pub enum Backdrop {
     /// Any colour, linear RGB: sky ×1.4, horizon ×1, ground ×0.7, floor at
     /// horizon / 0.85.
     Color([f32; 3]),
+    /// Daylight: the analytic clear sky of [`sky::Sky`], driven by the
+    /// render's sun (or, with none, a sun at 35° in the south-south-west),
+    /// with the studio rig switched off, so the sun and the sky are the
+    /// only lights. The sky warms toward a low sun and glows along the
+    /// horizon; the floor is a mid-dark ground. The path tracer shows and
+    /// reflects it; the rasterizer lights by it and paints its horizon.
+    Sky,
 }
 
 impl Backdrop {
@@ -586,6 +630,7 @@ impl Backdrop {
             "studio" | "grey" | "gray" => Some(Backdrop::Studio),
             "white" => Some(Backdrop::White),
             "black" => Some(Backdrop::Black),
+            "sky" | "daylight" => Some(Backdrop::Sky),
             _ => {
                 let hex = s.strip_prefix('#')?;
                 if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -597,7 +642,7 @@ impl Backdrop {
     }
 
     pub fn names() -> &'static [&'static str] {
-        &["studio", "white", "black", "#rrggbb"]
+        &["studio", "white", "black", "sky", "#rrggbb"]
     }
 
     /// `(sky, horizon, ground)` of the environment gradient, linear.
@@ -607,6 +652,7 @@ impl Backdrop {
             Backdrop::White => ([0.95; 3], [0.90; 3], [0.80; 3]),
             Backdrop::Black => ([0.15; 3], [0.02; 3], [0.01; 3]),
             Backdrop::Color(c) => (scale(c, 1.4), c, scale(c, 0.7)),
+            Backdrop::Sky => sky::Sky::new(SunLight::default_sky_sun().dir, sky::DEFAULT_TURBIDITY).gradient(),
         }
     }
 
@@ -617,13 +663,86 @@ impl Backdrop {
             Backdrop::White => [0.85; 3],
             Backdrop::Black => [0.03; 3],
             Backdrop::Color(c) => scale(c, 1.0 / 0.85).map(|v| v.clamp(0.0, 1.0)),
+            Backdrop::Sky => SKY_GROUND_ALBEDO,
         }
+    }
+
+    /// Whether this backdrop replaces the rig: the sky lights the scene
+    /// with the sun alone.
+    pub fn is_sky(&self) -> bool {
+        matches!(self, Backdrop::Sky)
     }
 
     /// The flat colour the rasterizer paints behind the part so the two
     /// backends agree in tone: the horizon, through the tone map.
     pub fn background(&self, exposure: f32, tm: ToneMap) -> [f32; 3] {
         tonemap_rgb(self.env().1, exposure, tm)
+    }
+}
+
+/// Albedo of the floor under [`Backdrop::Sky`]: weathered asphalt, dry
+/// earth and grass all sit near 0.15-0.2, slightly warm.
+pub const SKY_GROUND_ALBEDO: [f32; 3] = [0.17, 0.16, 0.14];
+
+/// Aerial perspective for the path tracer: what the camera sees at a
+/// distance is mixed toward the colour of the air. Only camera rays are
+/// attenuated — the light that reaches a surface, the sun's shadows and the
+/// bounces are untouched — so it costs nothing and dims no shadow.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Haze {
+    /// Distance in model units (mm) at which half of what the eye sees is
+    /// haze: the transmittance along a camera ray of length `d` is
+    /// `0.5^(d / half_distance)`.
+    pub half_distance: f32,
+    /// The haze's own radiance, linear RGB; `None` takes the environment at
+    /// the horizon in the ray's direction, so it matches the sky behind it
+    /// and brightens toward the sun.
+    pub color: Option<[f32; 3]>,
+}
+
+impl Haze {
+    /// `<distance>[unit][,#rrggbb]`: the half distance as a number in mm or
+    /// with a unit (`mm`, `cm`, `m`, `km`, `in`, `ft`), optionally a colour.
+    pub fn parse(s: &str) -> Result<Option<Haze>, String> {
+        let s = s.trim();
+        if s.is_empty() || s == "off" || s == "none" {
+            return Ok(None);
+        }
+        let (dist, color) = match s.split_once(',') {
+            Some((d, c)) => (d.trim(), Some(c.trim())),
+            None => (s, None),
+        };
+        let split = dist.find(|c: char| c.is_ascii_alphabetic()).unwrap_or(dist.len());
+        let (num, unit) = dist.split_at(split);
+        let v: f64 = num.trim().parse().map_err(|_| format!("haze {s:?}: expected a distance such as 400m or 1200ft"))?;
+        let mm = match unit.trim() {
+            "" | "mm" => 1.0,
+            "cm" => 10.0,
+            "m" => 1000.0,
+            "km" => 1.0e6,
+            "in" => 25.4,
+            "ft" => 304.8,
+            u => return Err(format!("haze {s:?}: unknown unit {u:?}; mm, cm, m, km, in or ft")),
+        };
+        let d = v * mm;
+        if !(d.is_finite() && d > 0.0) {
+            return Err(format!("haze {s:?}: the distance must be above 0"));
+        }
+        let color = match color {
+            None => None,
+            Some(c) => {
+                let hex = c.strip_prefix('#').filter(|h| h.len() == 6 && h.chars().all(|c| c.is_ascii_hexdigit()));
+                let hex = hex.ok_or_else(|| format!("haze {s:?}: the colour is #rrggbb"))?;
+                Some(crate::paint::unhex(hex).map(|v| v as f32))
+            }
+        };
+        Ok(Some(Haze { half_distance: d as f32, color }))
+    }
+
+    /// Share of the light from `d` away that reaches the eye.
+    #[inline]
+    pub fn transmittance(&self, d: f32) -> f32 {
+        if d.is_finite() { (-std::f32::consts::LN_2 * d / self.half_distance.max(1e-6)).exp() } else { 0.0 }
     }
 }
 
@@ -738,6 +857,9 @@ pub struct RenderOptions {
     /// the sun's own 0.53°, so its shadows have a real penumbra. `None` is
     /// every render before this.
     pub sun: Option<SunLight>,
+    /// Aerial perspective on camera rays (path tracer only); `None` is
+    /// clear air.
+    pub haze: Option<Haze>,
     /// No backdrop: a pixel's alpha is the share of it the model covers,
     /// and `background` is not drawn at all. The image is straight-alpha
     /// RGBA whose colour is the model's own — it was never mixed with a
@@ -773,22 +895,104 @@ pub struct SunLight {
 }
 
 impl SunLight {
-    /// Daylight: a neutral, faintly warm white at about two thirds of the
-    /// studio key, which under the rig's own reduction (`Lights::with_sun`)
-    /// leaves a sunlit face brighter than any rig light alone and a shaded
-    /// one lit by the fill and the sky.
+    /// Daylight at [`sky::REFERENCE_ELEVATION_DEGREES`]: a neutral, faintly
+    /// warm white at about two thirds of the studio key, which under the
+    /// rig's own reduction (`Lights::with_sun`) leaves a sunlit face
+    /// brighter than any rig light alone and a shaded one lit by the fill
+    /// and the sky. Other elevations are this through more or less air
+    /// ([`SunLight::new`]).
     pub const IRRADIANCE: [f32; 3] = [3.4, 3.3, 3.1];
 
-    /// A sun along `dir` (toward the sun; normalised here) at the standard
-    /// irradiance.
+    /// A sun along `dir` (toward the sun; normalised here), coloured and
+    /// dimmed by the air it crosses at that elevation: the reference white
+    /// at 60°, a little bluer and brighter overhead, yellow by 20°, orange
+    /// by 5°, red and faint at the horizon ([`sky::sun_transmittance`]).
     pub fn new(dir: Vec3) -> SunLight {
         let d = dir.normalized();
-        SunLight { dir: [d.x as f32, d.y as f32, d.z as f32], irradiance: SunLight::IRRADIANCE }
+        let dir = [d.x as f32, d.y as f32, d.z as f32];
+        SunLight { dir, irradiance: SunLight::daylight(dir) }
+    }
+
+    /// The irradiance of a sun along `dir` by its elevation.
+    pub fn daylight(dir: [f32; 3]) -> [f32; 3] {
+        let el = dir[2].clamp(-1.0, 1.0).asin().to_degrees();
+        mul(SunLight::IRRADIANCE, sky::sun_transmittance(el))
+    }
+
+    /// The sun [`Backdrop::Sky`] uses when the render names none: 35° up in
+    /// the south-south-west, low enough to model a façade.
+    pub fn default_sky_sun() -> SunLight {
+        SunLight::new(crate::sun::direction(200.0, 35.0))
+    }
+
+    /// The same sun in another colour, keeping its brightness: `rgb` is
+    /// normalised to unit luminance and scaled to the luminance the sun
+    /// has at its elevation.
+    pub fn with_color(mut self, rgb: [f32; 3]) -> SunLight {
+        self.irradiance = scale(sky::unit_luminance(rgb), luminance(self.irradiance));
+        self
+    }
+
+    /// The same sun `k` times as bright.
+    pub fn with_intensity(mut self, k: f32) -> SunLight {
+        self.irradiance = scale(self.irradiance, k.max(0.0));
+        self
     }
 
     /// Above the horizon: a sun that lights anything.
     pub fn is_up(&self) -> bool {
         self.dir[2] > 0.0
+    }
+}
+
+/// How a request colours its sun: by the elevation (the default), by a
+/// colour, or by a colour temperature, and how bright.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct SunTint {
+    /// `None` is the elevation's own colour.
+    pub color: Option<[f32; 3]>,
+    /// Multiplier on the irradiance (1 is daylight).
+    pub intensity: f32,
+}
+
+impl Default for SunTint {
+    fn default() -> Self {
+        SunTint { color: None, intensity: 1.0 }
+    }
+}
+
+impl SunTint {
+    /// `auto`, `#rrggbb` (sRGB, as every hex colour), or a colour
+    /// temperature such as `3500K`; and an intensity multiplier, where 0
+    /// means 1.
+    pub fn parse(color: &str, intensity: f64) -> Result<SunTint, String> {
+        let c = color.trim();
+        let color = if c.is_empty() || c == "auto" {
+            None
+        } else if let Some(hex) = c.strip_prefix('#') {
+            if hex.len() != 6 || !hex.chars().all(|h| h.is_ascii_hexdigit()) {
+                return Err(format!("sun colour {c:?}: expected #rrggbb, a temperature such as 3500K, or auto"));
+            }
+            Some(crate::paint::unhex(hex).map(|v| v as f32))
+        } else {
+            let k = c.strip_suffix('K').or_else(|| c.strip_suffix('k')).unwrap_or(c);
+            match k.trim().parse::<f32>() {
+                Ok(k) if (1000.0..=40000.0).contains(&k) => Some(sky::kelvin_rgb(k)),
+                _ => return Err(format!("sun colour {c:?}: expected #rrggbb, a temperature such as 3500K (1000 to 40000), or auto")),
+            }
+        };
+        if !intensity.is_finite() || intensity < 0.0 {
+            return Err(format!("sun intensity {intensity}: expected a multiplier of 0 or more"));
+        }
+        Ok(SunTint { color, intensity: if intensity == 0.0 { 1.0 } else { intensity as f32 } })
+    }
+
+    pub fn apply(&self, sun: SunLight) -> SunLight {
+        let sun = match self.color {
+            Some(c) => sun.with_color(c),
+            None => sun,
+        };
+        if self.intensity == 1.0 { sun } else { sun.with_intensity(self.intensity) }
     }
 }
 
@@ -834,6 +1038,7 @@ impl Default for RenderOptions {
             path: PathTraceOptions::default(),
             debug: None,
             sun: None,
+            haze: None,
             transparent: false,
             shadow_catcher: false,
             supersample: 1,
@@ -1339,6 +1544,9 @@ pub struct View {
     /// Distance along `fwd` at which the lens is focused: the eye-to-target
     /// distance.
     pub(crate) focus: f32,
+    /// [`Camera::shift`] in pixels: how far the frame is slid up the image
+    /// plane.
+    pub(crate) shift_px: f32,
 }
 
 impl View {
@@ -1364,6 +1572,7 @@ impl View {
             jitter: [0.5, 0.5],
             lens_radius: 0.0,
             focus: dist as f32,
+            shift_px: if cam.shift.is_finite() { (cam.shift * h as f64) as f32 } else { 0.0 },
         }
     }
 
@@ -1443,13 +1652,14 @@ impl View {
         let y = dot(d, self.up);
         let z = dot(d, self.fwd);
         let o = self.offset();
+        let cy = self.h * 0.5 + self.shift_px;
         if self.orthographic {
-            Some([self.w * 0.5 + x * self.ortho_scale + o[0], self.h * 0.5 - y * self.ortho_scale + o[1], z])
+            Some([self.w * 0.5 + x * self.ortho_scale + o[0], cy - y * self.ortho_scale + o[1], z])
         } else {
             if z <= 1e-4 {
                 return None;
             }
-            Some([self.w * 0.5 + x * self.focal / z + o[0], self.h * 0.5 - y * self.focal / z + o[1], z])
+            Some([self.w * 0.5 + x * self.focal / z + o[0], cy - y * self.focal / z + o[1], z])
         }
     }
 
@@ -1457,7 +1667,7 @@ impl View {
     #[inline]
     pub fn unproject(&self, sx: f32, sy: f32, z: f32) -> [f32; 3] {
         let o = self.offset();
-        let (nx, ny) = (sx - o[0] - self.w * 0.5, self.h * 0.5 - (sy - o[1]));
+        let (nx, ny) = (sx - o[0] - self.w * 0.5, self.h * 0.5 + self.shift_px - (sy - o[1]));
         let (x, y) = if self.orthographic {
             (nx / self.ortho_scale, ny / self.ortho_scale)
         } else {
@@ -1488,7 +1698,7 @@ impl View {
     /// `eye` itself, or keeps working relative to it.
     pub(crate) fn eye_ray(&self, sx: f32, sy: f32) -> ([f32; 3], [f32; 3]) {
         let o = self.offset();
-        let (nx, ny) = (sx - o[0] - self.w * 0.5, self.h * 0.5 - (sy - o[1]));
+        let (nx, ny) = (sx - o[0] - self.w * 0.5, self.h * 0.5 + self.shift_px - (sy - o[1]));
         if self.orthographic {
             let (x, y) = (nx / self.ortho_scale, ny / self.ortho_scale);
             (add(scale(self.right, x), scale(self.up, y)), self.fwd)
@@ -1853,7 +2063,7 @@ mod tests {
     /// at the focus distance.
     #[test]
     fn thin_lens_rays_converge_on_the_focus_plane() {
-        let cam = Camera { eye: Vec3::new(0.0, -100.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 24.0, orthographic: false };
+        let cam = Camera { eye: Vec3::new(0.0, -100.0, 0.0), target: Vec3::ZERO, up: Vec3::Z, fov_degrees: 24.0, orthographic: false, shift: 0.0 };
         let v = View::new(&cam, 200, 150);
         assert!(!v.has_dof() && !v.with_dof(0.0).has_dof(), "no f-number, no lens");
         let lens = v.with_dof(4.0);

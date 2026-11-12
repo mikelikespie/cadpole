@@ -983,14 +983,57 @@ fn mindiff(x: f64, x0: f64, period: f64) -> f64 {
 /// Inversion of a boundary point: truck's search with the nearest point
 /// within the weld distance as the fallback, from the hint first and from
 /// nothing if that fails.
+///
+/// **Inside the patch.** A polynomial patch continues past its domain, and
+/// a skin through sections that change sharply overshoots enough for that
+/// continuation to pass through a point the patch itself also holds. Newton
+/// from a hint near a corner can walk off the domain and land there — a
+/// parameter a whole span outside, whose image is the right point and whose
+/// loop then fails to close. So a parameter off the domain (in a direction
+/// that is not periodic) is only kept if no search finds one on it: the
+/// hint, no hint, then a 5 × 5 grid of hints across the domain.
 fn invert(surface: &KSurface, p: Point3, hint: Option<[f64; 2]>) -> Option<[f64; 2]> {
-    let found = match hint {
-        Some(h) => surface
-            .search_parameter(p, SPHint2D::Parameter(h[0], h[1]), 100)
-            .or_else(|| surface.search_parameter(p, SPHint2D::None, 100)),
-        None => surface.search_parameter(p, SPHint2D::None, 100),
-    }?;
-    (found.0.is_finite() && found.1.is_finite()).then_some([found.0, found.1])
+    let raw = surface.surface();
+    let (ur, vr) = raw.try_range_tuple();
+    let on = |x: f64, range: Option<(f64, f64)>, periodic: bool| -> bool {
+        periodic
+            || range.is_none_or(|(a, b)| {
+                let m = 1e-7 * (b - a).abs().max(1e-12);
+                x >= a.min(b) - m && x <= a.max(b) + m
+            })
+    };
+    let inside = |uv: [f64; 2]| on(uv[0], ur, raw.u_period().is_some()) && on(uv[1], vr, raw.v_period().is_some());
+    let search = |h: SPHint2D| -> Option<[f64; 2]> {
+        let f = surface.search_parameter(p, h, 100)?;
+        (f.0.is_finite() && f.1.is_finite()).then_some([f.0, f.1])
+    };
+    let mut off_domain = None;
+    let mut first = vec![];
+    if let Some(h) = hint {
+        first.push(SPHint2D::Parameter(h[0], h[1]));
+    }
+    first.push(SPHint2D::None);
+    for h in first {
+        if let Some(uv) = search(h) {
+            if inside(uv) {
+                return Some(uv);
+            }
+            off_domain.get_or_insert(uv);
+        }
+    }
+    if let (Some((u0, u1)), Some((v0, v1))) = (ur, vr) {
+        for i in 0..5 {
+            for j in 0..5 {
+                let h = SPHint2D::Parameter(u0 + (u1 - u0) * i as f64 / 4.0, v0 + (v1 - v0) * j as f64 / 4.0);
+                if let Some(uv) = search(h) {
+                    if inside(uv) {
+                        return Some(uv);
+                    }
+                }
+            }
+        }
+    }
+    off_domain
 }
 
 /// The scale of a surface: the largest coordinate magnitude over its corners.
