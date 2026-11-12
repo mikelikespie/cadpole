@@ -156,7 +156,7 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
             };
             // Two pieces the script gave as lists are joined only where
             // one holds the other captive: copies laid out for different
-            // plates may stand in each other's space.
+            // plates may stand in, on or beside each other's space.
             let both_declared = items[ii].declared && items[ij].declared;
             let kind = if c.overlap {
                 (!both_declared).then_some(JointKind::Overlap)
@@ -168,7 +168,8 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
                 let resting_gap = crate::overhang::resting_gap(&opts.profile);
                 if share >= SKIN_FRACTION && thin {
                     Some(JointKind::Skin(share))
-                } else if c.distance >= PRINTABLE_GAP_SHARE * opts.profile.min_gap
+                } else if !both_declared
+                    && c.distance >= PRINTABLE_GAP_SHARE * opts.profile.min_gap
                     && c.distance <= resting_gap + 1e-6
                     && resting_share(bodies[i].mesh, bodies[j].mesh, resting_gap) >= RESTING_SHARE
                 {
