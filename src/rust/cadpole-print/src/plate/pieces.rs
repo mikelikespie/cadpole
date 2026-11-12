@@ -199,6 +199,7 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
         g.name = match &g.pin.name {
             Some(n) => n.clone(),
             None if g.bodies.len() == 1 => bodies[g.bodies[0]].name.clone(),
+            None if g.bodies.len() == 2 => format!("{} and {}", bodies[g.bodies[0]].name, bodies[g.bodies[1]].name),
             None => {
                 let n = g.bodies.len() - 1;
                 format!("{} and {} other{}", bodies[g.bodies[0]].name, n, if n == 1 { "" } else { "s" })
@@ -318,4 +319,46 @@ pub fn captive(a: &Mesh, b: &Mesh) -> bool {
         }
     }
     true
+}
+
+/// The bodies of a piece as one mesh for scoring, without the faces where
+/// one body lies on another: a stripe's underside on the shell it skins is
+/// inside the printed piece, not an overhang over air, and a slicer unions
+/// the two. A triangle is dropped when a ray a hair along its outward
+/// normal meets another body of the piece, or when it lies inside one.
+pub fn without_contacts(meshes: &[&Mesh]) -> Mesh {
+    let bvhs: Vec<Bvh> = meshes.iter().map(|m| Bvh::from_mesh(m)).collect();
+    let trees: Vec<Tree> = meshes.iter().map(|m| Tree::build(m)).collect();
+    let mut out = Mesh::default();
+    for (i, m) in meshes.iter().enumerate() {
+        let keep: Vec<bool> = (0..m.triangle_count())
+            .map(|t| {
+                let v = tri(m, t);
+                let (n, area) = tri_normal_area(&v);
+                if area <= 0.0 {
+                    return true;
+                }
+                let c = centroid(&v);
+                let o = c - n * TOUCH;
+                // Inside another body of the piece: an overlap's buried face.
+                if trees.iter().enumerate().any(|(j, tr)| j != i && tr.winding(c).abs() > 0.75) {
+                    return false;
+                }
+                !bvhs
+                    .iter()
+                    .enumerate()
+                    .any(|(j, b)| j != i && b.intersect(f3(o), f3(n), 0.0, (3.0 * TOUCH) as f32).is_some())
+            })
+            .collect();
+        let base = (out.positions.len() / 3) as u32;
+        out.positions.extend_from_slice(&m.positions);
+        for (t, k) in keep.iter().enumerate() {
+            if *k {
+                out.indices.extend(m.indices[3 * t..3 * t + 3].iter().map(|x| x + base));
+                out.face_ids.push(m.face_ids.get(t).copied().unwrap_or(0));
+            }
+        }
+    }
+    out.normals = vec![0.0; out.positions.len()];
+    out
 }

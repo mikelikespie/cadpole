@@ -306,7 +306,7 @@ pub fn explain(p: &Piece, opts: &Options) -> String {
     } else {
         s.push_str(&format!("{}: {}", c.label, support_words(c)));
         if let Some(b) = base {
-            s.push_str(&format!(" vs {} as modelled", support_words(b)));
+            s.push_str(&format!(" vs {} as modelled", support_words(b).replacen(" mm² support", " mm²", 1)));
             let mut why = Vec::new();
             if !b.fits && c.fits {
                 why.push("as modelled it does not fit".to_owned());

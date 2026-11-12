@@ -270,7 +270,11 @@ pub fn plan(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options) -> Plan {
     let groups = pieces::join(bodies, items, opts, &mut notes);
     let mut out: Vec<Piece> = Vec::with_capacity(groups.len());
     for g in groups {
-        let mesh = concat(g.bodies.iter().map(|&b| bodies[b].mesh));
+        let mesh = if g.bodies.len() > 1 {
+            pieces::without_contacts(&g.bodies.iter().map(|&b| bodies[b].mesh).collect::<Vec<_>>())
+        } else {
+            bodies[g.bodies[0]].mesh.clone()
+        };
         let topo = if g.bodies.len() == 1 { bodies[g.bodies[0]].topo } else { None };
         let fixed = g.kind == PieceKind::PrintInPlace && g.pin.down.is_none();
         let (candidates, chosen, baseline, alternatives) = score::orient(&mesh, topo, &g.pin, fixed, opts);

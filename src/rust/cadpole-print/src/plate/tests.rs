@@ -167,6 +167,11 @@ fn a_skin_and_an_overlap_are_fused_into_one_piece() {
     assert_eq!(plan.pieces[0].joints.len(), 2);
     assert!(matches!(plan.pieces[0].joints[0].kind, JointKind::Skin(f) if f > 0.4));
     assert_eq!(plan.pieces[0].joints[1].kind, JointKind::Overlap);
+    // The stripe's underside lies on the shell and the eye's lower half is
+    // inside it: neither is an overhang or an island.
+    let best = plan.pieces[0].best();
+    assert_eq!((best.support_area, best.islands), (0.0, 0), "{}", plan.pieces[0].reason);
+    assert_eq!(best.label, score::AS_MODELLED, "{}", plan.pieces[0].reason);
 }
 
 #[test]
@@ -199,7 +204,7 @@ fn big_blocks_spill_onto_more_plates_four_to_a_plate() {
     let plan = plan(&bodies, &loose(9), &opts);
     assert_eq!(plan.plates.len(), 3, "{}", plan.report(&opts));
     assert_eq!(plan.plates[0].placements.len(), 4);
-    assert_eq!(plan.plates[0].name, "Plate 1");
+    assert_eq!(plan.plates[0].name, "Parts 1");
     assert_laid_out(&plan, &bodies, &opts, opts.spacing - 1e-6);
 }
 

@@ -534,7 +534,8 @@ pub fn pack(bodies: &[PlanBody<'_>], pieces: &[Piece], opts: &Options, notes: &m
                 None if count == 1 => "Test coupons".to_owned(),
                 None => format!("Test coupons {}", p.index_in_set),
                 Some(v) if several_sets => format!("{} {}", v.title(), p.index_in_set),
-                Some(_) => format!("Plate {}", p.index_in_set),
+                Some(_) if count == 1 => "Parts".to_owned(),
+                Some(_) => format!("Parts {}", p.index_in_set),
             };
             Plate {
                 name,
@@ -591,7 +592,12 @@ fn try_place(
         for (k, fp) in fps.iter().enumerate() {
             if let Some((cx, cy)) = grid.first_fit(&fp.raster) {
                 let key = (cy + fp.raster.h, cx + fp.raster.w, k, cx, cy);
-                if best.is_none_or(|b| (key.0, key.1, key.2) < (b.0, b.1, b.2)) {
+                // A later spin has to gain more than a cell to be worth
+                // the turn: a round part is not turned 47.8° for nothing.
+                let better = |b: &(usize, usize, usize, usize, usize)| {
+                    key.0 + 1 < b.0 || (key.0 <= b.0 + 1 && key.1 + 1 < b.1)
+                };
+                if best.as_ref().is_none_or(better) {
                     best = Some(key);
                 }
             }

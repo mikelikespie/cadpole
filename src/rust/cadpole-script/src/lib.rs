@@ -27,6 +27,7 @@ mod modeltest;
 pub mod nesting;
 mod opt;
 mod pattern;
+pub mod plating;
 mod primitives;
 mod selection;
 pub mod sheets;

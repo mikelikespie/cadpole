@@ -2799,3 +2799,45 @@ impl<'v> StarlarkValue<'v> for KImportReport {
         IMPORT_REPORT_ATTRS.contains(&attribute)
     }
 }
+
+/// `print_part(bodies, ...)`: bodies that print as one piece, with what the
+/// script pins about how (`docs/plating.md`). Only `print_plan` reads it.
+#[derive(Debug, Clone, ProvidesStaticType, NoSerialize, StarlarkPagablePanic, Allocative)]
+pub struct KPrintPart {
+    #[allocative(skip)]
+    pub bodies: Vec<BodyId>,
+    /// Given as a list (or `together=True`): one piece whatever the
+    /// analysis finds.
+    pub declared: bool,
+    #[allocative(skip)]
+    pub pin: cadpole_print::plate::Pin,
+}
+starlark_simple_value!(KPrintPart);
+
+impl fmt::Display for KPrintPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "print_part({} bod{}", self.bodies.len(), if self.bodies.len() == 1 { "y" } else { "ies" })?;
+        if let Some(n) = &self.pin.name {
+            write!(f, ", name={n:?}")?;
+        }
+        write!(f, ")")
+    }
+}
+
+#[starlark_value(type = "PrintPart")]
+impl<'v> StarlarkValue<'v> for KPrintPart {
+    fn get_attr(&self, attribute: &str, heap: Heap<'v>) -> Option<Value<'v>> {
+        match attribute {
+            "name" => Some(match &self.pin.name {
+                Some(n) => heap.alloc(n.as_str()),
+                None => Value::new_none(),
+            }),
+            "coupon" => Some(Value::new_bool(self.pin.coupon)),
+            _ => None,
+        }
+    }
+
+    fn dir_attr(&self) -> Vec<String> {
+        vec!["coupon".into(), "name".into()]
+    }
+}

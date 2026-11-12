@@ -847,15 +847,22 @@ pub fn plate_scene(ctx: &mut Context, bodies: &[(BodyId, Option<[f64; 3]>, Vec3)
     let mut items = Vec::with_capacity(bodies.len());
     let (mut lo, mut hi) = (Vec3::new(f64::MAX, f64::MAX, f64::MAX), Vec3::new(f64::MIN, f64::MIN, f64::MIN));
     for (id, colour, offset) in bodies {
-        let (saved, id_string) = {
+        let (saved, id_string, layer) = {
             let b = ctx.body_mut(*id)?;
             let saved = b.material.base_color;
             if let Some(c) = colour {
                 b.material.base_color = *c;
             }
-            (saved, b.id_string())
+            (saved, b.id_string(), b.layer.clone())
         };
-        let scene = crate::scene_from_context(ctx, &[id_string], &[], &[]);
+        // A body on a hidden layer (a `print` layer of laid-out copies) is
+        // still printed: the plate shows it, whole.
+        let shown: Vec<cadpole_core::layers::LayerOverride> = if layer.is_empty() {
+            Vec::new()
+        } else {
+            vec![cadpole_core::layers::LayerOverride { name: layer, visible: Some(true), opacity: Some(1.0) }]
+        };
+        let scene = crate::scene_from_context(ctx, &[id_string], &[], &shown);
         ctx.body_mut(*id)?.material.base_color = saved;
         let moved = cadpole_core::Transform::translation(*offset);
         for mut item in scene.items {
