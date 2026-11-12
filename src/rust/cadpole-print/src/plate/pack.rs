@@ -158,7 +158,7 @@ pub fn hull(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
 pub fn min_rect(points: &[(f64, f64)]) -> (f64, f64, f64) {
     let h = hull(points);
     let extent = |a: f64| {
-        let (s, c) = a.sin_cos();
+        let (s, c) = cadpole_core::fmath::sin_cos(a);
         let (mut x0, mut x1, mut y0, mut y1) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
         for &(x, y) in &h {
             let (u, v) = (x * c - y * s, x * s + y * c);
@@ -173,7 +173,7 @@ pub fn min_rect(points: &[(f64, f64)]) -> (f64, f64, f64) {
     let mut best = (0.0, w0, d0);
     for i in 0..h.len() {
         let (a, b) = (h[i], h[(i + 1) % h.len()]);
-        let edge = (b.1 - a.1).atan2(b.0 - a.0);
+        let edge = cadpole_core::fmath::atan2(b.1 - a.1, b.0 - a.0);
         // The turn that lays this edge along x, folded into [0, 90).
         let mut turn = (-edge).to_degrees().rem_euclid(90.0);
         if turn > 90.0 - 1e-9 {

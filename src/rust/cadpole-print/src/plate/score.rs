@@ -138,7 +138,7 @@ pub fn orient(
             let fits = fits_plan && height <= profile.bed[2] + 1e-6;
             let along_degrees = pin.along.map(|a| {
                 let a = r.direction(a);
-                a.dot(up).abs().clamp(0.0, 1.0).asin().to_degrees()
+                cadpole_core::fmath::asin(a.dot(up).abs().clamp(0.0, 1.0)).to_degrees()
             });
             Scored {
                 down: *d,

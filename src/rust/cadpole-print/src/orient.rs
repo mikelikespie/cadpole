@@ -195,7 +195,7 @@ pub(crate) fn push_unique(out: &mut Vec<(Vec3, String)>, d: Vec3, label: String)
 /// model, so it is exactly the direction that would face the bed if that face
 /// were laid down.
 pub(crate) fn flat_regions(mesh: &Mesh) -> Vec<(Vec3, f64)> {
-    let cos = FLAT_DEGREES.to_radians().cos();
+    let cos = cadpole_core::fmath::cos(FLAT_DEGREES.to_radians());
     let mut groups: Vec<(Vec3, f64)> = Vec::new();
     for t in 0..mesh.triangle_count() {
         let (n, area) = tri_normal_area(&tri(mesh, t));
@@ -233,7 +233,7 @@ pub(crate) fn rotation_putting_down(mesh: &Mesh, down: Vec3, up: Vec3) -> Transf
         let a = if d.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
         return Transform::rotation(centre, d.cross(a).normalized(), std::f64::consts::PI);
     }
-    Transform::rotation(centre, d.cross(target).normalized(), dot.acos())
+    Transform::rotation(centre, d.cross(target).normalized(), cadpole_core::fmath::acos(dot))
 }
 
 pub(crate) fn footprint_and_height(mesh: &Mesh, up: Vec3) -> ((f64, f64), f64) {
