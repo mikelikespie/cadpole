@@ -613,12 +613,17 @@ document.addEventListener("click", (e) => {
   const box = $(".agent-vid");
   if (box) {
     const btn = $("[data-vplay]", box.parentElement), cap = $(".agent-cap", box.parentElement);
+    const dots = $$(".agent-prog [data-seek]", box.parentElement), count = $(".agent-n", box.parentElement);
     let video = null, list = [], wanted = false;
     const sync = () => {
       let cur = null;
       for (const li of list) if (+li.dataset.t <= video.currentTime + 0.05) cur = li;
       for (const li of list) li.classList.toggle("on", li === cur);
       cap.textContent = cur ? cur.textContent : "";
+      // the segments: those before the current one done, the current one lit
+      const n = list.indexOf(cur);
+      dots.forEach((d, i) => { d.classList.toggle("done", i < n); if (i === n) d.setAttribute("aria-current", "step"); else d.removeAttribute("aria-current"); });
+      if (count) count.textContent = n < 0 ? "" : `${n + 1} / ${dots.length}`;
     };
     const make = () => {
       const base = box.dataset.video;
@@ -631,6 +636,7 @@ document.addEventListener("click", (e) => {
       video.poster = $("picture img", box)?.currentSrc || `${base}-poster.webp`;
       video.innerHTML = `<source src="${base}.webm?v=${v}" type="video/webm"><source src="${base}.mp4?v=${v}" type="video/mp4">`;
       video.addEventListener("timeupdate", sync);
+      video.addEventListener("seeked", sync);
       video.addEventListener("play", () => { box.classList.add("playing"); btn.textContent = "Pause"; btn.setAttribute("aria-pressed", "true"); });
       video.addEventListener("pause", () => { box.classList.remove("playing"); btn.textContent = "Play"; btn.setAttribute("aria-pressed", "false"); });
       video.addEventListener("click", () => { if (video.paused) { wanted = true; video.play().catch(() => {}); } else { wanted = false; video.pause(); } });
@@ -639,6 +645,13 @@ document.addEventListener("click", (e) => {
     };
     const play = () => { if (!video) make(); wanted = true; video.play().catch(() => {}); };
     btn.addEventListener("click", () => { if (video && !video.paused) { wanted = false; video.pause(); } else play(); });
+    // A segment goes to its step and plays from there.
+    for (const d of dots) d.addEventListener("click", () => {
+      if (!video) make();
+      const go = () => { video.currentTime = +d.dataset.seek + 0.05; sync(); };
+      if (video.readyState >= 1) go(); else video.addEventListener("loadedmetadata", go, { once: true });
+      play();
+    });
     new IntersectionObserver((es) => {
       const vis = es[es.length - 1].isIntersecting;
       if (!vis) { video?.pause(); return; }

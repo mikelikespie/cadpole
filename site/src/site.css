@@ -545,6 +545,21 @@ a[data-full] { position: relative; }
 .agent-steps li { counter-increment: s; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 9px 10px; border-radius: 10px; color: var(--muted); font-size: 15.5px; line-height: 1.4; transition: background .2s, color .2s; }
 .agent-steps li::before { content: counter(s); width: 24px; height: 24px; }
 .agent-steps li.on { background: rgba(160, 220, 200, .09); color: var(--fg); }
+/* Under the frame, one step at a time: a row of six segments (tap one to go there) and "n / 6".
+   Beside the frame on a wide screen, the numbered list does that job instead. */
+.agent-prog { display: flex; align-items: center; gap: 0; margin: -10px 0 -6px; }
+.agent-prog button { flex: 1; min-width: 44px; height: 44px; padding: 0 2px; border: 0; background: transparent; cursor: pointer; display: flex; align-items: center; -webkit-tap-highlight-color: transparent; }
+.agent-prog button > span { display: block; width: 100%; height: 4px; border-radius: 2px; background: var(--line); transition: background .2s; }
+.agent-prog button.done > span { background: rgba(160, 220, 200, .35); }
+.agent-prog button[aria-current] > span { background: var(--brand-2); }
+.agent-prog button:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 2px; border-radius: 4px; }
+.agent-n { flex: none; min-width: 3.2em; padding-left: 4px; text-align: right; color: var(--muted); font: 500 13px/1 var(--sans); font-variant-numeric: tabular-nums; }
+@media (max-width: 999.9px) {
+  .agent-side .agent-steps { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .agent-side .cmd-note { margin: 0; }
+  .agent { gap: 6px; }
+}
+@media (min-width: 1000px) { .agent-prog { display: none; } }
 .agent-how { margin: 4px 0 0; padding: 0; list-style: none; counter-reset: h; display: grid; gap: 0; }
 .agent-how > li { counter-increment: h; display: grid; gap: 10px; min-width: 0; padding: 16px 0; border-top: 1px solid var(--line); }
 .agent-how > li:last-child { border-bottom: 1px solid var(--line); }

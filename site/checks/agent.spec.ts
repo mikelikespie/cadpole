@@ -33,7 +33,28 @@ for (const name of Object.keys(VIEWPORTS)) {
   });
 }
 
-test("no phone recording on the page", async ({ browser, site }) => {
+test("on a phone the frame, Play, the step and the step row fit above the bottom bar, and a segment goes to its step", async ({ browser, site }) => {
+  const ctx = await context(browser, "phone-390");
+  const p = await ctx.newPage();
+  await p.goto(site + "?noauto=1", { waitUntil: "load" });
+  await p.evaluate(() => document.querySelector(".agent-vid")!.scrollIntoView({ block: "start" }));
+  await p.waitForTimeout(300);
+  const geo = await p.evaluate(() => {
+    const r = (s: string) => document.querySelector(s)!.getBoundingClientRect();
+    return { vid: r(".agent-vid").top, prog: r(".agent-prog").bottom, bar: r(".bar").top, list: r(".agent-steps").height, n: document.querySelectorAll(".agent-prog button").length, steps: document.querySelectorAll(".agent-steps li").length };
+  });
+  expect(geo.vid).toBeGreaterThanOrEqual(0);
+  expect(geo.prog).toBeLessThanOrEqual(geo.bar);
+  expect(geo.list, "the list is for screen readers only").toBeLessThanOrEqual(1);
+  expect(geo.n).toBe(geo.steps);
+  await p.locator(".agent-prog button").nth(3).click();
+  await expect(p.locator(".agent-prog button").nth(3)).toHaveAttribute("aria-current", "step");
+  await expect(p.locator(".agent-n")).toHaveText(`4 / ${geo.n}`);
+  await expect(p.locator(".agent-cap")).toHaveText((await p.locator(".agent-steps li").nth(3).textContent())!);
+  await ctx.close();
+});
+
+test("no phone recording on the page",async ({ browser, site }) => {
   const ctx = await context(browser, "phone-390");
   const p = await ctx.newPage();
   await p.goto(site, { waitUntil: "load" });

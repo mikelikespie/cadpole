@@ -424,7 +424,8 @@ function agent() {
 <div class="agent-vid" data-video="agent/agent" data-v="${LOCK.files["agent/agent.mp4"].sha256.slice(0, 10)}">
 <picture><img src="agent/agent-poster.webp?v=${fileHash(join(STATIC, "agent", "agent-poster.webp"))}" width="1920" height="1200" alt="The Cadpole web app with a bracket model and a Messages panel where a request to an agent is typed" loading="lazy" decoding="async"></picture>
 </div>
-<div class="agent-ctl"><button class="btn small primary" type="button" data-vplay aria-pressed="false">Play</button><p class="agent-cap" aria-live="off"></p></div>
+<div class="agent-ctl"><button class="btn small primary" type="button" data-vplay aria-pressed="false">Play</button><p class="agent-cap" aria-live="off">${E(AGENT.steps[0].text)}</p></div>
+<div class="agent-prog" role="group" aria-label="Go to a step in the recording">${AGENT.steps.map((s, i) => `<button type="button" data-seek="${s.t}" aria-label="Step ${i + 1} of ${AGENT.steps.length}: ${E(s.text)}"${i ? "" : ' aria-current="step"'}><span></span></button>`).join("")}<span class="agent-n" aria-hidden="true">1 / ${AGENT.steps.length}</span></div>
 </div>
 <div class="agent-side">
 <ol class="agent-steps" aria-label="What happens in the recording">${caps(AGENT.steps)}</ol>
