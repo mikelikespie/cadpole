@@ -8,7 +8,7 @@ def pin(x, y, grow=0):
     return cylinder(7 + grow, 14 + 2 * grow, at=(x + 5, y, -2 - grow))
 
 def ghost(body):
-    return body.material(color="#cfe9e1", opacity=0.1, roughness=0.2, shadow=False)
+    return body.material(color="#cfe9e1", opacity=0.25, roughness=0.2, shadow=False)
 
 a1, b1 = block(-28, -9), pin(-28, -9)
 a2, b2 = block(0, 18), pin(0, 18)

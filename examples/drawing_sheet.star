@@ -50,7 +50,7 @@ shop = sheet_set(
     margin=8,
     title_block=title_block(
         project="PIVOT BRACKET",
-        stamp=["6061-T6", "CLEAR ANODISE"],
+        stamp=["6061-T6", "BLUE ANODISE"],
         notes=["Dimensions in mm. Unless noted: +/-0.2. Boss root R2, boss and bore edges R0.8, not drawn; other edges broken 0.3."],
         drawn="CADPOLE",
     ),
