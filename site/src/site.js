@@ -632,16 +632,13 @@ document.addEventListener("click", (e) => {
     const btn = $("[data-vplay]", box.parentElement), cap = $(".agent-cap", box.parentElement);
     const dots = $$(".agent-prog [data-seek]", box.parentElement), count = $(".agent-n", box.parentElement);
     // stopped: the visitor paused it, so coming back into view does not start it again
-    // seek: a segment's moment, chosen before the recording could go there (it is
-    // still loading, or this copy of the site has only its poster); the steps show it
-    let video = null, list = [], wanted = false, stopped = false, seek = null;
+    let video = null, list = [], wanted = false, stopped = false;
     const auto = () => !reduced() && !saveData() && q.get("noauto") !== "1";
     const show = (on) => { box.classList.toggle("playing", on); btn.classList.toggle("on", on); btn.setAttribute("aria-label", on ? "Pause recording" : "Play recording"); };
     const sync = () => {
       // before the first step's moment (and as it loops round) the first step stays named
       let cur = list[0] ?? null;
-      const t = seek ?? video.currentTime;
-      for (const li of list) if (+li.dataset.t <= t + 0.05) cur = li;
+      for (const li of list) if (+li.dataset.t <= video.currentTime + 0.05) cur = li;
       for (const li of list) li.classList.toggle("on", li === cur);
       cap.textContent = cur ? cur.textContent : "";
       // the segments: those before the current one done, the current one lit
@@ -673,10 +670,8 @@ document.addEventListener("click", (e) => {
     // A segment goes to its step and plays from there.
     for (const d of dots) d.addEventListener("click", () => {
       if (!video) make();
-      seek = +d.dataset.seek + 0.05;
-      // the last segment chosen wins, however many clicks waited for the metadata
-      const go = () => { if (seek !== null) { video.currentTime = seek; seek = null; } sync(); };
-      if (video.readyState >= 1) go(); else { sync(); video.addEventListener("loadedmetadata", go, { once: true }); }
+      const go = () => { video.currentTime = +d.dataset.seek + 0.05; sync(); };
+      if (video.readyState >= 1) go(); else video.addEventListener("loadedmetadata", go, { once: true });
       play();
     });
     new IntersectionObserver((es) => {

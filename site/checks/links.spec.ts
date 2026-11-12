@@ -49,33 +49,14 @@ test("viewer links stay in the site and open a page that is there", () => {
   for (const n of names) expect(existsSync(join(root, "models", `${n}.cpmesh`)), `models/${n}.cpmesh`).toBe(true);
 });
 
-/** The page's text, without its tags: what a reader sees, and what a copy button copies. */
-const text = html.replace(/<[^>]*>/g, "");
-
-test("outside links: the repository, the files in it, and the two installers the text names", () => {
+test("outside links: the repository, and the two installers the text names", () => {
   const out = [...new Set(attrs(/href="(https?:[^"]+)"/g))];
   for (const u of out) {
-    if (u.startsWith("https://github.com/")) expect(u === "https://github.com/bazelbuild/bazelisk#installation" || u === REPO || /^https:\/\/github\.com\/mikelikespie\/cadpole\/(blob|tree)\/main\/(docs\/[\w.-]+\.md|examples\/[\w.-]+\.star|bin\/[\w.-]+|README\.md|LICENSE)$/.test(u), u).toBe(true);
+    if (u.startsWith("https://github.com/")) expect(u === "https://github.com/bazelbuild/bazelisk#installation" || u === REPO || u.startsWith(REPO + "/blob/main/docs/"), u).toBe(true);
     else expect(["https://brew.sh", "https://code.claude.com/docs/en/headless"], u).toContain(u);
   }
   expect(out).toContain(REPO);
-  expect(text).toContain(`git clone ${REPO}.git`);
-});
-
-test("the repository's address and paths in the text are links, in prose and in the boxes to copy", () => {
-  // Text a link could carry but does not: outside a link, a button, a summary, a listing or the head.
-  const prose = html.replace(/<(head|script|style|textarea|pre)\b[\s\S]*?<\/\1>/gi, "").replace(/<(a|button|summary)\b[\s\S]*?<\/\1>/gi, "").replace(/<[^>]*>/g, " ");
-  expect(prose).not.toMatch(/github\.com\/mikelikespie\/cadpole/);
-  expect(prose).not.toMatch(/(?<![\w./~-])(?:\.\/)?(docs|examples|bin)\/[\w.-]+/);
-  // Each link names what it opens.
-  for (const m of html.matchAll(/<a class="ref" href="([^"]+)">([^<]+)<\/a>/g)) {
-    const [, href, t] = m;
-    if (t!.includes("github.com/")) expect(href).toBe(REPO);
-    else expect(href!.replace(/^.*\/(blob|tree)\/main\//, "")).toBe(t!.replace(/^\.\//, "").replace(/\/$/, ""));
-  }
-  const prompt = /<div class="cmds"><div class="cmd multi prompt"><code>([\s\S]*?)<\/code>/.exec(html.slice(html.indexOf('id="connect"')))![1]!;
-  expect(prompt).toContain(`<a class="ref" href="${REPO}">github.com/mikelikespie/cadpole</a>`);
-  expect(prompt).toContain(`<a class="ref" href="${REPO}/blob/main/docs/assistant-integration.md">docs/assistant-integration.md</a>`);
+  expect(html).toContain(`git clone ${REPO}.git`);
 });
 
 test("the words the page does not use", () => {

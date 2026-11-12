@@ -6,10 +6,3 @@ exports_files([
     "assistant-integration.md",
     "starlark-api.md",
 ])
-
-# The guides, for the site: it links the ones its text names (site/build/linkify.mjs).
-filegroup(
-    name = "guides",
-    srcs = glob(["*.md"]),
-    visibility = ["//site:__pkg__"],
-)

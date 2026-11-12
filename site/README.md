@@ -18,7 +18,7 @@ kinds of work side by side:
 
 | Path | What it is |
 | --- | --- |
-| `build/` | The generator: `build.mjs` writes `index.html` and assembles the directory; `models.mjs` is what the page shows; `slim.mjs` packs a published model for the page's own 3D; `linkify.mjs` links the repository's address and the repository paths the text names (`docs/*.md`, `examples/*.star`, `./bin/install`) to GitHub, in prose and in the boxes to copy, and stops the build on a path the repository does not have |
+| `build/` | The generator: `build.mjs` writes `index.html` and assembles the directory; `models.mjs` is what the page shows; `slim.mjs` packs a published model for the page's own 3D |
 | `src/` | `site.css`, `site.js`, and the engine's worker wrapper |
 | `views.bzl`, `site.bzl` | The viewer pages: one `cadpole publish` per model |
 | `features/` | The script behind each gallery tile; the lines between `# snippet` and `# end snippet` are the ones its card shows. `content/features.json` and `content/drawings.json` give each card its `kind`: a `model` opens in 3D, a `drawing` opens its SVG |

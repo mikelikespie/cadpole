@@ -258,7 +258,6 @@ The operations an assistant uses most:
 | `edit_script` | replace exact text, a line range or a feature's arguments, under `base_revision` |
 | `set_params` | set parameter overrides without touching the script |
 | `evaluate`, `run_tests`, `print_check` | check the result |
-| `plate` | make the print file: the model's parts oriented, packed onto plates and written as one Bambu project, with a report of every decision. Always make print files this way, never by exporting the assembled model or placing parts by hand |
 | `render`, `sweep` | look at the result; `highlight_selection` draws the selection |
 | `wait_events`, `ack` | read session events once and record how far you have read (not a way to wait: see `cadpole listen`) |
 | `get_attachment` | fetch a screenshot the user attached to a message |

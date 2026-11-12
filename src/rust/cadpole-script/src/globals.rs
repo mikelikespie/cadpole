@@ -392,132 +392,11 @@ fn chord_issue_for(
 /// `max_bridge=`: the longest flat span held up at both ends that
 /// counts as a bridge, in mm. Left out, Cadpole's default; 0 turns bridging off;
 /// a negative number is a mistake.
-/// A Bambu Studio project named as an asset, read as a settings source:
-/// its settings and the application that saved it, and nothing else of it
-/// (no object, thumbnail or side file ever reaches a written project).
-fn bambu_template<'v>(
-    v: Value<'v>,
-    st: &Store,
-    what: &str,
-) -> anyhow::Result<(cadpole_core::context::BambuTemplate, cadpole_export_3mf::bambu_settings::Template)> {
-    let asset = crate::import3d::source_name(v, &format!("{what}: template"))?;
-    let (record, bytes) =
-        crate::import3d::asset_of(st, &asset, &format!("{what}: template"), &[cadpole_assets::AssetKind::ThreeMf])?;
-    let (application, settings) = cadpole_export_3mf::bambu_settings::template_parts(&bytes)
-        .map_err(|e| anyhow::anyhow!("{what}: template {asset:?} is not a Bambu Studio project: {e}"))?;
-    let t = cadpole_export_3mf::bambu_settings::Template::from_parts(&application, &settings)
-        .map_err(|e| anyhow::anyhow!("{what}: template {asset:?}: {e}"))?;
-    Ok((cadpole_core::context::BambuTemplate { asset, sha256: record.sha256, application, settings }, t))
-}
-
-/// A model direction: `(x, y, z)`, or `"-z"`, `"+x"`, `"top"`, `"front"`, ...
-fn direction_arg<'v>(v: Value<'v>, what: &str) -> anyhow::Result<Vec3> {
-    if let Some(s) = v.unpack_str() {
-        return crate::plating::direction_word(s).ok_or_else(|| {
-            anyhow::anyhow!("{what}: {s:?} is not a direction; use (x, y, z) or one of +x, -x, +y, -y, +z, -z, top, bottom, front, back, left, right")
-        });
-    }
-    let arg = VecArg::unpack_value(v)
-        .map_err(|e| e.into_anyhow())?
-        .ok_or_else(|| anyhow::anyhow!("{what}: expected (x, y, z) or a direction word, got {}", v.get_type()))?;
-    let d = vec3(&arg, what)?;
-    if d.length() < 1e-9 {
-        anyhow::bail!("{what}: the direction (0, 0, 0) has no direction");
-    }
-    Ok(d.normalized())
-}
-
-/// `print_plan`'s items: a `print_part`, a Body, a list of bodies (one
-/// piece), or an Instance or Assembly (its bodies, each loose).
-fn plate_items<'v>(v: Value<'v>, heap: Heap<'v>) -> anyhow::Result<Vec<crate::plating::PlateItem>> {
-    use crate::plating::PlateItem;
-    let one = |item: Value<'v>| -> anyhow::Result<Vec<PlateItem>> {
-        if let Some(p) = item.downcast_ref::<crate::values::KPrintPart>() {
-            return Ok(vec![PlateItem { bodies: p.bodies.clone(), declared: p.declared, pin: p.pin.clone() }]);
-        }
-        if let Some(b) = item.downcast_ref::<KBody>() {
-            return Ok(vec![PlateItem { bodies: vec![b.body_id()], ..Default::default() }]);
-        }
-        if item.get_type() == "list" || item.get_type() == "tuple" {
-            let ids: Vec<BodyId> = collect_bodies(&[item], heap, "print_plan")?.iter().map(|b| b.body_id()).collect();
-            return Ok(vec![PlateItem { bodies: ids, declared: true, ..Default::default() }]);
-        }
-        let bodies = collect_bodies(&[item], heap, "print_plan")?;
-        Ok(bodies.iter().map(|b| PlateItem { bodies: vec![b.body_id()], ..Default::default() }).collect())
-    };
-    if v.get_type() == "list" || v.get_type() == "tuple" {
-        let mut out = Vec::new();
-        for item in v.iterate(heap).map_err(|e| e.into_anyhow())? {
-            out.extend(one(item)?);
-        }
-        Ok(out)
-    } else {
-        one(v)
-    }
-}
-
 fn bridge_limit(max_bridge: Option<UnpackFloat>, what: &str) -> anyhow::Result<f64> {
     match opt_num(&max_bridge, &format!("{what}: max_bridge"))? {
         None => Ok(cadpole_print::overhang::DEFAULT_MAX_BRIDGE),
         Some(m) if m < 0.0 => anyhow::bail!("{what}: max_bridge is a length in mm, 0 or more, got {m}"),
         Some(m) => Ok(m),
-    }
-}
-
-/// The support rules a call may set (`cadpole_print::SupportRules`), each
-/// `None` when it was not passed.
-#[derive(Default)]
-struct SupportArgs {
-    max_overhang_area: Option<f64>,
-    max_cantilever: Option<f64>,
-    max_horizontal_hole: Option<f64>,
-    min_island: Option<f64>,
-    max_slenderness: Option<f64>,
-    slender_width: Option<f64>,
-    max_height_to_base: Option<f64>,
-}
-
-impl SupportArgs {
-    #[allow(clippy::too_many_arguments)]
-    fn new(
-        what: &str,
-        max_overhang_area: Option<UnpackFloat>,
-        max_cantilever: Option<UnpackFloat>,
-        max_horizontal_hole: Option<UnpackFloat>,
-        min_island: Option<UnpackFloat>,
-        max_slenderness: Option<UnpackFloat>,
-        slender_width: Option<UnpackFloat>,
-        max_height_to_base: Option<UnpackFloat>,
-    ) -> anyhow::Result<SupportArgs> {
-        let n = |v: Option<UnpackFloat>, k: &str| opt_num(&v, &format!("{what}: {k}"));
-        Ok(SupportArgs {
-            max_overhang_area: n(max_overhang_area, "max_overhang_area")?,
-            max_cantilever: n(max_cantilever, "max_cantilever")?,
-            max_horizontal_hole: n(max_horizontal_hole, "max_horizontal_hole")?,
-            min_island: n(min_island, "min_island")?,
-            max_slenderness: n(max_slenderness, "max_slenderness")?,
-            slender_width: n(slender_width, "slender_width")?,
-            max_height_to_base: n(max_height_to_base, "max_height_to_base")?,
-        })
-    }
-
-    /// Layer what was passed over `p`'s rules, and check the result.
-    fn apply(&self, what: &str, p: &mut cadpole_print::Profile) -> anyhow::Result<()> {
-        let r = &mut p.support;
-        for (v, slot) in [
-            (self.max_overhang_area, &mut r.max_overhang_area),
-            (self.max_cantilever, &mut r.max_cantilever),
-            (self.max_horizontal_hole, &mut r.max_horizontal_hole),
-            (self.min_island, &mut r.min_island),
-            (self.max_slenderness, &mut r.max_slenderness),
-            (self.slender_width, &mut r.slender_width),
-            (self.max_height_to_base, &mut r.max_height_to_base),
-        ] {
-            if let Some(v) = v {
-                *slot = v;
-            }
-        }
-        p.validate().map_err(|e| anyhow::anyhow!("{what}: {e}"))
     }
 }
 
@@ -572,8 +451,6 @@ fn resolve_profile(
     }
     if let Some(n) = layer_height {
         p.layer_height = n;
-        // A tip within one layer is not an island, whatever the layer.
-        p.support.min_island = n;
     }
     if let Some(m) = material {
         p.material = cadpole_print::Material::parse(m).ok_or_else(|| {
@@ -1561,33 +1438,13 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
     /// and `bridges`; a span longer than `max_bridge` stays an overhang, and
     /// the warning says it is a span that is too long.
     ///
-    /// **Support rules** beyond the angle, each a keyword, a printer
-    /// field and a `cadpole check` flag: `max_overhang_area` (default 4 mm²)
-    /// is the largest *connected* overhang patch that prints anyway, and the
-    /// warning names the largest; `max_cantilever` (3 mm) is how far a
-    /// near-level ledge held up on one side may stick out (`cantilever`
-    /// past it); `min_island` (one layer) is how deep a region that starts
-    /// in mid-air -- a downward tip, a hanging finger, a ball's underside --
-    /// may hang before it is an `island`; `max_horizontal_hole` (7 mm) is
-    /// the widest round horizontal hole whose top a slicer bridges
-    /// (`horizontal_hole` past it, with the teardrop fix);
-    /// `max_slenderness` (8) and `slender_width` (3 mm) make a `slender`
-    /// warning of a thin feature too tall for its width; and
-    /// `max_height_to_base` (6) makes a `bed_contact` warning of a first
-    /// layer small for the part's height. `report.support` lists the
-    /// findings that need support and `report.support_free` is true when
-    /// there are none; `assert_support_free(body)` insists on it.
-    ///
     /// **When the part does not fit the bed** the diagnostic says where to cut
     /// it, and `report.split_advice` is the `split(...)` call that does it.
     ///
     /// The returned `PrintReport` has `ok`, `solid`, `watertight`, `min_wall`,
     /// `thin_area`, `unsupported_area`, `max_overhang`, `bed_contact_area`,
-    /// `bridge_area`, `longest_bridge`, `bridges`, `support_area`,
-    /// `largest_overhang`, `ledge_area`, `longest_cantilever`, `islands`,
-    /// `deepest_island`, `horizontal_holes`, `wide_holes`, `slender`,
-    /// `slenderness`, `first_layer_area`, `height_to_base`, `support`,
-    /// `support_free`, `fits_bed`, `bed_excess`, `size`, `holes`, `self_intersections`,
+    /// `bridge_area`, `longest_bridge`, `bridges`,
+    /// `fits_bed`, `bed_excess`, `size`, `holes`, `self_intersections`,
     /// `internal_faces`, `components`, `genus`, `errors`, `warnings`,
     /// `summary`, `profile`, `mass`, `layers`, `split_advice`, `split_axis`,
     /// `split_pieces` and `split_at`. `solid` is the verdict of the checks
@@ -1609,27 +1466,10 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] min_gap: Option<UnpackFloat>,
         #[starlark(require = named, default = false)] orient: bool,
         #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
-        #[starlark(require = named)] max_overhang_area: Option<UnpackFloat>,
-        #[starlark(require = named)] max_cantilever: Option<UnpackFloat>,
-        #[starlark(require = named)] max_horizontal_hole: Option<UnpackFloat>,
-        #[starlark(require = named)] min_island: Option<UnpackFloat>,
-        #[starlark(require = named)] max_slenderness: Option<UnpackFloat>,
-        #[starlark(require = named)] slender_width: Option<UnpackFloat>,
-        #[starlark(require = named)] max_height_to_base: Option<UnpackFloat>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<Value<'v>> {
         let max_bridge = bridge_limit(max_bridge, "print_check")?;
-        let rules = SupportArgs::new(
-            "print_check",
-            max_overhang_area,
-            max_cantilever,
-            max_horizontal_hole,
-            min_island,
-            max_slenderness,
-            slender_width,
-            max_height_to_base,
-        )?;
-        let mut profile = resolve_profile(
+        let profile = resolve_profile(
             "print_check",
             printer,
             min_wall,
@@ -1643,7 +1483,6 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             build_direction.as_ref(),
             min_gap,
         )?;
-        rules.apply("print_check", &mut profile)?;
         let heap = eval.heap();
         // One report for one body -- a Body, or an Instance of one;
         // a list of reports for a list, an Assembly, or a many-body Instance.
@@ -1665,19 +1504,18 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         let mut reports = Vec::with_capacity(bodies.len());
         for b in &bodies {
             let name = ctx.body(b.body_id())?.name.clone();
-            let (mesh, topo) = ctx.body_mesh(b.body_id())?.clone();
-            let mut report = cadpole_print::check_named(&mesh, Some(&topo), &profile, max_bridge);
+            let mesh = ctx.body_mesh(b.body_id())?.0.clone();
+            let mut report = cadpole_print::check_with(&mesh, &profile, max_bridge);
             if let Some(issue) = chord_issue_for(&mut ctx, b.body_id(), profile.chord_gap_fraction)? {
                 report.push_issue(issue);
             }
             let orientation = orient.then(|| cadpole_print::orient::orient(&mesh, &profile));
             // Every finding is a warning: a print check must never turn a
             // working script into a failed evaluation.
-            // What was bridged, and overhang the allowances cover, is
-            // information, not a finding.
+            // What was bridged is information, not a finding.
             for issue in &report.issues {
                 let text = format!("print_check({name}): [{}] {}{}", issue.check.as_str(), issue.message, where_(issue));
-                let d = if issue.severity == cadpole_print::Severity::Info {
+                let d = if issue.check == cadpole_print::Check::Bridged {
                     cadpole_core::context::Diagnostic::info(text)
                 } else {
                     cadpole_core::context::Diagnostic::warning(text)
@@ -1708,9 +1546,6 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             .with_span(span.clone());
             ctx.diagnostics.push(d);
             let r = &mut reports[f.body];
-            if issue.check.is_support() {
-                r.support.push(format!("[{}] {}", issue.check.as_str(), issue.message));
-            }
             if issue.severity == cadpole_print::Severity::Error {
                 r.errors.push(issue.message.clone());
                 r.ok = false;
@@ -1778,257 +1613,6 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         let id = ctx.transform(body.body_id(), &o.transform, "orient_for_print", args, name.map(str::to_owned), span)?;
         crate::layers::tag_ids(&mut ctx, layer, &[id], "orient_for_print")?;
         KBody::from_ctx(&ctx, id)
-    }
-
-    /// Bodies that print as one piece, with what the script pins about how,
-    /// for `print_plan`. `bodies` is a Body or a list (a list is one piece
-    /// whatever the analysis finds; `together=False` leaves its bodies loose,
-    /// to be joined only where they overlap, lie on each other or are held
-    /// captive). Every keyword is optional; what is not pinned is decided and
-    /// explained in the plan's report.
-    ///
-    /// `name=` names the piece (the object in the project). `down=` is the
-    /// model direction that faces the bed, `(x, y, z)` or a word: `"-z"`,
-    /// `"+x"`, `"top"`, `"front"`... `orient="keep"` prints it as modelled.
-    /// `along=` is the model direction the piece's fibres must run in -- a
-    /// snap arm's length, which bends along the layers and breaks across
-    /// them -- and the plan keeps it within 30 degrees of the bed plane when
-    /// any orientation can. `spin=` is its turn about z in degrees, or
-    /// `False` for none at all. `group=` names pieces that share a plate
-    /// when they fit; `plate=` is the plate (1-based) of its plate set it
-    /// must go on; `coupon=True` prints it first, on the test-coupon plate.
-    fn print_part<'v>(
-        #[starlark(require = pos)] bodies: Value<'v>,
-        #[starlark(require = named)] name: Option<&str>,
-        #[starlark(require = named)] down: Option<Value<'v>>,
-        #[starlark(require = named)] orient: Option<&str>,
-        #[starlark(require = named)] along: Option<Value<'v>>,
-        #[starlark(require = named)] spin: Option<Value<'v>>,
-        #[starlark(require = named)] group: Option<&str>,
-        #[starlark(require = named)] plate: Option<i32>,
-        #[starlark(require = named, default = false)] coupon: bool,
-        #[starlark(require = named, default = true)] together: bool,
-        eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<crate::values::KPrintPart> {
-        let heap = eval.heap();
-        let ids: Vec<BodyId> = collect_bodies(&[bodies], heap, "print_part")?.iter().map(|b| b.body_id()).collect();
-        if ids.is_empty() {
-            anyhow::bail!("print_part: no bodies");
-        }
-        let mut pin = cadpole_print::plate::Pin { name: name.map(str::to_owned), coupon, group: group.map(str::to_owned), ..Default::default() };
-        if let Some(n) = &pin.name {
-            if n.trim().is_empty() {
-                anyhow::bail!("print_part: name= must not be empty");
-            }
-        }
-        pin.down = down.filter(|v| !v.is_none()).map(|v| direction_arg(v, "print_part: down")).transpose()?;
-        pin.along = along.filter(|v| !v.is_none()).map(|v| direction_arg(v, "print_part: along")).transpose()?;
-        match orient {
-            None | Some("auto") => {}
-            Some("keep") => {
-                if pin.down.is_some() {
-                    anyhow::bail!("print_part: orient=\"keep\" and down= both say which way up; pass one");
-                }
-                pin.keep = true;
-            }
-            Some(o) => anyhow::bail!("print_part: orient= is \"auto\" or \"keep\", got {o:?}"),
-        }
-        if let Some(v) = spin.filter(|v| !v.is_none()) {
-            if let Some(b) = v.unpack_bool() {
-                pin.no_spin = !b;
-            } else if let Some(a) = UnpackFloat::unpack_value(v).map_err(|e| e.into_anyhow())? {
-                pin.spin = Some(a.0);
-            } else {
-                anyhow::bail!("print_part: spin= is an angle in degrees, or False, got {}", v.get_type());
-            }
-        }
-        if let Some(p) = plate {
-            if p < 1 {
-                anyhow::bail!("print_part: plate= is 1 or more, got {p}");
-            }
-            pin.plate = Some(p as u32);
-        }
-        Ok(crate::values::KPrintPart { bodies: ids, declared: together, pin })
-    }
-
-    /// Lay a model's parts out on print-ready plates: each piece turned the
-    /// way it prints best, packed onto as few plates of the printer as hold
-    /// them, a plate never needing more filaments than the AMS has slots,
-    /// every decision explained. With `path` the plates are written as one
-    /// Bambu Studio project (`cadpole export --run-exports`), exactly as
-    /// `export(..., flavor=flavor.bambu, plate=...)` calls would write them.
-    ///
-    /// `items` is a list of Bodies, lists of bodies (one piece each),
-    /// `print_part(...)`s and Instances or Assemblies (their bodies). Loose
-    /// bodies are joined into one piece where they overlap, where one lies
-    /// on the other (a stripe, an inlay), or where they are held captive
-    /// across a gap under `joint_gap` (a wheel on its axle, a gear in its
-    /// carrier: print-in-place, never pulled apart or turned). Each piece is
-    /// oriented by its support area, islands, ledges, wide round holes,
-    /// footing, height and any `along=` strength axis, and packed by its true
-    /// outline, `spacing` mm apart, where every nozzle of `printer` reaches,
-    /// clear of excluded corners and of a prime tower's square on a plate of
-    /// several filaments. Test coupons go first on a plate of their own.
-    ///
-    /// `variants=["colour", "mono"]` makes one set of plates each: in each
-    /// body's colours, and all in filament 1. `ams=` is the filaments one
-    /// plate may use (0: no limit). `template=` is optional: a Bambu Studio
-    /// project to take printer, process and filament *settings* from (never
-    /// its objects or pictures); without it the project carries Cadpole's
-    /// own settings for `printer`.
-    ///
-    /// The placed copies go on a hidden `layer` ("print"), so the model is
-    /// untouched. Returns a dict: `report` (the text), `plates` (a dict per
-    /// plate: `name`, `variant`, `pieces`, `filaments`, `colour_changes`,
-    /// `layers`), `pieces` (a dict per placed piece: `name`, `plate`, `kind`,
-    /// `orientation`, `support_area`, `modelled_support_area`, `spin`,
-    /// `reason`, `bodies`) and `bodies` (every placed copy).
-    fn print_plan<'v>(
-        #[starlark(require = pos)] items: Value<'v>,
-        #[starlark(require = pos)] path: Option<&str>,
-        #[starlark(require = named)] printer: Option<&str>,
-        #[starlark(require = named)] ams: Option<i32>,
-        #[starlark(require = named)] variants: Option<UnpackListOrTuple<String>>,
-        #[starlark(require = named)] spacing: Option<UnpackFloat>,
-        #[starlark(require = named)] joint_gap: Option<UnpackFloat>,
-        #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
-        #[starlark(require = named)] template: Option<Value<'v>>,
-        #[starlark(require = named)] tolerance: Option<UnpackFloat>,
-        #[starlark(require = named)] layer: Option<&str>,
-        eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<Value<'v>> {
-        use starlark::values::dict::AllocDict;
-        let heap = eval.heap();
-        let mut req = crate::plating::PlateRequest { items: plate_items(items, heap)?, ..Default::default() };
-        if let Some(p) = printer {
-            req.printer = cadpole_print::printers::printer(p)
-                .ok_or_else(|| anyhow::anyhow!("print_plan: unknown printer {p:?}; Cadpole knows {}", cadpole_print::printer_list()))?
-                .id
-                .to_owned();
-        }
-        if let Some(a) = ams {
-            if a < 0 {
-                anyhow::bail!("print_plan: ams= is the filaments a plate may use, 0 or more, got {a}");
-            }
-            req.ams = a as u32;
-        }
-        if let Some(v) = variants {
-            req.variants = v
-                .items
-                .iter()
-                .map(|s| {
-                    cadpole_print::plate::Variant::parse(s)
-                        .ok_or_else(|| anyhow::anyhow!("print_plan: variant {s:?} is not \"colour\" or \"mono\""))
-                })
-                .collect::<anyhow::Result<Vec<_>>>()?;
-            if req.variants.is_empty() {
-                anyhow::bail!("print_plan: variants= is empty; leave it out for one set of plates in colour");
-            }
-        }
-        if let Some(s) = opt_num(&spacing, "print_plan: spacing")? {
-            if !(0.0..=100.0).contains(&s) {
-                anyhow::bail!("print_plan: spacing= is a gap in mm from 0 to 100, got {s}");
-            }
-            req.spacing = s;
-        }
-        if let Some(g) = opt_num(&joint_gap, "print_plan: joint_gap")? {
-            if !(0.0..=10.0).contains(&g) {
-                anyhow::bail!("print_plan: joint_gap= is a gap in mm from 0 to 10, got {g}");
-            }
-            req.joint_gap = g;
-        }
-        req.max_bridge = bridge_limit(max_bridge, "print_plan")?;
-        req.tolerance = opt_num(&tolerance, "print_plan: tolerance")?;
-        if let Some(t) = req.tolerance {
-            if !(t > 0.0) {
-                anyhow::bail!("print_plan: tolerance must be positive, got {t}");
-            }
-        }
-        if let Some(l) = layer {
-            req.layer = l.to_owned();
-        }
-        let st = store(eval)?;
-        if let Some(v) = template.filter(|v| !v.is_none()) {
-            let (bt, t) = bambu_template(v, &st, "print_plan")?;
-            if let Some(p) = cadpole_print::printers::printer(&req.printer).and_then(|p| p.bambu.map(|b| (p, b))) {
-                if !t.printer_model().is_empty() && t.printer_model() != p.1.model {
-                    anyhow::bail!(
-                        "print_plan: template {:?} was saved for a {} and printer={:?} is a {}; drop printer= or pass a template saved for the {}",
-                        bt.asset,
-                        t.printer_model(),
-                        p.0.id,
-                        p.1.model,
-                        p.1.model
-                    );
-                }
-            }
-            req.template = Some(bt);
-        }
-        if let Some(p) = path {
-            if !p.to_ascii_lowercase().ends_with(".3mf") {
-                anyhow::bail!("print_plan: {p:?} is not a .3mf; a print plan is written as a Bambu Studio project");
-            }
-            let ctx = st.ctx.borrow();
-            if let Some(other) = ctx.exports.iter().find(|e| e.path == p && e.flavor != cadpole_core::export::Flavor::Bambu) {
-                anyhow::bail!("print_plan: {:?} is already written as a standard 3MF by another export", other.path);
-            }
-            drop(ctx);
-            req.path = Some(p.to_owned());
-        }
-        req.span = call_span(eval);
-        let plated = {
-            let mut ctx = st.ctx.borrow_mut();
-            let plated = crate::plating::plate_bodies(&mut ctx, &req).map_err(|e| anyhow::anyhow!("print_plan: {e}"))?;
-            ctx.diagnostics.push(
-                cadpole_core::context::Diagnostic::info(format!("print_plan: {}", plated.report.trim_end())).with_span(req.span.clone()),
-            );
-            plated
-        };
-        let ctx = st.ctx.borrow();
-        let mut all_bodies: Vec<Value<'v>> = Vec::new();
-        let mut piece_rows: Vec<Value<'v>> = Vec::new();
-        for (row, ids) in crate::plating::piece_rows(&plated).into_iter().zip(&plated.copies) {
-            let mut entries: Vec<(Value<'v>, Value<'v>)> = Vec::new();
-            for (k, v) in row {
-                let val = match k {
-                    "support_area" | "modelled_support_area" | "spin" => match v.parse::<f64>() {
-                        Ok(x) => heap.alloc(x),
-                        Err(_) => Value::new_none(),
-                    },
-                    _ => heap.alloc(v),
-                };
-                entries.push((heap.alloc(k), val));
-            }
-            let bodies: Vec<Value<'v>> = ids.iter().map(|id| KBody::from_ctx(&ctx, *id).map(|b| heap.alloc(b))).collect::<anyhow::Result<_>>()?;
-            all_bodies.extend(bodies.iter().copied());
-            entries.push((heap.alloc("bodies"), heap.alloc(bodies)));
-            piece_rows.push(heap.alloc(AllocDict(entries)));
-        }
-        let plates: Vec<Value<'v>> = plated
-            .plan
-            .plates
-            .iter()
-            .map(|p| {
-                let pieces: Vec<Value<'v>> =
-                    p.placements.iter().map(|&k| heap.alloc(plated.plan.pieces[plated.plan.placements[k].piece].name.as_str())).collect();
-                let filaments: Vec<Value<'v>> = p.colours.iter().map(|c| heap.alloc(c.as_str())).collect();
-                heap.alloc(AllocDict(vec![
-                    (heap.alloc("name"), heap.alloc(p.name.as_str())),
-                    (heap.alloc("variant"), heap.alloc(p.variant.map(|v| v.as_str()).unwrap_or("coupons"))),
-                    (heap.alloc("pieces"), heap.alloc(pieces)),
-                    (heap.alloc("filaments"), heap.alloc(filaments)),
-                    (heap.alloc("colour_changes"), heap.alloc(p.colour_changes as i32)),
-                    (heap.alloc("layers"), heap.alloc(p.layers as i32)),
-                ]))
-            })
-            .collect();
-        Ok(heap.alloc(AllocDict(vec![
-            (heap.alloc("report"), heap.alloc(plated.report.as_str())),
-            (heap.alloc("printer"), heap.alloc(plated.printer.as_str())),
-            (heap.alloc("plates"), heap.alloc(plates)),
-            (heap.alloc("pieces"), heap.alloc(piece_rows)),
-            (heap.alloc("bodies"), heap.alloc(all_bodies)),
-        ])))
     }
 
     /// Cut `body` in two and return the pieces, so a model too big for the
@@ -2658,8 +2242,13 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
                 if bed.is_some() {
                     anyhow::bail!("export: a template= brings its printer's bed; drop bed=");
                 }
-                let (bt, t) = bambu_template(v, &st, "export")?;
-                let asset = bt.asset.clone();
+                let asset = crate::import3d::source_name(v, "export: template")?;
+                let (record, bytes) =
+                    crate::import3d::asset_of(&st, &asset, "export: template", &[cadpole_assets::AssetKind::ThreeMf])?;
+                let (application, settings) = cadpole_export_3mf::bambu_settings::template_parts(&bytes)
+                    .map_err(|e| anyhow::anyhow!("export: template {asset:?} is not a Bambu Studio project: {e}"))?;
+                let t = cadpole_export_3mf::bambu_settings::Template::from_parts(&application, &settings)
+                    .map_err(|e| anyhow::anyhow!("export: template {asset:?}: {e}"))?;
                 // printer= and template= name one machine, or the plates
                 // would be laid out for one and printed on the other.
                 if let Some(p) = cadpole_print::printers::printer(&printer).and_then(|p| p.bambu.map(|b| (p, b))) {
@@ -2674,7 +2263,7 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
                         );
                     }
                 }
-                Some(bt)
+                Some(cadpole_core::context::BambuTemplate { asset, sha256: record.sha256, application, settings })
             }
         };
         st.ctx.borrow_mut().exports.push(cadpole_core::context::ExportSpec {
@@ -3000,27 +2589,10 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] min_gap: Option<UnpackFloat>,
         #[starlark(require = named)] msg: Option<&str>,
         #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
-        #[starlark(require = named)] max_overhang_area: Option<UnpackFloat>,
-        #[starlark(require = named)] max_cantilever: Option<UnpackFloat>,
-        #[starlark(require = named)] max_horizontal_hole: Option<UnpackFloat>,
-        #[starlark(require = named)] min_island: Option<UnpackFloat>,
-        #[starlark(require = named)] max_slenderness: Option<UnpackFloat>,
-        #[starlark(require = named)] slender_width: Option<UnpackFloat>,
-        #[starlark(require = named)] max_height_to_base: Option<UnpackFloat>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<NoneType> {
         let max_bridge = bridge_limit(max_bridge, "assert_printable")?;
-        let rules = SupportArgs::new(
-            "assert_printable",
-            max_overhang_area,
-            max_cantilever,
-            max_horizontal_hole,
-            min_island,
-            max_slenderness,
-            slender_width,
-            max_height_to_base,
-        )?;
-        let mut profile = resolve_profile(
+        let profile = resolve_profile(
             "assert_printable",
             printer,
             min_wall,
@@ -3034,7 +2606,6 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             None,
             min_gap,
         )?;
-        rules.apply("assert_printable", &mut profile)?;
         let bodies = collect_bodies(&[body], eval.heap(), "assert_printable")?;
         let single = bodies.len() == 1 && body.get_type() != "list" && body.get_type() != "tuple"
             && body.downcast_ref::<crate::assembly::KAssembly>().is_none();
@@ -3047,14 +2618,13 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         let mut names = Vec::with_capacity(bodies.len());
         for b in &bodies {
             let name = ctx.body(b.body_id())?.name.clone();
-            let (mesh, topo) = ctx.body_mesh(b.body_id())?.clone();
-            let mut report = cadpole_print::check_named(&mesh, Some(&topo), &profile, max_bridge);
+            let mesh = ctx.body_mesh(b.body_id())?.0.clone();
+            let mut report = cadpole_print::check_with(&mesh, &profile, max_bridge);
             if let Some(issue) = chord_issue_for(&mut ctx, b.body_id(), profile.chord_gap_fraction)? {
                 report.push_issue(issue);
             }
-            // A bridge is what a slicer does, not a finding; nor is overhang
-            // the allowances cover.
-            for i in report.issues.iter().filter(|i| i.severity != cadpole_print::Severity::Info) {
+            // A bridge is what a slicer does, not a finding.
+            for i in report.issues.iter().filter(|i| i.check != cadpole_print::Check::Bridged) {
                 let line = format!("[{}] {}", i.check.as_str(), i.message);
                 why.push(if single { line } else { format!("{name}: {line}") });
             }
@@ -3070,153 +2640,6 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
                 "assert_printable failed: {who}{}{}",
                 why.join("; "),
                 msg.map(|m| format!(" ({m})")).unwrap_or_default()
-            );
-        }
-        Ok(NoneType)
-    }
-
-    /// Fail evaluation unless `body` prints **without support**: the
-    /// support checks of `print_check` find nothing. Those are the overhang
-    /// rule past its allowances (`max_overhang` degrees, flat spans up to
-    /// `max_bridge` mm held up at both ends, patches up to
-    /// `max_overhang_area` mm², ledges sticking out up to `max_cantilever`
-    /// mm), `island` (a region whose lowest point is in mid-air, deeper than
-    /// `min_island`), `cantilever`, `horizontal_hole` (a round horizontal
-    /// hole wider than `max_horizontal_hole` mm with a round top) and, for a
-    /// list of bodies printed together, `bridge` (a body in the air). Walls,
-    /// bed fit, slender features and the first layer are `assert_printable`'s
-    /// business, not this one's.
-    ///
-    /// The keywords override the printer's rules (`printer=` names one, as
-    /// for `print_check`); `build_direction=` judges the part another way up.
-    /// The failure lists every finding on a line of its own, each with its
-    /// position and the face it is on.
-    fn assert_support_free<'v>(
-        #[starlark(require = pos)] body: Value<'v>,
-        #[starlark(require = named)] printer: Option<Value<'v>>,
-        #[starlark(require = named)] layer_height: Option<UnpackFloat>,
-        #[starlark(require = named)] max_overhang: Option<UnpackFloat>,
-        #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
-        #[starlark(require = named)] max_overhang_area: Option<UnpackFloat>,
-        #[starlark(require = named)] max_cantilever: Option<UnpackFloat>,
-        #[starlark(require = named)] max_horizontal_hole: Option<UnpackFloat>,
-        #[starlark(require = named)] min_island: Option<UnpackFloat>,
-        #[starlark(require = named)] build_direction: Option<VecArg>,
-        #[starlark(require = named)] msg: Option<&str>,
-        eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<NoneType> {
-        let what = "assert_support_free";
-        let max_bridge = bridge_limit(max_bridge, what)?;
-        let rules =
-            SupportArgs::new(what, max_overhang_area, max_cantilever, max_horizontal_hole, min_island, None, None, None)?;
-        let mut profile = resolve_profile(
-            what,
-            printer,
-            None,
-            None,
-            None,
-            layer_height,
-            None,
-            max_overhang,
-            None,
-            None,
-            build_direction.as_ref(),
-            None,
-        )?;
-        rules.apply(what, &mut profile)?;
-        let bodies = collect_bodies(&[body], eval.heap(), what)?;
-        if bodies.is_empty() {
-            anyhow::bail!("{what}: the list of bodies is empty");
-        }
-        let single = bodies.len() == 1 && body.get_type() != "list" && body.get_type() != "tuple"
-            && body.downcast_ref::<crate::assembly::KAssembly>().is_none();
-        let st = store(eval)?;
-        let mut ctx = st.ctx.borrow_mut();
-        let mut why: Vec<String> = Vec::new();
-        let mut names = Vec::with_capacity(bodies.len());
-        for b in &bodies {
-            let name = ctx.body(b.body_id())?.name.clone();
-            let (mesh, topo) = ctx.body_mesh(b.body_id())?.clone();
-            let report = cadpole_print::check_named(&mesh, Some(&topo), &profile, max_bridge);
-            for i in report.support_findings() {
-                why.push(format!("{name}: [{}] {}", i.check.as_str(), i.message));
-            }
-            names.push(name);
-        }
-        if !single {
-            let ids: Vec<cadpole_core::BodyId> = bodies.iter().map(|b| b.body_id()).collect();
-            for f in crate::clearance::assembly_findings(&mut ctx, &ids, &profile)? {
-                if f.issue.check.is_support() {
-                    why.push(format!("{}: [{}] {}", names[f.body], f.issue.check.as_str(), f.issue.message));
-                }
-            }
-        }
-        if !why.is_empty() {
-            anyhow::bail!(
-                "{what} failed{}: {} finding{} need support\n  - {}",
-                msg.map(|m| format!(" ({m})")).unwrap_or_default(),
-                why.len(),
-                if why.len() == 1 { "" } else { "s" },
-                why.join("\n  - ")
-            );
-        }
-        Ok(NoneType)
-    }
-
-    /// Fail unless every piece of `body` (a Body, or a list: the pieces
-    /// `print_plan` would find in it) stands for printing within `tolerance`
-    /// of the best orientation `print_plan` finds for it, in mm² of support
-    /// equivalent (5 by default). For a script's hand-placed print layer:
-    /// a wheel left standing on its tread, a lid the right way up, a tall
-    /// bracket on its end. The cost is `print_plan`'s: support area, islands,
-    /// ledges, wide round holes, footing, height and, with `along=`, the
-    /// strength axis across the layers. A print-in-place group in the list
-    /// stays one piece and is not judged, since it keeps its modelled pose.
-    /// The failure names each piece, what it needs as placed and the better
-    /// orientation with its cost and the saving.
-    fn assert_orientation_optimal<'v>(
-        #[starlark(require = pos)] body: Value<'v>,
-        #[starlark(require = named)] printer: Option<&str>,
-        #[starlark(require = named)] tolerance: Option<UnpackFloat>,
-        #[starlark(require = named)] along: Option<Value<'v>>,
-        #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
-        #[starlark(require = named)] msg: Option<&str>,
-        eval: &mut Evaluator<'v, '_, '_>,
-    ) -> anyhow::Result<NoneType> {
-        let what = "assert_orientation_optimal";
-        let ids: Vec<BodyId> = collect_bodies(&[body], eval.heap(), what)?.iter().map(|b| b.body_id()).collect();
-        if ids.is_empty() {
-            anyhow::bail!("{what}: the list of bodies is empty");
-        }
-        let tol = opt_num(&tolerance, &format!("{what}: tolerance"))?
-            .unwrap_or(cadpole_print::plate::score::DEFAULT_ORIENTATION_TOLERANCE);
-        if !(tol >= 0.0) {
-            anyhow::bail!("{what}: tolerance is mm² of support equivalent, 0 or more, got {tol}");
-        }
-        let along = along.filter(|v| !v.is_none()).map(|v| direction_arg(v, &format!("{what}: along"))).transpose()?;
-        let mut req = crate::plating::PlateRequest { max_bridge: bridge_limit(max_bridge, what)?, ..Default::default() };
-        if let Some(p) = printer {
-            req.printer = cadpole_print::printers::printer(p)
-                .ok_or_else(|| anyhow::anyhow!("{what}: unknown printer {p:?}; Cadpole knows {}", cadpole_print::printer_list()))?
-                .id
-                .to_owned();
-        }
-        let st = store(eval)?;
-        let mut ctx = st.ctx.borrow_mut();
-        let judged = crate::plating::judge_orientation(&mut ctx, &ids, &req, along)?;
-        let why: Vec<String> = judged
-            .iter()
-            .filter(|j| j.worse(tol))
-            .map(|j| format!("{}: {}", j.name, j.verdict.words()))
-            .collect();
-        if !why.is_empty() {
-            anyhow::bail!(
-                "{what} failed{}: {} piece{} placed worse than the best orientation by more than {} mm²\n  - {}",
-                msg.map(|m| format!(" ({m})")).unwrap_or_default(),
-                why.len(),
-                if why.len() == 1 { " is" } else { "s are" },
-                tol,
-                why.join("\n  - ")
             );
         }
         Ok(NoneType)

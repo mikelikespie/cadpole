@@ -55,23 +55,6 @@ js_binary(
     entry_point = "build/build.mjs",
 )
 
-# The repository files the page names, at their paths from the repository
-# root, so the build can link to them on GitHub (build/linkify.mjs) and stop on
-# a path that is not there.
-copy_to_directory(
-    name = "repo_files",
-    srcs = [
-        "//:LICENSE",
-        "//:README.md",
-        "//bin:cadpole",
-        "//bin:doctor",
-        "//bin:install",
-        "//docs:guides",
-        "//examples:star_files",
-    ],
-    root_paths = [],
-)
-
 _SOURCES = glob([
     "content/*.json",
     "features/*.star",
@@ -89,7 +72,6 @@ js_run_binary(
         ":examples",
         "//src/web:dist",
         "//src/web:site3d_bundle",
-        ":repo_files",
     ] + [":view_pages/" + v.name for v in VIEWS],
     args = [
         "--site",
@@ -102,8 +84,6 @@ js_run_binary(
         "src/web/site3d.js",
         "--pages",
         package_name() + "/view_pages",
-        "--repo",
-        package_name() + "/repo_files",
         "--out",
         package_name() + "/dist",
     ],

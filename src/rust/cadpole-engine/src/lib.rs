@@ -11,7 +11,6 @@ pub mod gltf;
 pub mod inspect;
 pub mod limits;
 pub mod modeltest;
-pub mod plate;
 pub mod print;
 pub mod probe;
 pub mod selection;
@@ -47,7 +46,6 @@ pub use cadpole_print;
 pub use cadpole_proto;
 pub use cadpole_script;
 pub use animate::animate;
-pub use plate::plate;
 pub use explain::explain_ref;
 pub use inspect::inspect;
 pub use limits::{Limits, RenderLimits};
@@ -1690,28 +1688,18 @@ fn export_warning(message: String) -> pb::Diagnostic {
 /// `export(..., template=)` reads it.
 fn request_template(req: &pb::ExportRequest, name: &str) -> anyhow::Result<cadpole_core::context::BambuTemplate> {
     let doc = req.document.as_ref().ok_or_else(|| anyhow::anyhow!("export: no document"))?;
-    document_template(doc, name, "export")
-}
-
-/// A document's asset `name` read as a Bambu Studio project's settings:
-/// its settings and the application that saved it, and nothing else.
-pub(crate) fn document_template(
-    doc: &pb::Document,
-    name: &str,
-    what: &str,
-) -> anyhow::Result<cadpole_core::context::BambuTemplate> {
     let store = assets_from_proto(doc, &HashMap::new());
     let Some((record, bytes)) = store.get(name) else {
         let have = store.names();
         anyhow::bail!(
-            "{what}: template {name:?} is not one of the document's assets (available: {})",
+            "export: template {name:?} is not one of the document's assets (available: {})",
             if have.is_empty() { "none".to_owned() } else { have.join(", ") }
         );
     };
     let (application, settings) = cadpole_export_3mf::bambu_settings::template_parts(&bytes)
-        .map_err(|e| anyhow::anyhow!("{what}: template {name:?} is not a Bambu Studio project: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("export: template {name:?} is not a Bambu Studio project: {e}"))?;
     cadpole_export_3mf::bambu_settings::Template::from_parts(&application, &settings)
-        .map_err(|e| anyhow::anyhow!("{what}: template {name:?}: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("export: template {name:?}: {e}"))?;
     Ok(cadpole_core::context::BambuTemplate { asset: name.to_owned(), sha256: record.sha256, application, settings })
 }
 

@@ -57,7 +57,6 @@ this document exactly as a part does.
 | --- | --- |
 | [§6.1](#61-exports-and-printing) Exports and printing | `export` (STL, OBJ, 3MF, STEP), `print_check`, `orient_for_print`, `paint`, `split`, `printer` |
 | [§6.2](#62-printing-in-pieces-cadpoleprintstar) Printing in pieces | `@cadpole/print.star`: pegs, sockets, story bands |
-| [§6.5](#65-plating-print_plan-and-cadpole-plate) Plating | `print_plan`, `print_part`, `assert_orientation_optimal`, `cadpole plate`: a model's parts oriented, packed onto plates and written as one Bambu project |
 | [§6.3](#63-drawings) Drawings | `drawing`, `export_svg`, `export_dxf`, `export_pdf` |
 | [§6.4](#64-sheet-sets) Sheet sets | `sheet_set`, title blocks, plan, section and elevation views, `sweep_table` |
 
@@ -3644,8 +3643,7 @@ deterministic. docs/views.md has the flags and a turntable recipe.
 
 What a script writes, for either kind of work: mesh and STEP files and
 print projects (§6.1), a model printed in pieces (§6.2), dimensioned
-drawings (§6.3), multi-page sheet sets (§6.4) and a model plated for
-printing (§6.5). A script records what it
+drawings (§6.3) and multi-page sheet sets (§6.4). A script records what it
 wants exported; the host decides whether and where to write (§1). glTF is
 written from the command line (§4.13).
 
@@ -3955,7 +3953,7 @@ per-triangle `p1`, PrusaSlicer's `slic3rpe:mmu_segmentation`, and — behind
 `--group part` merges the bodies into one multi-material object instead of a
 plate of separate ones.
 
-#### `print_check(body, *, printer=None, min_wall=None, nozzle=0.4, perimeters=2, layer_height=0.2, material="PLA", max_overhang=45, bed=(256, 256, 256), bed_shape="rectangular", build_direction=(0,0,1), min_gap=0.3, orient=False, max_bridge=10, max_overhang_area=4, max_cantilever=3, max_horizontal_hole=7, min_island=layer_height, max_slenderness=8, slender_width=3, max_height_to_base=6)`
+#### `print_check(body, *, printer=None, min_wall=None, nozzle=0.4, perimeters=2, layer_height=0.2, material="PLA", max_overhang=45, bed=(256, 256, 256), bed_shape="rectangular", build_direction=(0,0,1), min_gap=0.3, orient=False, max_bridge=10)`
 
 Checks the body's triangles and returns a `PrintReport`; a **list of bodies
 is one print** and returns a list of reports, with the checks *between* the
@@ -3996,57 +3994,6 @@ a good deal further; a script that knows its printer passes its own
 overhang. `cadpole check --max-bridge MM` is the same (0 turns it off there
 too).
 
-**Does it print without support?** The angle and `max_bridge` are not
-the whole answer, so `print_check` judges six more rules, each a keyword
-here, a field of a printer profile (`printer("bambu_a1").max_cantilever`)
-and a `cadpole check` flag:
-
-| rule | keyword (default) | check, severity | why that number |
-| --- | --- | --- | --- |
-| overhang area | `max_overhang_area` (4 mm²) | `overhang`, warning | the largest *connected* patch past the angle that prints anyway: one that size is a couple of millimetres across, which the perimeters round it carry (a thread's run-out, a chamfer's lip, a 45° teardrop's tip). The warning names the largest patch, its face and its position, and the total of the patches over the limit; ten specks are not one ceiling. 0 counts every patch |
-| ledges | `max_cantilever` (3 mm) | `cantilever`, warning | a near-level downward face (past 70° from vertical) held up on one side only -- a shelf, a lip, an outstretched thumb -- printed off its perimeters out to about seven 0.4 mm extrusions before its edge curls up. Within it, not overhang; past it, a finding with how far it sticks out, where, and the face. A ledge along a wall is a ledge even when the bridge cast finds it "held up at both ends" by running along it |
-| islands | `min_island` (one layer) | `island`, warning | a region whose lowest point is in mid-air: a downward tip, a chin, a hanging finger, the underside of a ball off the bed, a shell of the body with nothing under it. The overhang area can miss these when the tip is small; its first layer prints on nothing. Found by sweeping the surface bottom up: a region that starts facing down and off the bed, and rises more than `min_island` before it meets anything that started lower, is an island. The finding says how deep it hangs, where it starts and on which face |
-| horizontal holes | `max_horizontal_hole` (7 mm) | `horizontal_hole`, warning | a round hole lying on its side (a face recognised as a cylinder with a horizontal axis, concave, covering half a turn or more) whose top is still a round ceiling: past 6–8 mm across a slicer's bridge sags into it. The fix is a teardrop or diamond top -- `teardrop()` in `@cadpole/print.star` cuts one. Smaller holes' tops are bridged and not counted as overhang. A bare mesh has no face classes and is not judged |
-| slender features | `max_slenderness` (8), `slender_width` (3 mm) | `slender`, warning | a feature narrower than `slender_width` (as the diameter of a circle of its cross-section's area) and taller than `max_slenderness` times that: it wobbles under the nozzle and snaps. Followed up through horizontal sections. 0 turns it off |
-| bed contact | `max_height_to_base` (6) | `bed_contact`, warning | the part's height over the square root of its first-layer area (the section half a layer up): a 20 mm cube is 1, a 10 mm pin 60 mm tall 6.8, a ball on the plate touches it at a point. Past the limit it may tip or come off the plate; add a brim or lay it down. 0 turns it off |
-
-None of these is a vendor's number; they are Cadpole's, for a 0.4 mm nozzle
-printing PLA with its fan on, and a script that knows its printer passes
-its own. A downward face no more than two layers above an upward face of
-the same part -- a print-in-place gear standing two layers over its
-carrier -- rests on it and is neither an overhang, a ledge nor an island.
-
-The report carries the numbers: `support_area` (what still needs support
-after the allowances), `largest_overhang`, `ledge_area`,
-`longest_cantilever`, `islands`, `deepest_island`, `horizontal_holes`,
-`wide_holes`, `slender`, `slenderness`, `first_layer_area`,
-`height_to_base`, and `support` -- the support findings as text, empty when
-it prints without support -- with `support_free` the boolean.
-`unsupported_area` is unchanged: every face past the angle and off the
-bed, bridges left out. Overhang the allowances cover is an `[overhang]`
-*information* line, like `[bridged]`, which `assert_printable` does not
-fail on. `slender` and `bed_contact` are about the part standing up, not
-about support, so `assert_support_free` leaves them to `assert_printable`.
-
-`assert_support_free(body_or_list, ...)` (§7.1) fails unless the support
-rules find nothing, and lists every finding with its position and face:
-
-```python
-load("@cadpole/print.star", "teardrop")
-
-blk = box(30, 12, 24, at = (-15, -6, 0), name = "blk")
-part = subtract(blk, teardrop(10, 16, at = (0, 0, 12), name = "bore"), name = "part")
-assert_support_free(part)                       # a 10 mm round hole would fail: [horizontal_hole]
-assert_support_free(part, printer = "bambu_a1", max_cantilever = 5)
-```
-
-`cadpole check --support-free` is the same question from the command
-line: only the support findings are reported, and it exits 1 when there is
-any. `--max-overhang-area`, `--max-cantilever`, `--max-horizontal-hole`,
-`--min-island`, `--max-slenderness`, `--slender-width` and
-`--max-height-to-base` set the rules (a flag's 0 is the strictest rule, or
-for the two ratios the check off).
-
 **When the part does not fit the bed**, the diagnostic ends with the
 `split(...)` call that would make it fit, and `split_advice` / `split_axis` /
 `split_pieces` / `split_at` are the same thing as data.
@@ -4062,10 +4009,7 @@ What it measures, all on the tessellated body (so tolerance matters):
 | internal faces | coplanar pairs of triangles that share area — a face emitted twice, or the wall two fused parts still share — with the area shared; `internal_faces` counts the pairs |
 | shells | `components` is the number of separate closed surfaces (2 for a part with a cavity) and `genus` the surface's genus (0 for a ball, 1 for a ring; −1 when it is not closed) |
 | wall thickness | a ray down each triangle's inward normal plus four on an 18° cone, to the far side of the solid; the shortest is the wall |
-| overhang | `asin(n · −up)` — 0° is a vertical wall, 90° a flat ceiling — with faces resting on the plate excluded, and flat faces held up at both ends within `max_bridge` counted as bridges instead (above); then joined into connected patches, short ledges and small holes' tops allowed, and judged by the largest patch against `max_overhang_area` |
-| islands | the welded surface swept bottom up, each vertex joined to its lower neighbours; a region that starts facing down, off the bed, and rises past `min_island` before it meets a region that started lower |
-| horizontal holes | faces the kernel recognised as cylinders, axis within 5° of the plate, concave, covering at least half a turn, with triangles still past the angle at the top |
-| sections | horizontal cuts of the welded surface, a loop's area the shoelace sum of the segments each triangle cuts (oriented by its normal): the first layer half a layer up, and narrow loops followed up through the cuts for `slender` |
+| overhang | `asin(n · −up)` — 0° is a vertical wall, 90° a flat ceiling — with faces resting on the plate excluded, and flat faces held up at both ends within `max_bridge` counted as bridges instead (above) |
 | bed fit | the bounding box in the printer's frame, also tried turned 90° and on the diagonal; a `bed_shape="circular"` plate is tested against its diameter using the footprint's diagonal |
 | chord error vs gap | when the document has other visible bodies: the body's measured chord error against a third of its `distance()` gap to the nearest of them, less both chord errors — the export warning of `export` above, as a `[chord_error]` warning here |
 | mass | the solid volume times the material's density — an *upper bound*, since infill and perimeters make the real print lighter |
@@ -4226,10 +4170,7 @@ STEP; with `kernel="brep"` it is an error.
 #### `printer(name)`
 
 A named printer profile: bed size and shape, nozzle, layer height, the support
-angle, the support rules (`max_overhang_area`, `max_cantilever`,
-`max_horizontal_hole`, `min_island`, `max_slenderness`, `slender_width`,
-`max_height_to_base`; Cadpole's defaults for every machine today, with
-`min_island` its layer height) and the material. Pass it to `print_check(body, printer=...)` and
+angle and the material. Pass it to `print_check(body, printer=...)` and
 `orient_for_print(body, printer=...)`, or read the numbers off it.
 `print_check(body, printer="bambu_a1")` takes the name directly.
 
@@ -4274,7 +4215,7 @@ Materials, for the mass estimate: `PLA` (1.24 g/cm³), `PETG` (1.27), `ABS`
 
 A building printed one story at a time is a stack of pieces that has to go
 back together where it came apart. `load("@cadpole/print.star", "pegs",
-"peg_sites", "story_bands", "drop_to_bed", "is_box", "snap_fit", "PEG")`:
+"peg_sites", "story_bands", "drop_to_bed", "is_box", "PEG")`:
 
 | Function | What it does |
 | --- | --- |
@@ -4283,7 +4224,6 @@ back together where it came apart. `load("@cadpole/print.star", "pegs",
 | `story_bands(parts, levels, regions=None, scale=1.0, weld=0.01, sliver=None, pegs_per_joint=0, drop=True, name="story", peg=None, layer=None, thicken=None)` | Cut a list of bodies into horizontal bands at `levels` (model units, lowest first) and make each a printable piece: every part clipped to each band it reaches (a box by arithmetic, anything else by an intersection), a clipped piece thinner than `sliver` (default a hundredth of the thinnest band) dropped, every box narrower than `thicken` (in the scaled units: `0.8` is two perimeters) across x or y widened to it about its centre line -- a mullion, a pane, a baluster that would otherwise not print --, everything multiplied by `scale`, each band joined with `union(weld=)` (`weld=None` leaves the parts, for `export(name=)`), each joint pegged with up to `pegs_per_joint` pegs (`peg=` a dict of `PEG` options; a joint with less room says so and gets what fits), each piece dropped onto the bed and put on `layer`. `regions=[(label, ((x0, y0), (x1, y1)), levels), ...]` cuts the parts whose plan centre is in a rectangle at their own levels, as their own stack. Returns `[(label, body), ...]`: `"main.0"`, `"main.1"`, ..., then each region's |
 | `drop_to_bed(body, name=None)` | the body moved so its lowest point is z = 0 |
 | `is_box(b, rel=1e-6)` | six faces and the volume of its bounding box: what `union(weld=)` joins on its grid |
-| `snap_fit(length, thickness, deflection, thickness_tip=None, width=1.0, width_tip=None, modulus=None, max_strain=None, steps=400)` | the peak bending strain in a cantilever snap arm whose load point, `length` from the root, moves `deflection` sideways; thickness (in the bending direction) and width taper linearly to `thickness_tip` and `width_tip` at the load point. Returns `{"strain", "at", "factor"}` (`factor` is the strain over the uniform arm's 1.5 t y / L², so a taper to half thickness reads about 0.61), plus `"force"` and `"stiffness"` given `modulus`; with `max_strain` an arm that bends further is an error. A printed arm bent along its layers takes about the material's own strain (PLA: 0.02 once, 0.01 repeatedly); one bent across them, a fraction of it |
 | `PEG` | the defaults below |
 
 **The fit, for FDM at a 0.4 mm nozzle** (every one a keyword of `pegs`,
@@ -4653,159 +4593,6 @@ its first error. `configs` names parameters the document declares; at most
 
 ---
 
-### 6.5 Plating: `print_plan` and `cadpole plate`
-
-**To make a print file from a model, plate it**: do not export the
-assembled model, and do not turn and translate copies by hand.
-`print_plan` takes the parts as the model has them -- the lid on its box,
-the wheels on their axles -- and lays them out on print-ready plates of a
-printer: each piece turned the way it prints with the least support,
-packed by its outline onto as few plates as hold it, every plate within
-the AMS's filament slots, test coupons first, and every decision written
-down with its numbers. `cadpole plate` does the same from the command line
-for any script, and the `Plate` operation from MCP. `docs/plating.md` is
-the design.
-
-```python
-plan = print_plan(
-    [box_body, lid, axle, wheel,                           # loose bodies: the pieces are found
-     print_part(latch, along="+z", name="latch"),          # its arm bends: keep it along the layers
-     print_part(coupon, coupon=True, name="latch coupon"), # printed first, on its own plate
-     [badge, stripe]],                                      # a list is one piece
-    "trinket.3mf", printer="bambu_h2d", variants=["colour", "mono"])
-plate_images("trinket.3mf")
-```
-
-```
-6 pieces on 3 plates for the bambu_h2d (300 x 320 mm where every nozzle reaches, 4 AMS slots a plate).
-plate 1 "Test coupons": 1 piece, 1 filament, 40 layers
-  latch coupon: on the 120 mm² flat face: 0 mm² support vs 0 mm² as modelled (its along= axis now runs along the layers (0° out of the bed plane, was 90°))
-plate 2 "Colour 1": 5 pieces, 4 filaments (#2F6F8F, #F4F3EE, #FFCE1F, #161616), ~89 colour changes, 150 layers
-  box_body: as modelled; 0 mm² support, the best of 4 orientations scored
-  lid: on the 3500 mm² flat face: 0 mm² support vs 3036 mm² as modelled
-  badge and stripe: one multi-material piece, as modelled; 0 mm² support, the best of 4 orientations scored
-  axle and wheel: print-in-place, kept as modelled so its gaps stay on the layer grid; 0 mm² support; 1 captive joint, the tightest 0.31 mm
-  ...
-```
-
-`examples/print_plan.star` is the whole script, with tests of the plan.
-
-#### `print_plan(items, path=None, *, printer=None, ams=4, variants=["colour"], spacing=4, joint_gap=1, max_bridge=10, template=None, tolerance=None, layer="print")`
-
-`items` is a list of Bodies, lists of bodies, `print_part(...)`s and
-Instances or Assemblies (their bodies, loose). Returns a dict: `report`
-(the text above), `printer`, `plates` (per plate `name`, `variant`,
-`pieces`, `filaments`, `colour_changes`, `layers`), `pieces` (per placed
-piece `name`, `plate`, `kind`, `orientation`, `support_area`,
-`modelled_support_area`, `spin`, `reason`, `considered` -- every
-orientation fully scored with its cost, support area and islands -- and
-`bodies`) and `bodies` (every placed copy). The report is also an info diagnostic. With `path` (a
-`.3mf`) the plates are recorded as Bambu exports, exactly as
-`export(..., flavor=flavor.bambu, plate=, name=)` calls would be, and
-`cadpole export --run-exports` writes them; `plate_images(path)` after it
-draws them.
-
-**Pieces: what moves as one.** A list is one piece. Loose bodies are
-joined where the analysis finds they belong together:
-
-| relation | when | result |
-| --- | --- | --- |
-| overlap | they share material | one multi-material piece |
-| skin | they touch, at least 10% of the smaller one's surface lies on the other, and it is thin there (its volume over the contact under a quarter of its size): a stripe, a spot, an inlaid eye, a hub in its tyre | one multi-material piece |
-| print-in-place | within `joint_gap`, at least half of `min_gap` clear, and neither can be slid away from the other in any of 26 directions: a wheel on an axle between caps, a planet between carrier plates | one piece, kept as modelled, never pulled apart or turned relative to each other |
-| resting | one is printed on the other across one or two layers (at least half of `min_gap`, at most two layer heights), over at least a fifth of its underside: a stand one layer under a chassis that holds it up | one piece, kept as modelled |
-| anything else | a lid resting on its box lifts off; a nut 0.11 mm clear on its screw would fuse | separate pieces (the report says when a held pair is printed apart) |
-
-**Orientation.** The candidates are: as modelled, upside down, the four
-sides, the outward normals of the eight largest flat regions, and the six
-largest facets of the piece's convex hull (what a part with no flat face
-rests on). Each is scored by a cost in mm² of support equivalent, the same
-for every part, so the report can quote it: the support area `print_check`'s
-support rule still finds (bridges, short ledges and small holes allowed),
-plus 60 per island and 20 per mm it hangs, 40 per mm a ledge sticks out
-past `max_cantilever`, 50 per round horizontal hole too wide to bridge, 150
-when it stands too tall for its footing (`max_height_to_base`), 400 when an
-`along=` axis runs across the layers, 0.05 per mm of height (print time) and
-0.5 for any turn at all; a candidate that does not fit costs a million.
-Print-in-place pieces keep their modelled pose, since their gaps are drawn
-on the layer grid. Orientations within 2 mm² and 2% of the best, with no
-more islands, are *the same print*, and the packer may use one of them to
-fit a plate before it opens another: a plate saved is never bought with
-support.
-
-**Plates.** Pieces are packed by raster bottom-left fill: each piece's
-outline seen from above at 1 mm, grown by half the `spacing`, placed at the
-lowest, then leftmost, spot that is clear, over the turns about z tried
-(0°, 90°, 180°, 270° and the two of its minimum-area rectangle). A plate is
-what every nozzle of the printer reaches (X 25–325 on an H2D or H2C), its
-excluded corners kept clear (the X1 and P1 cutter); a plate of more than
-one filament keeps a square for the prime tower at its back right. Plates
-are tried by colour affinity -- fewest new filaments, then most shared --
-and never take a piece that would put them past `ams` filaments
-(`ams=0`: no limit). Test coupons go first, on "Test coupons"; then the
-pieces, larger first, a `group=` together. `variants=["colour", "mono"]`
-makes a set of plates each, named "Colour 1", "Mono 1", ...; one variant's
-plates are "Parts", or "Parts 1", "Parts 2". A mono plate prints every
-piece in filament 1. Each plate reports its filaments and an estimate of
-its colour changes: per layer, one fewer than the filaments that layer
-prints, plus one where it cannot start on the filament the last layer
-ended on.
-
-**The copies** go on the hidden `layer` (`"print"`, declared when the
-script has not), each with its source's paint; the model is untouched.
-`printer=` is `printer()`'s names (the X1 Carbon by default). `template=`
-is optional and only ever a settings source: a Bambu Studio project's
-printer, process and filament settings, never its objects, plate
-pictures or side files; without one the project carries Cadpole's own
-settings for `printer` (§6.1). `tolerance=` is the export's tessellation
-tolerance.
-
-#### `print_part(bodies, *, name=None, down=None, orient="auto", along=None, spin=None, group=None, plate=None, coupon=False, together=True)`
-
-What a script pins about a piece. `down=` is the model direction that
-faces the bed, `(x, y, z)` or `"-z"`, `"+x"`, `"top"`, `"bottom"`,
-`"front"`, `"back"`, `"left"`, `"right"`; `orient="keep"` prints it as
-modelled. `along=` is the direction its fibres must run in -- a snap arm's
-length, which bends along the layers and breaks across them
-(`snap_fit()` in §6.2 gives its strain) -- kept within 30° of the bed plane
-when any orientation can. `spin=` is its turn about z in degrees, or
-`False` for none. `group=` names pieces that share a plate when they fit;
-`plate=` is the plate of its set it goes on; `coupon=True` prints it first.
-`together=False` leaves a list's bodies loose for the analysis. Every pin is
-reported as pinned.
-
-#### `assert_orientation_optimal(body, *, printer=None, tolerance=5, along=None, max_bridge=None, msg=None)`
-
-For a print layout placed by hand: fails unless each piece of `body` (a
-Body, or a list, joined as `print_plan` joins them) stands within
-`tolerance` mm² of support equivalent of the best orientation found. A
-print-in-place group stays one piece and is not judged.
-
-```
-assert_orientation_optimal failed: 1 piece is placed worse than the best orientation by more than 5 mm²
-  - wheel_2: as placed it needs 1280 mm² support (cost 1281.5); on the 1256.6 mm² flat face: 0 mm² support (cost 1.5), 1280 better
-```
-
-`cadpole check --orientation [--orientation-tolerance MM2]` asks the same of
-every checked body (a `print_orientation` warning), and `cadpole plate`
-says the same, as `hand-placed:` lines, of what the script's own Bambu
-exports and `print` layer place.
-
-#### `cadpole plate`
-
-```
-cadpole plate model.star --printer bambu_h2c [--ams 4] [--variant colour --variant mono] -o out.3mf
-    [--layer NAME] [--body ID] [--coupon-layer NAME] [--include-hidden] [--script-objects]
-    [--spacing MM] [--joint-gap MM] [--max-bridge MM] [--template FILE] [--plate-images DIR] [--json]
-```
-
-Plates the visible bodies (or `--layer`'s, `--body`'s), writes the project
-and prints the report. `--coupon-layer` marks a layer's bodies as test
-coupons; `--script-objects` keeps the script's own `export(..., name=)`
-objects as pieces. The `Plate` operation is the same for `cadpole op` and
-MCP: its response carries `report`, per-plate and per-piece data, the
-`.3mf` bytes in `data` and, with `plate_images`, the contact sheet.
-
 ## 7. Tests, assistants and diagnostics
 
 A script can state what must stay true of its model (§7.1), check and report
@@ -4909,8 +4696,6 @@ fraction of the expected value) mean the same thing everywhere:
 | `assert_bbox(body, lo, hi, *, tol=0.1, msg=None)` | every coordinate of the bounding box is within `tol` mm; the default is a little wider than the tessellation tolerance a curved extent can fall short by |
 | `assert_solid(body, *, msg=None)` | the tessellation is a solid (§7.2) |
 | `assert_printable(body, *, printer=None, …, msg=None)` | `print_check(body, …)` with the same keywords has nothing to report — warnings included, because a test wants a verdict where `print_check` gives advice. Nothing is recorded as a diagnostic. `body` may be a list: one print, checked between the bodies too |
-| `assert_support_free(body, *, printer=None, …, msg=None)` | the support rules of `print_check` find nothing: no overhang patch past `max_overhang_area`, no island, no ledge past `max_cantilever`, no round horizontal hole past `max_horizontal_hole` with a round top, nothing in the air between the bodies of a list. The failure lists each finding on its own line with its position and face |
-| `assert_orientation_optimal(body, *, printer=None, tolerance=5, along=None, max_bridge=None, msg=None)` | each piece stands within `tolerance` mm² of support equivalent of the best orientation `print_plan` finds for it (§6.5); the failure names the piece, what it needs as placed, the better orientation, its cost and the saving |
 
 There is no separate helper for these: a face by name is
 `body.face("plate/top")` (an error when there is none), a face count is
@@ -4928,9 +4713,7 @@ There is no separate helper for these: a face by name is
 | `assert_close(a, b, *, tol=1e-6, rel=0.0, msg=None)` | numbers, or lists/tuples of numbers element by element; passes on `abs(a − b) ≤ max(tol, rel·abs(b))` — §7.1 |
 | `assert_volume(body, mm3, *, tol=0.0, rel=0.01, msg=None)` | the tessellated volume against `mm3`, same closeness rule; the message carries both numbers — §7.1 |
 | `assert_bbox(body, lo, hi, *, tol=0.1, msg=None)` | every corner coordinate within `tol` mm — §7.1 |
-| `assert_printable(body, *, printer=None, min_wall=None, nozzle=None, perimeters=None, layer_height=None, material=None, max_overhang=None, bed=None, bed_shape=None, min_gap=None, msg=None, max_bridge=10, max_overhang_area=4, max_cantilever=3, max_horizontal_hole=7, min_island=None, max_slenderness=8, slender_width=3, max_height_to_base=6)` | `print_check` with the same keywords has nothing to report, warnings included — the chord-error-vs-gap warning of §6.1 among them, the support rules' `island`, `cantilever`, `horizontal_hole`, `slender` and `bed_contact` too; a bridge within `max_bridge` and overhang within the allowances not (they are information, not findings); records no diagnostic — §7.1. A list of bodies is one print: the checks between them (`fuse`, `layer_gap`, `bridge`, §6.1) run too, so `assert_printable([sun, ring, carrier])` is the planetary's fit test |
-| `assert_support_free(body, *, printer=None, layer_height=None, max_overhang=None, max_bridge=10, max_overhang_area=4, max_cantilever=3, max_horizontal_hole=7, min_island=None, build_direction=None, msg=None)` | the body prints without support: none of `print_check`'s support findings — `overhang` past the allowances, `island`, `cantilever`, `horizontal_hole`, and for a list printed together `bridge` (a body in the air). Fails with one line per finding, each with its check, position and face. `build_direction=` judges it another way up — §6.1 |
-| `assert_orientation_optimal(body, *, printer=None, tolerance=5, along=None, max_bridge=None, msg=None)` | a print layout's pieces stand the best way up: each within `tolerance` of the best orientation's cost — §6.5 |
+| `assert_printable(body, *, printer=None, min_wall=None, nozzle=None, perimeters=None, layer_height=None, material=None, max_overhang=None, bed=None, bed_shape=None, min_gap=None, msg=None, max_bridge=10)` | `print_check` with the same keywords has nothing to report, warnings included — the chord-error-vs-gap warning of §6.1 among them, a bridge within `max_bridge` not (it is information, not a finding); records no diagnostic — §7.1. A list of bodies is one print: the checks between them (`fuse`, `layer_gap`, `bridge`, §6.1) run too, so `assert_printable([sun, ring, carrier])` is the planetary's fit test |
 | `print(...)` | Starlark builtin: each line becomes an info diagnostic in `Model.diagnostics` |
 | `test(name, func, *, sweep=None, monotone=None)` | registers a model test; runs after the model is built, only under `cadpole test` and the example gate — §7.1 |
 

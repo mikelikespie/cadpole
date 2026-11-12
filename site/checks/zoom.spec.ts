@@ -58,10 +58,7 @@ function sound(s: State, paths: number) {
 const touch = (cdp: CDPSession, type: string, points: [number, number][]) =>
   cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y], id) => ({ x, y, id })) });
 
-// Flaky on a loaded host: its double tap is four touch events sent one by one, and when they
-// take longer than the page's 350 ms double-tap window the zoom never comes (lands() times
-// out); tracked in the post-launch follow-ups, with the desk-1440 check below.
-test.fixme("zoomable pair, phone-390: opens zoomed in; pinch, drag, double tap, grip", async ({ browser, site }) => {
+test("zoomable pair, phone-390: opens zoomed in; pinch, drag, double tap, grip", async ({ browser, site }) => {
   const ctx = await context(browser, "phone-390");
   const p = await ctx.newPage();
   const errs: string[] = [];

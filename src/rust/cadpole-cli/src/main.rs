@@ -815,70 +815,6 @@ enum Cmd {
         #[arg(long, value_name = "X0,Y0,X1,Y1", allow_hyphen_values = true)]
         crop: Option<String>,
     },
-    /// Lay the model out on print-ready plates and write one Bambu Studio
-    /// project: every piece turned the way it prints with the least support,
-    /// packed onto as few plates as hold it, each plate within the AMS's
-    /// slots; bodies that lie on each other are one multi-material piece and
-    /// bodies held captive across a small gap print in place. Prints the
-    /// report: every decision with its numbers. Use this, not `export`, to
-    /// make a print file from a model.
-    Plate {
-        #[command(flatten)]
-        eval: EvalArgs,
-        /// The project to write (.3mf).
-        #[arg(short, long, value_name = "FILE")]
-        out: PathBuf,
-        /// The printer: bambu_h2d, bambu_h2c, bambu_h2s, bambu_x1c,
-        /// bambu_x1e, bambu_p1s, bambu_p2s, bambu_a1, bambu_a1_mini (short
-        /// forms work too). Default: the X1 Carbon.
-        #[arg(long, value_name = "NAME")]
-        printer: Option<String>,
-        /// Filaments one plate may use (default 4).
-        #[arg(long, value_name = "N")]
-        ams: Option<u32>,
-        /// A set of plates to make: colour or mono; repeatable, in order
-        /// (default: colour).
-        #[arg(long = "variant", value_name = "colour|mono")]
-        variants: Vec<String>,
-        /// Clear space between pieces, in mm (default 4).
-        #[arg(long, value_name = "MM")]
-        spacing: Option<f64>,
-        /// The widest gap in mm across which captive bodies print in place
-        /// (default 1).
-        #[arg(long, value_name = "MM")]
-        joint_gap: Option<f64>,
-        /// The longest bridge in mm a flat downward face spans without
-        /// support (default 10; 0 turns bridging off).
-        #[arg(long, value_name = "MM")]
-        max_bridge: Option<f64>,
-        /// Plate only the bodies on this display layer; repeatable.
-        #[arg(long = "layer", value_name = "NAME")]
-        layers: Vec<String>,
-        /// Bodies on this layer are test coupons, printed first on a plate
-        /// of their own; repeatable.
-        #[arg(long = "coupon-layer", value_name = "NAME")]
-        coupon_layers: Vec<String>,
-        /// Plate only these bodies, by id or name; repeatable.
-        #[arg(long = "body", value_name = "ID")]
-        bodies: Vec<String>,
-        /// Also plate bodies on layers the script declares hidden.
-        #[arg(long)]
-        include_hidden: bool,
-        /// Keep each object the script's own `export(..., name=)` calls make
-        /// as one piece.
-        #[arg(long)]
-        script_objects: bool,
-        /// Optional: a Bambu Studio project to take printer, process and
-        /// filament settings from (only its settings; never its objects).
-        #[arg(long, value_name = "FILE")]
-        template: Option<String>,
-        /// Also write an image of every plate and a contact sheet here.
-        #[arg(long, value_name = "DIR")]
-        plate_images: Option<PathBuf>,
-        /// Print the plan as JSON instead of the report.
-        #[arg(long)]
-        json: bool,
-    },
     /// Check whether a model can be printed, and say where the problems are.
     Check {
         #[command(flatten)]
@@ -925,47 +861,6 @@ enum Cmd {
         /// downward face as an overhang).
         #[arg(long, value_name = "MM", allow_hyphen_values = true)]
         max_bridge: Option<f64>,
-        /// The largest connected overhang patch in mm² that prints without
-        /// support (default 4; 0 counts every patch).
-        #[arg(long, value_name = "MM2")]
-        max_overhang_area: Option<f64>,
-        /// How far a near-level ledge held up on one side may stick out, in
-        /// mm (default 3; 0 judges every ledge).
-        #[arg(long, value_name = "MM")]
-        max_cantilever: Option<f64>,
-        /// The widest round horizontal hole in mm whose top is bridged; a
-        /// wider one wants a teardrop top (default 7; 0 flags every one).
-        #[arg(long, value_name = "MM")]
-        max_horizontal_hole: Option<f64>,
-        /// How deep in mm a region starting in mid-air may hang before it
-        /// is an island (default one layer; 0 flags every one).
-        #[arg(long, value_name = "MM")]
-        min_island: Option<f64>,
-        /// Height over width past which a feature under --slender-width is
-        /// a warning (default 8; 0 turns it off).
-        #[arg(long, value_name = "RATIO")]
-        max_slenderness: Option<f64>,
-        /// What counts as slender, in mm across (default 3).
-        #[arg(long, value_name = "MM")]
-        slender_width: Option<f64>,
-        /// Height over the square root of the first-layer area past which
-        /// the part may tip or lift, a warning (default 6; 0 turns it off).
-        #[arg(long, value_name = "RATIO")]
-        max_height_to_base: Option<f64>,
-        /// Judge only whether it prints without support: report the
-        /// overhang, island, cantilever, horizontal_hole and bridge
-        /// findings, and exit 1 when there is any.
-        #[arg(long)]
-        support_free: bool,
-        /// Also warn when a body stands in a clearly worse orientation for
-        /// printing than the best `cadpole plate` finds for it (more than
-        /// --orientation-tolerance mm² of support equivalent worse).
-        #[arg(long)]
-        orientation: bool,
-        /// How much worse a placement may be before --orientation warns, in
-        /// mm² of support equivalent (default 5).
-        #[arg(long, value_name = "MM2")]
-        orientation_tolerance: Option<f64>,
         /// Check only the bodies on this display layer, by the name
         /// `layer(...)` declared (`other` is the bodies on no layer);
         /// repeatable. A hidden layer named here is checked. Adds to --body.
@@ -2829,7 +2724,6 @@ fn run() -> anyhow::Result<ExitCode> {
             | Cmd::Sweep { .. }
             | Cmd::Export { .. }
             | Cmd::Check { .. }
-            | Cmd::Plate { .. }
             | Cmd::Test { .. }
             | Cmd::Inspect { .. }
             | Cmd::Bake { .. }
@@ -3389,88 +3283,6 @@ fn run() -> anyhow::Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
-        Cmd::Plate {
-            eval,
-            out,
-            printer,
-            ams,
-            variants,
-            spacing,
-            joint_gap,
-            max_bridge,
-            layers,
-            coupon_layers,
-            bodies,
-            include_hidden,
-            script_objects,
-            template,
-            plate_images,
-            json,
-        } => {
-            let mut doc = document(&eval)?;
-            let template = match template.as_deref() {
-                None => String::new(),
-                Some(t) => template_asset(&mut doc, t)?,
-            };
-            let title = out.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            let host = cadpole_ops::DocumentHost(doc);
-            let resp: pb::PlateResponse = call(
-                "Plate",
-                &pb::PlateRequest {
-                    body_ids: bodies,
-                    layer_names: layer_names_arg(&layers)?,
-                    include_hidden_layers: include_hidden,
-                    printer: printer.unwrap_or_default(),
-                    ams: ams.unwrap_or(0),
-                    variants,
-                    spacing: spacing.unwrap_or(0.0),
-                    joint_gap: joint_gap.unwrap_or(0.0),
-                    max_bridge: match max_bridge {
-                        Some(m) if m <= 0.0 => -1.0,
-                        Some(m) => m,
-                        None => 0.0,
-                    },
-                    coupon_layers,
-                    script_objects,
-                    template,
-                    tolerance: eval.tolerance.unwrap_or(0.0),
-                    boolean_tolerance: eval.boolean_tolerance.unwrap_or(0.0),
-                    plate_images: plate_images.is_some(),
-                    title: title.clone(),
-                    ..Default::default()
-                },
-                &host,
-            )?;
-            if print_diagnostics(&resp.diagnostics) || resp.data.is_empty() {
-                return Ok(ExitCode::from(1));
-            }
-            std::fs::write(&out, &resp.data).with_context(|| format!("writing {}", out.display()))?;
-            eprintln!("wrote {}", out.display());
-            if let Some(dir) = plate_images {
-                std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
-                for img in &resp.plate_images {
-                    let path = dir.join(&img.path);
-                    std::fs::write(&path, &img.png).with_context(|| format!("writing {}", path.display()))?;
-                    eprintln!("wrote {} ({}x{}, plate {})", path.display(), img.width, img.height, img.plate);
-                }
-                if !resp.plate_sheet.is_empty() {
-                    let path = dir.join(format!("{title}_plates.png"));
-                    std::fs::write(&path, &resp.plate_sheet).with_context(|| format!("writing {}", path.display()))?;
-                    eprintln!("wrote {}", path.display());
-                }
-            }
-            if json {
-                let mut slim = resp.clone();
-                slim.data.clear();
-                slim.plate_sheet.clear();
-                slim.plate_images.clear();
-                let v = cadpole_ops::proto_to_json("cadpole.v1.PlateResponse", &slim.encode_to_vec(), &cadpole_ops::serialize_options())?;
-                println!("{}", serde_json::to_string_pretty(&v)?);
-            } else {
-                print!("{}", resp.report);
-            }
-            Ok(ExitCode::SUCCESS)
-        }
         Cmd::Check {
             eval,
             printer,
@@ -3484,29 +3296,11 @@ fn run() -> anyhow::Result<ExitCode> {
             bed_shape,
             orient,
             max_bridge,
-            max_overhang_area,
-            max_cantilever,
-            max_horizontal_hole,
-            min_island,
-            max_slenderness,
-            slender_width,
-            max_height_to_base,
-            support_free,
-            orientation,
-            orientation_tolerance,
             layers,
             bodies,
             include_hidden,
             json,
         } => {
-            // 0 in the request is "the profile's"; a flag's own 0 is the
-            // strictest rule (or, for a ratio, the check off), which the
-            // request spells as a negative number.
-            let rule = |v: Option<f64>| match v {
-                Some(m) if m <= 0.0 => -1.0,
-                Some(m) => m,
-                None => 0.0,
-            };
             let bed = bed_arg(bed.as_deref())?;
             let bed_shape = bed_shape_arg(bed_shape)?;
             let host = cadpole_ops::DocumentHost(document(&eval)?);
@@ -3535,16 +3329,6 @@ fn run() -> anyhow::Result<ExitCode> {
                         Some(m) => m,
                         None => 0.0,
                     },
-                    max_overhang_area: rule(max_overhang_area),
-                    max_cantilever: rule(max_cantilever),
-                    max_horizontal_hole: rule(max_horizontal_hole),
-                    min_island: rule(min_island),
-                    max_slenderness: rule(max_slenderness),
-                    slender_width: slender_width.unwrap_or(0.0),
-                    max_height_to_base: rule(max_height_to_base),
-                    support_free,
-                    optimal_orientation: orientation,
-                    orientation_tolerance: orientation_tolerance.unwrap_or(0.0),
                     ..Default::default()
                 },
                 &host,
@@ -3578,7 +3362,7 @@ fn run() -> anyhow::Result<ExitCode> {
                     println!("  {:<7} [{}] {}{}", i.severity, i.check, i.message, at);
                 }
                 if b.issues.is_empty() {
-                    println!("  {}", if support_free { "prints without support" } else { "nothing to report" });
+                    println!("  nothing to report");
                 }
             }
             Ok(if resp.ok { ExitCode::SUCCESS } else { ExitCode::from(1) })
@@ -5020,11 +4804,11 @@ mod tests {
     #[test]
     fn every_front_end_exposes_exactly_the_registry() {
         let registry: Vec<String> = cadpole_ops::registry().iter().filter(|m| !m.hidden).map(|m| m.name.clone()).collect();
-        // 31 visible operations: every rpc of CadpoleOps except `PostMessage`,
+        // 30 visible operations: every rpc of CadpoleOps except `PostMessage`,
         // which is `(cadpole.op).hidden` because posting as the user is the user's
         // client's business and nobody else's (capability.rs). The last four
         // are the solve jobs.
-        assert_eq!(registry.len(), 31, "{registry:?}");
+        assert_eq!(registry.len(), 30, "{registry:?}");
         assert!(!registry.contains(&"PostMessage".to_owned()), "a hidden op must not reach a front-end's list");
         assert!(cadpole_ops::method("PostMessage").is_some(), "...but it is still callable by name");
 
@@ -5062,7 +4846,6 @@ mod tests {
             ("test", "RunTests"),
             ("run_tests", "RunTests"),
             ("check", "PrintCheck"),
-            ("plate", "Plate"),
             ("inspect", "Inspect"),
             ("doc", "ApiDoc"),
             ("selection", "GetSelection"),

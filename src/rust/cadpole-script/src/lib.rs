@@ -27,7 +27,6 @@ mod modeltest;
 pub mod nesting;
 mod opt;
 mod pattern;
-pub mod plating;
 mod primitives;
 mod selection;
 pub mod sheets;
@@ -2564,39 +2563,6 @@ assert_eq(u.kind, "brep")
         assert!(errors(&ctx).iter().any(|e| e.contains("spans more than max_bridge 9 mm")), "{:?}", errors(&ctx));
         let ctx = run(&format!("{wall}r = print_check(w, max_bridge=-1)\n"));
         assert!(errors(&ctx).iter().any(|e| e.contains("max_bridge is a length")), "{:?}", errors(&ctx));
-    }
-
-    /// `assert_support_free` fails with one line per finding, each naming
-    /// its check, its position and its face; the support rules are
-    /// keywords of `print_check` too, refused when they are negative.
-    #[test]
-    fn assert_support_free_lists_what_needs_support() {
-        let hook = concat!(
-            "post = box(4, 4, 30, name=\"post\")\n",
-            "arm = box(14, 4, 4, at=(4, 0, 26), name=\"arm\")\n",
-            "finger = box(2, 4, 8, at=(14, 0, 18), name=\"finger\")\n",
-            "hook = union(post, arm, finger, name=\"hook\")\n",
-        );
-        let ctx = run(&format!("{hook}assert_support_free(hook, msg=\"the hook\")\n"));
-        let e = errors(&ctx);
-        let m = e.iter().find(|m| m.contains("assert_support_free failed")).unwrap_or_else(|| panic!("{e:?}"));
-        assert!(m.contains("(the hook)"), "{m}");
-        assert!(m.contains("\n  - hook: [island] a region starts in mid-air at (14"), "{m}");
-        assert!(m.contains("8 mm below where it joins"), "{m}");
-        assert!(m.contains("on finger/") || m.contains("on hook/"), "a face name: {m}");
-        // Off by keywords: an island must hang deeper than 9 mm, and the
-        // finger's 8 mm2 tip is a patch within a 10 mm2 allowance.
-        let ctx = run(&format!(
-            "{hook}r = print_check(hook, min_island=9, max_overhang_area=10)\nassert_eq(r.islands, 0)\n\
-             assert_true(r.support_free, msg=str(r.support))\n\
-             assert_support_free(hook, min_island=9, max_overhang_area=10)\n"
-        ));
-        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
-        // A printer value carries the rules.
-        let ctx = run("p = printer(\"bambu_a1\")\nassert_eq(p.max_overhang_area, 4.0)\nassert_eq(p.max_cantilever, 3.0)\nassert_eq(p.min_island, p.layer_height)\n");
-        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
-        let ctx = run(&format!("{hook}r = print_check(hook, max_cantilever=-1)\n"));
-        assert!(errors(&ctx).iter().any(|e| e.contains("max_cantilever must be 0 or more")), "{:?}", errors(&ctx));
     }
 
     #[test]
@@ -6538,76 +6504,5 @@ assert_eq(str(1.23e45), "1.23e+45")
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert!(errs[0].contains("a layer is declared once, and a second declaration must repeat"), "{errs:?}");
         assert!(!errs[0].contains("  "), "no run of spaces: {errs:?}");
-    }
-
-    /// `print_plan` plates the model as it is written: the lid sitting on
-    /// its box is turned over onto its top beside it, the copies go on a
-    /// hidden `print` layer with their paint, and the plates are recorded
-    /// as Bambu exports under their names.
-    #[test]
-    fn print_plan_plates_a_lid_and_its_box() {
-        let ctx = run(
-            "base = subtract(box(60, 40, 20), box(56, 36, 20, at=(2, 2, 2)), name=\"base\")\n\
-             lid = subtract(box(60, 40, 6, at=(0, 0, 20)), box(56, 36, 4, at=(2, 2, 20)), name=\"lid\")\n\
-             base.material(color=\"#2F6F8F\")\n\
-             paint(lid, faces=lid.faces(normal=(0, 0, 1)), color=\"#FFCE1F\")\n\
-             plan = print_plan([base, lid], \"box.3mf\", printer=\"bambu_a1\")\n\
-             assert_eq([p[\"name\"] for p in plan[\"plates\"]], [\"Parts\"])\n\
-             assert_eq(sorted([p[\"name\"] for p in plan[\"pieces\"]]), [\"base\", \"lid\"])\n\
-             lp = [p for p in plan[\"pieces\"] if p[\"name\"] == \"lid\"][0]\n\
-             assert_eq(lp[\"support_area\"], 0.0)\n\
-             assert_true(lp[\"modelled_support_area\"] > 1000, msg=lp[\"reason\"])\n\
-             assert_eq(len(plan[\"bodies\"]), 2)\n\
-             assert_true(\"lid:\" in plan[\"report\"])\n",
-        );
-        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
-        let specs: Vec<_> = ctx.exports.iter().filter(|e| e.path == "box.3mf").collect();
-        assert_eq!(specs.len(), 2);
-        assert!(specs.iter().all(|e| e.flavor == cadpole_core::export::Flavor::Bambu && e.printer == "bambu_a1"));
-        let print = ctx.layers.iter().find(|l| l.name == "print").expect("the print layer is declared");
-        assert!(!print.visible, "and hidden");
-        for e in &specs {
-            for id in &e.bodies {
-                assert_eq!(ctx.body(*id).unwrap().layer, "print");
-            }
-        }
-        // The lid's copy carries its paint.
-        let lid_copy = specs.iter().find(|e| e.name.as_deref() == Some("lid")).unwrap().bodies[0];
-        let id = ctx.body(lid_copy).unwrap().id_string();
-        assert!(cadpole_core::paint::paints(&ctx).iter().any(|p| p.body_id == id && p.hex == "#FFCE1F"));
-    }
-
-    /// The pins a piece can carry are checked at the call.
-    #[test]
-    fn print_part_refuses_what_it_cannot_mean() {
-        for (call, want) in [
-            ("print_part(b, orient=\"sideways\")", "orient= is \"auto\" or \"keep\""),
-            ("print_part(b, orient=\"keep\", down=\"-x\")", "pass one"),
-            ("print_part(b, down=\"sideways\")", "not a direction"),
-            ("print_part(b, down=(0, 0, 0))", "has no direction"),
-            ("print_part(b, spin=\"a lot\")", "spin= is an angle"),
-            ("print_part(b, plate=0)", "plate= is 1 or more"),
-            ("print_plan([b], \"x.stl\")", "is not a .3mf"),
-            ("print_plan([b], variants=[\"sepia\"])", "is not \"colour\" or \"mono\""),
-            ("print_plan([b], printer=\"nope\")", "unknown printer"),
-        ] {
-            let ctx = run(&format!("b = box(10, 10, 10)\n{call}\n"));
-            let e = errors(&ctx);
-            assert!(e.iter().any(|m| m.contains(want)), "{call}: {e:?}");
-        }
-    }
-
-    /// `assert_orientation_optimal` passes a part lying flat and fails one
-    /// standing on its end, naming the better way and the saving.
-    #[test]
-    fn assert_orientation_optimal_names_the_better_orientation() {
-        let ctx = run("assert_orientation_optimal(box(80, 10, 10, name=\"bar\"))\n");
-        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
-        let ctx = run("assert_orientation_optimal(box(10, 10, 80, name=\"post\"), msg=\"the post\")\n");
-        let e = errors(&ctx);
-        let m = e.iter().find(|m| m.contains("assert_orientation_optimal failed")).unwrap_or_else(|| panic!("{e:?}"));
-        assert!(m.contains("(the post)") && m.contains("post: as placed it needs") && m.contains("better"), "{m}");
-        let ctx = run("assert_orientation_optimal(box(10, 10, 80, name=\"post\"), tolerance=1000)\n");
-        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
     }
 }

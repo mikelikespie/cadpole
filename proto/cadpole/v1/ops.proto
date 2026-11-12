@@ -113,48 +113,18 @@ service CadpoleOps {
   }
 
   // Check whether a model can actually be printed, and say where the problems
-  // are. Checks on the tessellated bodies, each reporting positions and face
-  // names rather than a yes/no: the surface is closed, consistently oriented
-  // and does not run through itself; no wall is thinner than the perimeters
-  // that have to fit in it; it fits the build volume; and it prints without
-  // support -- no connected overhang patch past the support angle larger
-  // than `max_overhang_area` (bridges up to `max_bridge` and ledges up to
-  // `max_cantilever` allowed), no island (a downward tip or hanging region
-  // whose lowest point is in mid-air), no round horizontal hole wider than
-  // `max_horizontal_hole` without a teardrop top. Slender features and a
-  // small first layer are warnings. Set `support_free` to judge only
-  // whether it prints without support, and `orient` to also be told which
-  // way up to print it and why. Printing checks are advice: this never
-  // fails because a model is unprintable, it reports.
+  // are. Five checks on the tessellated bodies, each reporting positions
+  // rather than a yes/no: the surface is closed, consistently oriented and
+  // does not run through itself; no wall is thinner than the perimeters that
+  // have to fit in it; nothing overhangs past the support angle; and the part
+  // fits the build volume. Set `orient` to also be told which way up to print
+  // it and why. Printing checks are advice: this never fails because a model
+  // is unprintable, it reports.
   rpc PrintCheck(PrintCheckRequest) returns (PrintCheckResponse) {
     option (cadpole.op) = {
       cli_name: "check",
       idempotent: true,
       alias: "print_check"
-    };
-  }
-
-  // Lay a model out on print-ready plates and write them as one Bambu
-  // Studio project: use this to make a print file, instead of exporting the
-  // assembled model or placing parts by hand. Each piece is turned the way
-  // it prints with the least support (scored by the same support rules
-  // PrintCheck judges: overhang area, islands, ledges, wide round holes,
-  // footing, height), packed by its outline onto as few plates of the
-  // printer as hold it, where every nozzle reaches and clear of the prime
-  // tower, a plate never needing more filaments than the AMS has slots.
-  // Bodies that overlap or lie on each other (a stripe, an inlay) are one
-  // multi-material piece; bodies held captive across a small gap (a wheel
-  // on its axle, a gear in its carrier) are one print-in-place piece, kept
-  // as modelled. A lid resting on its box lifts off, so it is printed apart.
-  // `report` explains every decision with its numbers ("lid: on the
-  // 3500 mm2 flat face: 0 mm2 support vs 3036 mm2 as modelled"); `data` is
-  // the .3mf. A script's own `print_plan(...)` pins choices this cannot
-  // know (a snap arm's strength direction, pieces to keep together).
-  rpc Plate(PlateRequest) returns (PlateResponse) {
-    option (cadpole.op) = {
-      cli_name: "plate",
-      idempotent: true,
-      image_field: "plate_sheet"
     };
   }
 
@@ -1522,120 +1492,6 @@ message TestResult {
   double eval_ms = 8;
 }
 
-message PlateRequest {
-  option (cadpole.type) = {title: "Plate a model for printing"};
-
-  // The document to plate. Supplied by the front-end.
-  Document document = 1 [(cadpole.field) = {hidden: true}];
-  // Which bodies to plate, by id (`feature#n`) or by name. Empty (with
-  // `layer_names` empty too) means every visible body that is not on a
-  // hidden display layer: the model as it is shown.
-  repeated string body_ids = 2;
-  // Plate only the visible bodies on these display layers, by the name
-  // `layer(...)` declared; "other" is the bodies on no layer. Adds to
-  // `body_ids`. A hidden layer named here is plated.
-  repeated string layer_names = 3 [(cadpole.field) = {flag: "layer", example: "parts"}];
-  // Also plate the bodies on display layers the script declares hidden.
-  bool include_hidden_layers = 4;
-  // The printer the plates are laid out for: "bambu_h2d", "bambu_h2c",
-  // "bambu_h2s", "bambu_x1c", "bambu_x1e", "bambu_p1s", "bambu_p2s",
-  // "bambu_a1", "bambu_a1_mini" (short forms such as "h2c" work too). Empty
-  // is the X1 Carbon.
-  string printer = 5 [(cadpole.field) = {example: "bambu_h2c"}];
-  // Filaments one plate may use: the AMS slots. 0 means 4.
-  uint32 ams = 6 [(cadpole.field) = {example: "4"}];
-  // Sets of plates to make, in order: "colour" (each body in its own
-  // filaments) and "mono" (every body in filament 1). Empty means
-  // "colour" alone.
-  repeated string variants = 7 [(cadpole.field) = {flag: "variant", example: "mono"}];
-  // Clear space between pieces on a plate, in mm. 0 means 4.
-  double spacing = 8 [(cadpole.field) = {example: "4"}];
-  // The widest gap, in mm, across which two bodies held captive in each
-  // other are one print-in-place piece. 0 means 1.
-  double joint_gap = 9 [(cadpole.field) = {example: "1"}];
-  // The longest bridge in mm a flat downward face may span without
-  // support, as PrintCheck's. 0 means 10; a negative number turns
-  // bridging off.
-  double max_bridge = 10 [(cadpole.field) = {example: "10"}];
-  // Bodies on these display layers are test coupons: printed first, on a
-  // plate of their own, whether or not the layer is hidden.
-  repeated string coupon_layers = 11 [(cadpole.field) = {flag: "coupon-layer", example: "coupon"}];
-  // Keep each object the script's own `export(..., name=)` calls make as
-  // one piece, as the script grouped it, instead of finding the pieces.
-  bool script_objects = 12;
-  // Optional: a Bambu Studio project to take printer, process and filament
-  // settings from, named as one of the document's assets (`cadpole plate
-  // --template FILE` adds the file). Only its settings are used, never its
-  // objects or pictures. Without it the project carries Cadpole's own
-  // settings for `printer`.
-  string template = 13 [(cadpole.field) = {example: "h2c_pla.3mf"}];
-  // Tessellation tolerance in mm (0 = engine default).
-  double tolerance = 14;
-  // Boolean (kernel) tolerance in mm (0 = engine default).
-  double boolean_tolerance = 15;
-  // Also render an image of every plate and a contact sheet of them, which
-  // comes back in `plate_sheet`.
-  bool plate_images = 16;
-  // The project's title, which names the plate images; empty is "plates".
-  string title = 17 [(cadpole.field) = {example: "toy"}];
-}
-
-message PlateResponse {
-  // The Bambu Studio project, .3mf bytes. Empty when the document has an
-  // error or no plan could be written.
-  bytes data = 1;
-  // Every decision, a line each, as `cadpole plate` prints it.
-  string report = 2;
-  repeated PlannedPlate plates = 3;
-  repeated PlannedPiece pieces = 4;
-  // Diagnostics from evaluating the document and from writing the project
-  // (its warnings).
-  repeated Diagnostic diagnostics = 5;
-  // One image per plate when `plate_images` asked for them.
-  repeated PlateImage plate_images = 6;
-  // The contact sheet of `plate_images`, PNG.
-  bytes plate_sheet = 7;
-}
-
-// One plate of a plan.
-message PlannedPlate {
-  // Its name in the project: "Parts", "Colour 2", "Test coupons".
-  string name = 1;
-  // "colour", "mono" or "coupons".
-  string variant = 2;
-  // The pieces on it, by name.
-  repeated string pieces = 3;
-  // Its filaments, `#rrggbb`; empty for a mono plate.
-  repeated string filaments = 4;
-  // An estimate of its colour changes: per layer, one fewer than its
-  // filaments, plus one where it starts on another filament than the last
-  // layer ended on.
-  uint32 colour_changes = 5;
-  uint32 layers = 6;
-}
-
-// One piece of a plan, as placed.
-message PlannedPiece {
-  string name = 1;
-  // The plate it is on, by name.
-  string plate = 2;
-  // "single", "fused", "print-in-place" or "declared".
-  string kind = 3;
-  // How it is turned: "as modelled", "upside down", "on the 3500 mm2 flat
-  // face", ...
-  string orientation = 4;
-  // What still needs support in that orientation, in mm2.
-  double support_area = 5;
-  // The same as modelled.
-  double modelled_support_area = 6;
-  // The turn about z, in degrees.
-  double spin = 7;
-  // The sentence about it.
-  string reason = 8;
-  // The bodies it is made of, by name.
-  repeated string bodies = 9;
-}
-
 message PrintCheckRequest {
   option (cadpole.type) = {title: "Check a model for printability"};
 
@@ -1701,47 +1557,6 @@ message PrintCheckRequest {
   // length"). A negative number turns bridging off: every downward face past
   // the overhang angle needs support.
   double max_bridge = 18 [(cadpole.field) = {example: "10"}];
-  // The largest connected patch of overhang, in mm2, that prints without
-  // support: a speck the perimeters round it carry. 0 means Cadpole's
-  // default, 4 mm2; a negative number counts every patch.
-  double max_overhang_area = 19 [(cadpole.field) = {example: "4"}];
-  // How far a near-level downward ledge held up on one side only (a shelf,
-  // an outstretched thumb) may stick out, in mm, before it needs support. 0
-  // means Cadpole's default, 3 mm; a negative number judges every ledge.
-  double max_cantilever = 20 [(cadpole.field) = {example: "3"}];
-  // The widest round horizontal hole, in mm across, whose round top a
-  // slicer bridges; a wider one wants a teardrop or diamond top. 0 means
-  // Cadpole's default, 7 mm; a negative number flags every round hole with
-  // a round top.
-  double max_horizontal_hole = 21 [(cadpole.field) = {example: "7"}];
-  // How deep, in mm, a region whose lowest point is in mid-air (a downward
-  // tip, a hanging finger) may hang before it is an island that needs
-  // support. 0 means one layer height; a negative number flags every one.
-  double min_island = 22 [(cadpole.field) = {example: "0.2"}];
-  // The tallest a feature narrower than `slender_width` may be, as a
-  // multiple of its width, before the `slender` warning. 0 means Cadpole's
-  // default, 8; a negative number turns the check off.
-  double max_slenderness = 23 [(cadpole.field) = {example: "8"}];
-  // What counts as slender, in mm across. 0 means Cadpole's default, 3 mm.
-  double slender_width = 24 [(cadpole.field) = {example: "3"}];
-  // The tallest a part may be over the square root of its first-layer area
-  // before the `bed_contact` warning (it may tip or come off the plate). 0
-  // means Cadpole's default, 6; a negative number turns the check off.
-  double max_height_to_base = 25 [(cadpole.field) = {example: "6"}];
-  // Judge only whether the model prints without support: each body's
-  // `issues` keeps the support findings (overhang past the allowances,
-  // island, cantilever, horizontal_hole, and bridge between bodies) and
-  // drops the rest, and `ok` is false when any is left.
-  bool support_free = 26;
-  // Also judge each body's orientation as placed against the best one
-  // `Plate` finds for it, and warn (check "print_orientation") when it costs
-  // more than `orientation_tolerance` mm2 of support equivalent more: a
-  // hand-placed print layer's wheel standing on its tread, a lid the right
-  // way up.
-  bool optimal_orientation = 27 [(cadpole.field) = {flag: "orientation"}];
-  // How much worse than the best a placement may be, in mm2 of support
-  // equivalent, before `optimal_orientation` warns. 0 means 5.
-  double orientation_tolerance = 28 [(cadpole.field) = {example: "5"}];
 }
 
 message PrintCheckResponse {
@@ -1853,34 +1668,6 @@ message BodyPrintReport {
   // The longest bridge the overhangs were judged against, in mm; 0 when
   // bridging was turned off.
   double max_bridge_mm = 40;
-
-  // What still needs support after every allowance (bridges, ledges within
-  // `max_cantilever`, the tops of small round horizontal holes, patches no
-  // larger than `max_overhang_area`), in mm2. 0 when the overhang rule is
-  // satisfied.
-  double support_area_mm2 = 41;
-  // The largest connected overhang patch after those allowances, in mm2.
-  double largest_overhang_mm2 = 42;
-  // How far the longest ledge held up on one side sticks out, in mm.
-  double longest_cantilever_mm = 43;
-  // Regions whose lowest point is in mid-air, and the deepest, in mm.
-  uint32 islands = 44;
-  double deepest_island_mm = 45;
-  // Round horizontal holes found (only on bodies with recognised cylinder
-  // faces), and how many are wider than `max_horizontal_hole` with a round
-  // top.
-  uint32 horizontal_holes = 46;
-  uint32 wide_holes = 47;
-  // Slender features past `max_slenderness`, and the largest height over
-  // width among them.
-  uint32 slender = 48;
-  double slenderness = 49;
-  // Area of the section half a layer above the bed, in mm2, and the part's
-  // height over its square root.
-  double first_layer_area_mm2 = 50;
-  double height_to_base = 51;
-  // True when no support finding was made: it prints without support.
-  bool support_free = 52;
 }
 
 // Where to cut a part that does not fit the build volume, ready to be written
@@ -1900,9 +1687,7 @@ message PrintSplit {
 message PrintIssue {
   // Which check found it: "solid", "watertight", "non_manifold",
   // "orientation", "self_intersection", "internal_face", "fold",
-  // "degenerate", "thickness", "overhang", "bridged", "island",
-  // "cantilever", "horizontal_hole", "slender", "bed_contact", "bed_fit",
-  // "chord_error", and between bodies "fuse", "layer_gap" and "bridge".
+  // "degenerate", "thickness", "overhang", "bed_fit".
   string check = 1;
   // "info", "warning" or "error".
   string severity = 2;

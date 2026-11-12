@@ -5,12 +5,15 @@
 # torus grooves and `sphere` balls, a combustor liner with primary,
 # dilution and 216 effusion holes normal to its cone, a turbine disc with
 # 29 skewed fir-tree slots and a row of fir-tree-rooted blades under a
-# shroud ring fused from overlapping segments, five bolted casings with an
-# M3 bolt and nut from `@cadpole/mechanical.star` at every hole, a
-# fuel manifold swept round the combustor on exact tori, an exhaust cone
-# on struts; 108 instances in one nested assembly (rotor in core in engine)
-# that spools, explodes and animates, a longitudinal section sheet, a
-# cutaway, a STEP of the turned parts and a 3MF of everything.
+# shroud ring fused from overlapping segments, a row of nozzle guide vanes
+# ahead of it, five bolted casings with an M3 bolt and nut from
+# `@cadpole/mechanical.star` at every hole, a fuel manifold swept round the
+# combustor on exact tori whose injectors pass through the casing and turn
+# into swirler cups on the liner's dome, an exhaust cone on struts; 108
+# instances in one nested assembly (rotor in core in engine) that spools,
+# explodes module by module and animates, a longitudinal section sheet, a
+# cutaway that opens by any angle, a STEP of the turned parts and a 3MF of
+# everything.
 #
 # Frame: the engine axis is +X, flow from the spinner at negative x to the
 # nozzle at the far end. Every part of revolution is a `revolve` about
@@ -50,7 +53,13 @@
 #     a 0.05 gap is provable.
 #   * The library phases every thread by height, so the nut is built on the
 #     bolt's own axis at the height it sits at and both are placed by one
-#     transform. The feed line comes down radially, clear of the flanges.
+#     transform. The fuel ring runs aft of the front joint's bolt tips and
+#     outside its nuts; each injector sits between two bolts.
+#   * The explode is explicit: every instance carries an offset along the
+#     axis, in units of `explode`, chosen so that each module comes away
+#     whole (casing, internals, the bolts of its flanges) and each
+#     compressor stage slides along the shaft without passing through
+#     anything. A test checks the order at the parameter's limit.
 #   * The 216 effusion holes are `pattern_on_surface` on the liner's cone:
 #     one cutter at the origin, rows measured on the cone, every
 #     copy normal to it, one compose and one subtract. The same holes
@@ -85,8 +94,9 @@ effusion_rows = param("effusion_rows", 6, min=0, max=16, doc="Rows of effusion c
 effusion_holes = param("effusion_holes", 36, min=8, max=80, doc="Holes in each effusion row")
 stations = param("stations", 14, min=8, max=40, doc="Samples along each blade flank: one spline point per station on each flank")
 spool = param("spool", 0.0, unit="deg", min=0, max=100000, doc="Turn the spool (fan, compressor, shaft, turbine) by this about the axis; the bearings' balls follow at cage speed")
-lift = param("explode", 0.0, unit="mm", min=0, max=80, doc="Exploded view: every assembly spreads its members along the axis by this per rank, the casings lift clear as well; a picture only, never geometry")
-cutaway = param("cutaway", False, doc="Cut a 90-degree wedge out of every static part of revolution so the rotor shows")
+lift = param("explode", 0.0, unit="mm", min=0, max=40, doc="Exploded view: the modules come apart along the axis, each with its casing, internals and flange bolts, and the compressor stages slide along the shaft; a picture only, never geometry")
+cutaway = param("cutaway", False, doc="Cut a wedge out of every static part so the rotor shows")
+cutaway_angle = param("cutaway_angle", 90.0, unit="deg", min=0, max=90, doc="The wedge's angle when `cutaway` is on: animate it from 0 to open the casings")
 
 
 def pt(x, r, a):
@@ -177,12 +187,12 @@ X_NOZ0 = X_TURB0 + 20.0  # turbine-to-nozzle flange
 X_END = X_NOZ0 + 34.0
 R_EXIT = 26.0
 R_FL = R_COMB + W + 6.0  # flange outer radius, front joints
-R_FL2 = R_TS + 8.0  # flange outer radius, nozzle joint
+R_FL2 = R_TS + 9.0  # flange outer radius, nozzle joint
 R_BOLT = R_COMB + W + 3.0  # bolt circle of the front joints
-R_BOLT2 = R_TS + 5.0  # ... and of the nozzle joint
+R_BOLT2 = R_TS + 5.5  # ... and of the nozzle joint: a bolt's head clears the turbine casing's wall as it pulls out forward
 LINER_R_OUT = 36.0
 LINER_R_IN = 22.0
-X_L0 = X_COMB0 + 4.0  # liner dome
+X_L0 = X_COMB0 + 12.0  # liner dome: the injectors turn into it from ahead
 X_L1 = X_TURB0 - 3.0  # liner exit
 X_LC = X_L1 - 15.0  # where the liner's outer wall starts converging
 LINER_R_EXIT = 34.0
@@ -369,7 +379,10 @@ hub = subtract(hub_blank, hub_keyway, name="fan_hub")
 
 fan_blade = airfoil(X_FAN + 1.0, FAN_CHORD - 2.0, r_fan_hub, lambda x: fan_radius, (55.0, 25.0), (68.0, 55.0), 2.2, 1.2, "fan_blade", bury_root=2.5, smooth=True)
 fan_ring = pattern_circular(fan_blade, fan_blades, axis=(1, 0, 0), merge=True, name="fan_blades")
-fan = union([hub, fan_ring], name="fan")
+# The profile stops 0.5 mm off the axis, which leaves a pinhole at the
+# tip; a small ball closes it into a rounded point.
+spinner_tip = sphere(0.8, center=(X_SPIN + 0.6, 0.0, 0.0), name="spinner_tip")
+fan = union([hub, fan_ring, spinner_tip], kernel="mesh", name="fan")
 
 # --- The shaft: a stepped revolve, a key at each step. The front step
 # carries the fan hub, the rear one the turbine disc.
@@ -464,7 +477,11 @@ turbine_disc_blank = rev(turbine_disc_profile, "turbine_disc_blank")
 BLANKS.append(turbine_disc_blank)
 turbine_disc = subtract(turbine_disc_blank, [turbine_keyway, slots], name="turbine_disc")
 
-t_root = extrude(sketch(slot_plane).polygon(fir_tree(0.3, 0.1)), slot_len, name="t_root")
+# The root is trimmed to the disc's faces, so at each face it fills its
+# slot flush and only the platform stands proud of the rim.
+t_root = intersect(extrude(sketch(slot_plane).polygon(fir_tree(0.3, 0.1)), slot_len, name="t_root"),
+                   box(X_TB1 - X_TB0, 2.0 * T_PLAT, 2.0 * T_PLAT, at=(X_TB0, 0.0, -T_PLAT), name="t_root_trim"), name="t_root_trimmed")
+ONE["t_root"] = t_root
 # The platform is a prism on the same skewed plane as the root, so its sides
 # are parallel to the root's and to the neighbours' at a constant 0.5 mm.
 PLAT_HALF = (2.0 * math.pi * (T_RIM + 0.6) / turbine_blades - 0.5) / 2.0
@@ -489,6 +506,20 @@ t_blade = union([t_root, platform, t_airfoil], name="turbine_blade")
 t_row = pattern_circular(t_blade, turbine_blades, axis=(1, 0, 0), merge=True, name="turbine_blade_row")
 t_shroud = pattern_circular(shroud_seg, turbine_blades, axis=(1, 0, 0), merge=True, name="turbine_shroud")
 turbine_blades_ring = union([t_row, t_shroud], name="turbine_blades")
+
+# --- Nozzle guide vanes: between the liner's exit and the turbine, a ring
+# of vanes that turn the gas the other way from the blades, on an inner and
+# an outer platform ring that line up with the liner's walls. Built like a
+# stator: the two rings never touch, so their union is a concatenation, and
+# one union joins the vanes to both.
+NGV_VANES = 23
+X_NGV0 = X_TURB0 - 2.4  # 0.6 mm aft of the liner's exit
+X_NGV1 = X_TURB0 + 2.8  # 0.6 mm ahead of the blade platforms' skewed corners
+NGV_HUB = T_PLAT - 0.15
+NGV_TIP = T_SHROUD
+ngv_rings = union([ring(X_NGV0, X_NGV1, NGV_HUB - 2.0, NGV_HUB, "ngv_inner"), ring(X_NGV0, X_NGV1, NGV_TIP, NGV_TIP + 1.5, "ngv_outer")], name="ngv_rings")
+ngv_vane = airfoil(X_NGV0 + 0.5, X_NGV1 - X_NGV0 - 1.0, lambda x: NGV_HUB, lambda x: NGV_TIP, (0.0, 62.0), (0.0, 56.0), 1.8, 1.4, "ngv_vane", bury_root=1.0, bury_tip=1.0)
+ngv = union([ngv_rings, pattern_circular(ngv_vane, NGV_VANES, axis=(1, 0, 0), merge=True, name="ngv_vanes")], name="ngv")
 
 # =========================================================== the statics
 #
@@ -571,6 +602,28 @@ comb_casing = drilled(comb_casing, [1, 2], "combustor_casing")
 turb_casing = drilled(turb_casing, [2, 3], "turbine_casing")
 nozzle = drilled(nozzle, [3], "nozzle")
 
+# --- The cutaway's wedge, from A_CUT0 to A_CUT1 degrees about the axis
+# (measured from +Y toward +Z), and the injectors' angles: one between every
+# pair of bolts, at most eight. The wedge's fixed face is a quarter of a bolt
+# pitch round from a bolt, near 200 degrees, so it misses both the bolts and
+# the injectors between them, and with eight bolts the 90-degree face does
+# as well.
+CUT = cutaway_angle if cutaway else 0.0
+B_PITCH = 360.0 / bolts
+A_CUT1 = (int(200.0 / B_PITCH - 0.25 + 0.5) + 0.25) * B_PITCH
+A_CUT0 = A_CUT1 - CUT
+
+
+def in_cut(a, margin=0.0):
+    """Whether angle `a` lies in the wedge, or within `margin` degrees of it."""
+    a = a % 360.0
+    return CUT > 0.0 and a > A_CUT0 - margin and a < A_CUT1 + margin
+
+
+INJ_STEP = 1 + (bolts - 1) // 8
+A_INJ_ALL = [360.0 * INJ_STEP * k / bolts for k in range(bolts // INJ_STEP)]  # the bolts sit half a pitch round, so these are between them
+R_SW = (LINER_R_IN + LINER_R_OUT) / 2.0  # the swirlers' circle on the dome
+
 # --- Combustor liner: an annular can with a dome, its outer wall
 # converging over the last 15 mm; primary and dilution holes through both
 # walls, and rows of effusion holes normal to the conical section.
@@ -578,8 +631,25 @@ liner_profile = [(X_L0, LINER_R_OUT), (X_LC, LINER_R_OUT), (X_L1, LINER_R_EXIT),
                  (X_L0 + 1.0, LINER_R_IN + 1.0), (X_L1, LINER_R_IN + 1.0), (X_L1, LINER_R_IN), (X_L0, LINER_R_IN)]
 liner_blank = rev(liner_profile, "liner_blank")
 BLANKS.append(liner_blank)
-primary = pattern_circular(radial_cylinder(2.0, X_L0 + 12.0, LINER_R_IN - 1.0, LINER_R_OUT + 1.0, "primary_hole"), 8, axis=(1, 0, 0), merge=True, name="primary_holes")
-dilution = pattern_circular(radial_cylinder(1.5, X_L0 + 24.0, LINER_R_IN - 1.0, LINER_R_OUT + 1.0, "dilution_hole").rotate(360.0 / 24.0, axis=(1, 0, 0)), 12, axis=(1, 0, 0), merge=True, name="dilution_holes")
+primary = pattern_circular(radial_cylinder(2.0, X_L0 + 6.0, LINER_R_IN - 1.0, LINER_R_OUT + 1.0, "primary_hole"), 8, axis=(1, 0, 0), merge=True, name="primary_holes")
+dilution = pattern_circular(radial_cylinder(1.5, X_L0 + 14.0, LINER_R_IN - 1.0, LINER_R_OUT + 1.0, "dilution_hole").rotate(360.0 / 24.0, axis=(1, 0, 0)), 12, axis=(1, 0, 0), merge=True, name="dilution_holes")
+
+# The swirler cups on the dome, one per injector: a short sleeve standing
+# 2.2 mm ahead of the dome with a ring of six slots through its wall, and a
+# bore through the dome behind it, so the injector's tip sits in an open cup.
+X_CUP0 = X_L0 - 2.2
+CUP_BORE = 1.3
+
+
+def at_injectors(body, name, angles=A_INJ_ALL):
+    """One copy of `body` (built at angle 0) at each of `angles`."""
+    return [rotate(body, a, axis=(1, 0, 0), name="%s_%d" % (name, k)) for k, a in enumerate(angles)]
+
+
+cup = extrude(sketch(plane(origin=(X_CUP0, R_SW, 0.0), normal=(1, 0, 0), x_dir=(0, 1, 0))).circle(2.4), X_L0 + 0.5 - X_CUP0, name="swirler")
+cup_bore = extrude(sketch(plane(origin=(X_CUP0 - 1.0, R_SW, 0.0), normal=(1, 0, 0), x_dir=(0, 1, 0))).circle(CUP_BORE), X_L0 + 2.0 - X_CUP0 + 1.0, name="swirler_bore")
+cup_slot = pattern_circular(box(1.0, 1.6, 0.5, at=(X_CUP0 + 0.5, R_SW + 1.0, -0.25), name="swirler_slot"), 6, axis=(1, 0, 0), origin=(0.0, R_SW, 0.0), merge=True, name="swirler_slots")
+liner_blank_cups = union([liner_blank] + at_injectors(cup, "swirler"), kernel="mesh", name="liner_domed")
 cone_slope = (LINER_R_EXIT - LINER_R_OUT) / (X_L1 - X_LC)
 cone_tilt = -math.degrees(math.atan(-cone_slope))  # the cone's outward normal, turned from the radial toward -x
 
@@ -612,7 +682,7 @@ if effusion_rows:
                           .translate((x, liner_r(x) - 0.5, 0.0)).rotate(360.0 / effusion_holes / 2.0 * (row % 2), axis=(1, 0, 0)))
         tool = column[0] if effusion_rows == 1 else union(column, name="effusion_column")
         effusion = [pattern_circular(tool, effusion_holes, axis=(1, 0, 0), merge=True, name="effusion_holes")]
-liner = subtract(liner_blank, [primary, dilution] + effusion, name="liner")
+liner = subtract(liner_blank_cups, [primary, dilution] + effusion + at_injectors(cup_bore, "swirler_bore") + at_injectors(cup_slot, "swirler_slots"), kernel="mesh", name="liner")
 
 
 # --- Bearings: races with a toroidal groove (an arc in the revolve
@@ -657,22 +727,55 @@ m3n = nut(3.0, 0.5, 5.5, 2.4, clearance=0.05, start=(0, 0, 3.6), name="m3_nut")
 m3 = translate(rotate(m3, -90.0, axis=(0, 1, 0)), (BOLT_TO_X(0.0), R_BOLT, 0.0), name="m3_bolt_placed")
 m3n = translate(rotate(m3n, -90.0, axis=(0, 1, 0)), (BOLT_TO_X(0.0), R_BOLT, 0.0), name="m3_nut_placed")
 
-# --- Fuel manifold: a 3 mm tube swept round the combustor casing on three
-# arcs (a swept path must stay open, so the ring is 300 degrees), a feed
-# that comes down radially at the top and arcs into the ring's start
-# tangentially, six injector stubs on the ring, and an igniter with its
-# boss.
-X_M = X_COMB0 + 20.0
-R_M = R_COMB + W + 4.0
-ring_route = curve(pt(X_M, R_M, 0.0)).arc(pt(X_M, R_M, 100.0), via=pt(X_M, R_M, 50.0)).arc(pt(X_M, R_M, 200.0), via=pt(X_M, R_M, 150.0)).arc(pt(X_M, R_M, 300.0), via=pt(X_M, R_M, 250.0))
-manifold_ring = sweep_along(sketch(plane(origin=pt(X_M, R_M, 0.0), normal=(0, 0, 1), x_dir=(1, 0, 0))).circle(1.5).circle(1.0), ring_route, name="manifold_ring")
-feed_route = (curve((X_M, R_M + 20.0, -6.0)).line((X_M, R_M + 6.0, -6.0))
-              .arc((X_M, R_M, 0.0), via=(X_M, R_M + 6.0 - 6.0 * math.cos(45.0), -6.0 * math.sin(45.0)))
-              .line((X_M, R_M, 2.0)))  # 2 mm into the ring's tube, for the union
-feed_line = sweep_along(sketch(plane(origin=(X_M, R_M + 20.0, -6.0), normal=(0, -1, 0), x_dir=(1, 0, 0))).circle(1.5).circle(1.0), feed_route, name="feed_line")
-manifold = union([manifold_ring, feed_line], name="manifold")
-injectors = pattern_circular(radial_cylinder(1.25, X_M, R_COMB + W - 0.5, R_M + 0.3, "injector", a=25.0), 6, axis=(1, 0, 0), angle=250.0, merge=True, name="injectors")  # 25..275, all on the 300-degree ring
-X_IG = X_M + 12.0
+# --- Fuel system: a 3 mm tube swept round the combustor casing on exact
+# arcs (a swept path must stay open, so the ring has a gap: between two
+# injectors, or at the cutaway's faces, where its ends are cut square), a
+# feed that tees into it radially at the top and ends in a hex fitting,
+# and one injector between every pair of bolts: a 2 mm tube from the ring
+# straight in through a port in the casing, turned aft through a bend ahead
+# of the dome, its tip inside the dome's swirler cup. Ring, feed and
+# injectors are one body; the igniter has its boss on the casing.
+X_M = X_COMB0 + 7.0  # aft of the front joint's nuts, ahead of the dome
+R_M = R_FL + 2.0  # outside the bolts' tips and the nuts' corners
+R_BEND = 2.5
+INJ_R = 1.0
+
+
+def ring_gap():
+    """The middle of the gap between the two injectors either side of 340
+    degrees: on the far side from the product camera, and clear of the feed
+    at 0."""
+    lo = max([a for a in A_INJ_ALL if a <= 340.0])
+    above = [a for a in A_INJ_ALL if a > 340.0]
+    hi = min(above) if above else 360.0
+    return (lo + hi) / 2.0
+
+
+if CUT > 0.0:
+    RING_A0, RING_A1 = A_CUT1, min(A_CUT0, A_CUT1 - 8.0) + 360.0  # a gap of at least 8 degrees, or the ends would meet
+else:
+    RING_A0, RING_A1 = ring_gap() + 5.0, ring_gap() - 5.0 + 360.0
+A_INJ = [a for a in A_INJ_ALL if (a - RING_A0) % 360.0 > 3.0 and (a - RING_A0) % 360.0 < RING_A1 - RING_A0 - 3.0]  # an injector in the wedge goes with it
+n_arcs = int((RING_A1 - RING_A0) / 90.0) + 1
+ring_route = curve(pt(X_M, R_M, RING_A0))
+for k in range(n_arcs):
+    a0 = RING_A0 + (RING_A1 - RING_A0) * k / n_arcs
+    a1 = RING_A0 + (RING_A1 - RING_A0) * (k + 1) / n_arcs
+    ring_route = ring_route.arc(pt(X_M, R_M, a1), via=pt(X_M, R_M, (a0 + a1) / 2.0))
+ring_plane = plane(origin=pt(X_M, R_M, RING_A0), normal=(0.0, -math.sin(RING_A0), math.cos(RING_A0)), x_dir=(1, 0, 0))
+# A tee of two tubes of one radius meets along a tangent curve, which no
+# kernel resolves: the feed is thinner than the ring, and the injectors
+# wider than its bore.
+manifold_ring = sweep_along(sketch(ring_plane).circle(1.5).circle(0.8), ring_route, name="manifold_ring")
+feed_line = radial_cylinder(1.2, X_M, R_M, R_M + 15.5, "feed_line")  # from the ring's centreline
+feed_nut = extrude(sketch(radial_plane(X_M, R_M + 15.0)).ngon(6, 3.0 / math.cos(30.0), rotate=30.0), 3.5, name="feed_nut")  # 6 mm across the flats
+feed_nipple = radial_cylinder(2.0, X_M, R_M + 18.0, R_M + 20.0, "feed_nipple")
+injector_route = (curve((X_M, R_M, 0.0)).line((X_M, R_SW + R_BEND, 0.0))
+                  .arc((X_M + R_BEND, R_SW, 0.0), via=(X_M + R_BEND - R_BEND * math.cos(45.0), R_SW + R_BEND - R_BEND * math.sin(45.0), 0.0))
+                  .line((X_L0 - 1.0, R_SW, 0.0)))  # 1.2 mm into the cup, 0.3 mm off its bore
+injector = sweep_along(sketch(plane(origin=(X_M, R_M, 0.0), normal=(0, -1, 0), x_dir=(1, 0, 0))).circle(INJ_R), injector_route, name="injector")
+manifold = union([manifold_ring, feed_line, feed_nut, feed_nipple] + at_injectors(injector, "injector", A_INJ), kernel="mesh", name="manifold")
+X_IG = X_COMB0 + 32.0
 A_IG = 320.0
 ig_boss = radial_cylinder(2.5, X_IG, R_COMB + W - 0.5, R_COMB + W + 4.0, "igniter_boss", a=A_IG)
 ig_route = curve(pt(X_IG, R_COMB + W + 3.0, A_IG)).line(pt(X_IG, R_COMB + W + 8.0, A_IG))
@@ -684,33 +787,45 @@ igniter_line = sweep_along(sketch(plane(origin=pt(X_IG, R_COMB + W + 3.0, A_IG),
 # back from the exact kernel to the mesh kernel on this pair, wasm32 cannot,
 # so saying it keeps the two builds identical.
 igniter = union([ig_boss, igniter_line], kernel="mesh", name="igniter")
-# the injectors and the igniter boss pass through ports in the casing wall,
-# 0.1 mm larger than they are
-ports = pattern_circular(radial_cylinder(1.35, X_M, R_COMB - 1.0, R_COMB + W + 1.0, "injector_port", a=25.0), 6, axis=(1, 0, 0), angle=250.0, merge=True, name="injector_ports")
-comb_casing = subtract(comb_casing, [ports, radial_cylinder(2.6, X_IG, R_COMB - 1.0, R_COMB + W + 1.0, "igniter_port", a=A_IG)], kernel="mesh", name="combustor_casing_ported")
+# the injectors pass through ports 0.15 mm larger than they are (over the
+# two meshes' chord bands), the igniter's boss through one 0.1 mm larger
+ports = [radial_cylinder(INJ_R + 0.15, X_M, R_COMB - 1.0, R_COMB + W + 1.0, "injector_port_%d" % k, a=a) for k, a in enumerate(A_INJ_ALL)]
+comb_casing = subtract(comb_casing, ports + [radial_cylinder(2.6, X_IG, R_COMB - 1.0, R_COMB + W + 1.0, "igniter_port", a=A_IG)], kernel="mesh", name="combustor_casing_ported")
 
 # =========================================================== cutaway, materials
 #
-# A 270-degree wedge, turned so that neither of its faces lies in a
-# revolve's seam plane, removes the quadrant that faces the product camera
-# from every static part of revolution. The rotor is never cut.
-if cutaway:
-    wedge = rotate(rev([(X_SPIN - 5.0, 0.3), (X_END + 5.0, 0.3), (X_END + 5.0, 60.0), (X_SPIN - 5.0, 60.0)], "wedge", angle=270.0), 200.0, axis=(1, 0, 0), name="wedge_turned")
-    inlet_casing = intersect(inlet_casing, wedge, name="inlet_casing_cut")
-    comp_casing = intersect(comp_casing, wedge, name="compressor_casing_cut")
-    comb_casing = intersect(comb_casing, wedge, name="combustor_casing_cut")
-    turb_casing = intersect(turb_casing, wedge, name="turbine_casing_cut")
-    nozzle = intersect(nozzle, wedge, name="nozzle_cut")
-    liner = intersect(liner, wedge, name="liner_cut")
-    stators = [intersect(stators[k], wedge, name="stator_%d_cut" % (k + 1)) for k in range(stages)]
+# A wedge of CUT degrees, from A_CUT0 to A_CUT1 = 200, comes out of every
+# static part (casings, frames, stators, guide vanes, liner, exhaust cone)
+# on the side that faces the product camera: the part is intersected with
+# the rest of the turn. The fasteners in the wedge are left out, the fuel
+# ring stops at its faces and its injectors there go too. The rotor, the
+# bearings and the igniter are never cut. Neither face lies in a revolve's
+# seam plane (0, 120 and 240 degrees) at 90 degrees; every body cut here is
+# a mesh body, so a smaller wedge whose face crosses one is no harder.
+if CUT > 0.0:
+    keep = rotate(rev([(X_SPIN - 5.0, 0.3), (X_END + 5.0, 0.3), (X_END + 5.0, 60.0), (X_SPIN - 5.0, 60.0)], "wedge", angle=360.0 - CUT), A_CUT1, axis=(1, 0, 0), name="wedge_turned")
+    inlet_casing = intersect(inlet_casing, keep, name="inlet_casing_cut")
+    comp_casing = intersect(comp_casing, keep, name="compressor_casing_cut")
+    comb_casing = intersect(comb_casing, keep, name="combustor_casing_cut")
+    turb_casing = intersect(turb_casing, keep, name="turbine_casing_cut")
+    nozzle = intersect(nozzle, keep, name="nozzle_cut")
+    liner = intersect(liner, keep, name="liner_cut")
+    ngv = intersect(ngv, keep, name="ngv_cut")
+    front_frame = intersect(front_frame, keep, name="front_frame_cut")
+    rear_frame = intersect(rear_frame, keep, name="rear_frame_cut")
+    exhaust_cone = intersect(exhaust_cone, keep, name="exhaust_cone_cut")
+    stators = [intersect(stators[k], keep, name="stator_%d_cut" % (k + 1)) for k in range(stages)]
 
+# Materials for a dark page: bright machined alloy at the cold end, the
+# rotor in the accent colour, and the hot section stepping from a pale straw
+# through bronze to a blued heat tint at the nozzle.
 ALU = dict(preset="aluminum", color="#d7d9dc", roughness=0.3)
 STEEL = dict(color="#c4c9cf", metallic=1.0, roughness=0.32)  # bright steel
-CREAM = dict(color="#ece3cb", metallic=0.0, roughness=0.45)  # enamelled casing
+STRAW = dict(color="#ddd0b0", metallic=1.0, roughness=0.34)  # heat-straw steel, the combustor casing
 COPPER = dict(color="#d08a5c", metallic=1.0, roughness=0.38)
 GOLD = dict(color="#d9b76e", metallic=1.0, roughness=0.36)  # nickel alloy, warm
-ORANGE = dict(color="#e08a3c", metallic=1.0, roughness=0.42)
-WARM = dict(color="#c4b5a2", metallic=1.0, roughness=0.42)  # the exhaust, straw-tinted titanium
+BRONZE = dict(color="#c99a6b", metallic=1.0, roughness=0.36)  # the turbine casing
+BLUED = dict(color="#9aa6c8", metallic=1.0, roughness=0.34)  # heat-blued, the nozzle and cone
 fan.material(color="#eceef0", roughness=0.18, metallic=1.0, anisotropy=0.5, texture="machined")
 shaft.material(**STEEL)
 for r in rotors:
@@ -719,19 +834,19 @@ for s in stators:
     s.material(**STEEL)
 turbine_disc.material(**GOLD)
 turbine_blades_ring.material(color="#e3c88f", metallic=1.0, roughness=0.36)
+ngv.material(color="#d6b98a", metallic=1.0, roughness=0.38)
 inlet_casing.material(**ALU)
 front_frame.material(**ALU)
 comp_casing.material(**ALU)
 rear_frame.material(**STEEL)
-comb_casing.material(**CREAM)
+comb_casing.material(**STRAW)
 liner.material(**COPPER)
-turb_casing.material(**ORANGE)
-nozzle.material(**WARM)
-exhaust_cone.material(**WARM)
+turb_casing.material(**BRONZE)
+nozzle.material(**BLUED)
+exhaust_cone.material(**BLUED)
 for b in (front_inner, front_outer, rear_inner, rear_outer, front_ball, rear_ball, m3, m3n):
     b.material(**STEEL)
 manifold.material(preset="brass")
-injectors.material(preset="brass")
 igniter.material(**STEEL)
 
 # =========================================================== the assembly
@@ -739,74 +854,110 @@ igniter.material(**STEEL)
 # engine
 #   core
 #     rotor: fan, discs, shaft, turbine disc and blades, the inner races
-#     stators, the liner, the frames, the outer races, the balls
+#     stators, the guide vanes, the liner, the frames, the outer races, the balls
 #   the casings and the nozzle
 #   fasteners, fuel system
 CAGE = 0.5 * (1.0 - BALL_R / PITCH_R)  # the cage turns at this fraction of the shaft speed
 
+# The explode, per instance, in units of `explode` along the axis. The
+# shaft stays put with both bearings on it; the fan comes off the front of
+# it and the inlet module (casing, front frame) after it; the compressor's
+# rotors and stators slide aft along the shaft, each STAGE further than the
+# one ahead, and the compressor casing comes off the back of them with the
+# rear frame; the combustor (casing, liner, fuel system), the turbine
+# (guide vanes, disc and blades, casing) and the nozzle with its cone follow
+# a module apart. Each joint's bolts pull forward out of their holes and its
+# nuts back off aft, so they stay on their flanges' axis.
+STAGE = 0.35
+E_FAN = -2.2
+E_INLET = -0.8
+E_COMP = 2.0 * stages * STAGE
+E_COMB = E_COMP + 1.0
+E_TURB = E_COMP + 2.0
+E_NOZ = E_COMP + 3.0
+E_CASINGS = [E_INLET, E_COMP, E_COMB, E_TURB, E_NOZ]  # the casings either side of JOINTS[j] are j and j + 1
+E_PULL_BOLT = 0.65  # the bolts slide forward out of their holes
+E_PULL_NUT = 0.3  # and the nuts back off aft
+EXPLODE = {}
 
-def inst(body, name):
-    """A part built once and its one instance; the instance is `<name>_i`
-    (a body and an instance cannot share a feature name)."""
-    return instance(part(body, name=name + "_part"), name=name + "_i")
+
+def spread(i, k):
+    EXPLODE[i.name] = k
+    if lift > 0.0:
+        explode(i, (k * lift, 0.0, 0.0))
+    return i
 
 
-def turning(body, name, rate=1.0):
-    i = inst(body, name)
+def inst(body, name, k):
+    """A part built once and its one instance, `k` explode units along the
+    axis; the instance is `<name>_i` (a body and an instance cannot share a
+    feature name)."""
+    return spread(instance(part(body, name=name + "_part"), name=name + "_i"), k)
+
+
+def turning(body, name, k, rate=1.0):
+    i = inst(body, name, k)
     if spool:
         pose(i, rotate=spool * rate, axis=(1, 0, 0), origin=(0, 0, 0))
     return i
 
 
-fan_i = turning(fan, "fan")
-shaft_i = turning(shaft, "shaft")
-rotor_i = [turning(rotors[k], "rotor_%d" % (k + 1)) for k in range(stages)]
-tdisc_i = turning(turbine_disc, "turbine_disc")
-tblades_i = turning(turbine_blades_ring, "turbine_blades")
-front_inner_i = turning(front_inner, "front_inner_race")
-rear_inner_i = turning(rear_inner, "rear_inner_race")
+E_REAR_BEARING = 2.0 * (stages - 1) * STAGE  # with the last rotor: the rear inner race has room on the shaft up to the turbine's key
+fan_i = turning(fan, "fan", E_FAN)
+shaft_i = turning(shaft, "shaft", 0.0)
+rotor_i = [turning(rotors[k], "rotor_%d" % (k + 1), 2.0 * k * STAGE) for k in range(stages)]
+tdisc_i = turning(turbine_disc, "turbine_disc", E_TURB)
+tblades_i = turning(turbine_blades_ring, "turbine_blades", E_TURB)
+front_inner_i = turning(front_inner, "front_inner_race", 0.0)
+rear_inner_i = turning(rear_inner, "rear_inner_race", E_REAR_BEARING)
 rotor_asm = assembly([fan_i] + rotor_i + [shaft_i, tdisc_i, tblades_i, front_inner_i, rear_inner_i], name="rotor")
 
-stator_i = [inst(stators[k], "stator_%d" % (k + 1)) for k in range(stages)]
-liner_i = inst(liner, "liner")
-front_frame_i = inst(front_frame, "front_frame")
-rear_frame_i = inst(rear_frame, "rear_frame")
-front_outer_i = inst(front_outer, "front_outer_race")
-rear_outer_i = inst(rear_outer, "rear_outer_race")
+stator_i = [inst(stators[k], "stator_%d" % (k + 1), (2.0 * k + 1.0) * STAGE) for k in range(stages)]
+ngv_i = inst(ngv, "ngv", E_TURB)
+liner_i = inst(liner, "liner", E_COMB)
+front_frame_i = inst(front_frame, "front_frame", E_INLET)
+rear_frame_i = inst(rear_frame, "rear_frame", E_COMP)
+front_outer_i = inst(front_outer, "front_outer_race", 0.0)
+rear_outer_i = inst(rear_outer, "rear_outer_race", E_REAR_BEARING)
 front_ball_p = part(front_ball, name="front_ball_part")
 rear_ball_p = part(rear_ball, name="rear_ball_part")
 ball_i = []
 for k in range(balls):
     a = 360.0 * k / balls
-    for tag, p in (("front", front_ball_p), ("rear", rear_ball_p)):
-        i = instance(p, rotate=a, axis=(1, 0, 0), name="%s_ball_%d" % (tag, k))
+    for tag, p, e in (("front", front_ball_p, 0.0), ("rear", rear_ball_p, E_REAR_BEARING)):
+        i = spread(instance(p, rotate=a, axis=(1, 0, 0), name="%s_ball_%d" % (tag, k)), e)
         if spool:
             pose(i, rotate=spool * CAGE, axis=(1, 0, 0), origin=(0, 0, 0))
         ball_i.append(i)
-core = assembly([rotor_asm] + stator_i + [liner_i, front_frame_i, rear_frame_i, front_outer_i, rear_outer_i] + ball_i, name="core")
+core = assembly([rotor_asm] + stator_i + [ngv_i, liner_i, front_frame_i, rear_frame_i, front_outer_i, rear_outer_i] + ball_i, name="core")
 
-casing_i = [inst(inlet_casing, "inlet_casing"), inst(comp_casing, "compressor_casing"), inst(comb_casing, "combustor_casing"), inst(turb_casing, "turbine_casing"), inst(nozzle, "nozzle"), inst(exhaust_cone, "exhaust_cone")]
+casing_i = [inst(inlet_casing, "inlet_casing", E_INLET), inst(comp_casing, "compressor_casing", E_COMP), inst(comb_casing, "combustor_casing", E_COMB),
+            inst(turb_casing, "turbine_casing", E_TURB), inst(nozzle, "nozzle", E_NOZ), inst(exhaust_cone, "exhaust_cone", E_NOZ)]
 
 bolt_p = part(m3, name="m3_bolt_part")
 nut_p = part(m3n, name="m3_nut_part")
 fastener_i = []
+joint_i = []  # per joint, its bolts and nuts
+BOLT_CIRCLE = {}  # fastener -> (its joint, 0 for a bolt or 1 for a nut)
+BOLT_MARGIN = 5.0  # degrees: a head or nut within this of the wedge would reach into it
 for j, (xj, rj) in enumerate(JOINTS):
+    here = []
     for k in range(bolts):
         a = 360.0 * (k + 0.5) / bolts
+        if in_cut(a, BOLT_MARGIN):
+            continue
         dr = rj - R_BOLT
         shift = (xj - X_COMP0, dr * math.cos(a), dr * math.sin(a))
-        fastener_i.append(instance(bolt_p, at=shift, rotate=a, axis=(1, 0, 0), name="bolt_%d_%d" % (j + 1, k)))
-        fastener_i.append(instance(nut_p, at=shift, rotate=a, axis=(1, 0, 0), name="nut_%d_%d" % (j + 1, k)))
+        here.append(spread(instance(bolt_p, at=shift, rotate=a, axis=(1, 0, 0), name="bolt_%d_%d" % (j + 1, k)), E_CASINGS[j] - E_PULL_BOLT))
+        here.append(spread(instance(nut_p, at=shift, rotate=a, axis=(1, 0, 0), name="nut_%d_%d" % (j + 1, k)), E_CASINGS[j + 1] + E_PULL_NUT))
+    for n, i in enumerate(here):
+        BOLT_CIRCLE[i.name] = (j, n % 2)
+    joint_i.append(here)
+    fastener_i += here
 fasteners = assembly(fastener_i, name="fasteners")
-fuel = assembly([inst(manifold, "fuel_manifold"), inst(injectors, "injectors"), inst(igniter, "igniter")], name="fuel_system")
+fuel_i = [inst(manifold, "fuel_manifold", E_COMB), inst(igniter, "igniter", E_COMB)]
+fuel = assembly(fuel_i, name="fuel_system")
 engine = assembly([core] + casing_i + [fasteners, fuel], name="engine")
-
-explode(engine, lift, along="x")
-if lift > 0.0:
-    for i in casing_i:
-        explode(i, (0.0, 0.0, 1.2 * lift))
-    for i in fastener_i:
-        explode(i, (0.0, 0.0, 1.2 * lift))
 
 # =========================================================== exports, drawing, animation
 #
@@ -833,7 +984,7 @@ animation(
     [
         keyframe(0.0, spool=0, explode=0, camera=view(az=30, el=18), ease=ease.ease_in),
         keyframe(4.0, spool=1440),
-        keyframe(7.0, spool=2520, explode=40, camera=view(az=50)),
+        keyframe(7.0, spool=2520, explode=24, camera=view(az=50)),
         keyframe(8.0, spool=2880),
     ],
     fps=20,
@@ -858,13 +1009,15 @@ test("every instance is a solid", every_instance_is_a_solid)
 
 def the_tree():
     assert_eq(len(rotor_asm.instances), 6 + stages, msg="the rotor: fan, discs, shaft, turbine disc and blades, two inner races")
-    assert_eq(len(core.instances), len(rotor_asm.instances) + stages + 5 + 2 * balls, msg="the core: the rotor, stators, liner, frames, outer races, balls")
-    assert_eq(len(fasteners.instances), 2 * bolts * len(JOINTS))
-    assert_eq(len(engine.instances), len(core.instances) + len(casing_i) + len(fasteners.instances) + 3)
+    assert_eq(len(core.instances), len(rotor_asm.instances) + stages + 6 + 2 * balls, msg="the core: the rotor, stators, guide vanes, liner, frames, outer races, balls")
+    culled = len([k for k in range(bolts) if in_cut(360.0 * (k + 0.5) / bolts, BOLT_MARGIN)])
+    assert_eq(len(fasteners.instances), 2 * (bolts - culled) * len(JOINTS))
+    assert_eq(len(engine.instances), len(core.instances) + len(casing_i) + len(fasteners.instances) + 2)
     return len(engine.instances)
 
 
 test("the tree: the rotor in the core in the engine, six casings, the fasteners, the fuel system", the_tree)
+test("... and with the wedge cut out", the_tree, sweep={"cutaway": [True]})
 
 
 def blade_counts():
@@ -880,14 +1033,17 @@ def blade_counts():
         tag = "vane_%d" % (k + 1)
         per = ONE[tag].faces(name=tag + "/side*").count()
         assert_eq(stator_i[k].body().faces(name=tag + "/side*").count(), (stator_vanes + 4 * k) * per, msg="stage %d vanes" % (k + 1))
-    assert_eq(tblades_i.body().faces(name="t_root/start*").count(), turbine_blades, msg="turbine blade roots")
+    n_root = tblades_i.body().faces(name="t_root/side*").count()
+    assert_true(n_root > 0 and n_root % turbine_blades == 0, msg="the blade roots' %d flanks are not %d equal sets" % (n_root, turbine_blades))
+    per = ONE["ngv_vane"].faces(name="ngv_vane/side*").count()
+    assert_eq(ngv_i.body().faces(name="ngv_vane/side*").count(), NGV_VANES * per, msg="nozzle guide vanes")
     n_slot = tdisc_i.body().faces(name="slot/side*").count()
     assert_eq(n_slot % turbine_blades, 0, msg="the fir-tree slots' %d faces are not %d equal sets" % (n_slot, turbine_blades))
     assert_true(n_slot // turbine_blades >= 16, msg="a fir-tree slot keeps at least 16 of its 22 flanks inside the rim: %d" % (n_slot // turbine_blades))
     return n_slot // turbine_blades
 
 
-test("blade counts: the fan, every rotor and stator row, the turbine blades and their slots", blade_counts)
+test("blade counts: the fan, every rotor and stator row, the guide vanes, the turbine blades and their slots", blade_counts)
 
 
 def tip_clearances():
@@ -944,11 +1100,10 @@ test("the spool fits its shaft: keyed hub and turbine disc, slip-fit discs", the
 def the_first_joint_bolts_up():
     """Every bolt and nut of the inlet joint passes its hole and sits on its
     flange without sharing material with either casing."""
-    for k in range(bolts):
-        for i in (fastener_i[2 * k], fastener_i[2 * k + 1]):
-            for cas in (casing_i[0], casing_i[1]):
-                clear(distance(i, cas), "%s in %s" % (i.name, cas.name))
-    return bolts
+    for i in joint_i[0]:
+        for cas in (casing_i[0], casing_i[1]):
+            clear(distance(i, cas), "%s in %s" % (i.name, cas.name))
+    return len(joint_i[0]) // 2
 
 
 test("the inlet joint bolts up: eight bolts and nuts through both flanges, none touching material", the_first_joint_bolts_up)
@@ -966,15 +1121,91 @@ def the_annulus_contracts():
 test("the annulus contracts stage by stage", the_annulus_contracts)
 
 
+CUT_PARTS = casing_i + stator_i + [ngv_i, liner_i, front_frame_i, rear_frame_i]
+
+
 def the_cutaway_holds():
-    """With the wedge taken out, every static part is still a solid and the
-    rotor is untouched."""
-    for i in casing_i + stator_i + [liner_i]:
+    """With the wedge taken out, every cut part is still a solid, and
+    nothing that stays (no casing, frame, vane, bolt, nut or fuel line)
+    has material inside the wedge, so nothing hangs in the opening. The
+    wedge tested is half a degree narrower at each face."""
+    for i in CUT_PARTS:
         assert_solid(i.body(), msg=i.name)
     assert_solid(fan_i.body())
-    return len(casing_i) + len(stator_i) + 1
+    if CUT <= 0.0:
+        return 0
+    gone = rotate(rev([(X_SPIN - 5.0, 0.3), (X_END + 5.0, 0.3), (X_END + 5.0, 70.0), (X_SPIN - 5.0, 70.0)], "wedge_gone", angle=CUT - 1.0), A_CUT0 + 0.5, axis=(1, 0, 0), name="wedge_gone_turned")
+    for i in CUT_PARTS + fastener_i + fuel_i:
+        c = distance(i, gone)
+        assert_true(not c.overlap and c.distance > 0.0, msg="%s reaches into the cutaway's wedge at %s" % (i.name, c.at))
+    return len(CUT_PARTS) + len(fastener_i) + len(fuel_i)
 
 
-test("the cutaway: every cut static part is a solid", the_cutaway_holds, sweep={"cutaway": [True]})
+test("the cutaway: every cut part is a solid and nothing is left in the wedge", the_cutaway_holds, sweep={"cutaway": [True]})
+test("... and a narrower wedge, as it opens", the_cutaway_holds, sweep={"cutaway": [True], "cutaway_angle": [35.0]})
+
+
+def the_fuel_reaches_the_dome():
+    """Every injector passes through its port in the combustor casing
+    without touching it and ends in its swirler cup on the dome, 0.3 mm off
+    the cup's bore; the guide vanes clear the liner and the turbine."""
+    c = clear(distance(fuel_i[0], casing_i[2]), "the fuel manifold in the combustor casing's ports")
+    assert_true(c.distance < 0.15 + 2 * c.tolerance + 0.01, msg="the injectors are %s mm off the casing: they do not pass through its ports" % math.round(c.distance, 3))
+    c = clear(distance(fuel_i[0], liner_i), "the injectors in the swirler cups")
+    assert_close(c.distance, CUP_BORE - INJ_R, tol=2 * c.tolerance + 0.01, msg="an injector's tip is %s mm off its cup's bore at %s" % (math.round(c.distance, 3), c.at))
+    tips = fuel_i[0].body().bbox()[1][0]
+    assert_true(tips > X_CUP0 + 1.0, msg="the injectors stop at x = %s, short of the cups at %s" % (tips, X_CUP0))
+    for other, what, gap in ((liner_i, "the liner", 0.5), (tblades_i, "the turbine blades", 0.5), (casing_i[3], "the turbine casing", 0.5)):
+        c = clear(distance(ngv_i, other), "the guide vanes and " + what)
+        assert_true(c.distance > gap - 2 * c.tolerance, msg="the guide vanes are %s mm from %s" % (math.round(c.distance, 3), what))
+    return len(A_INJ)
+
+
+test("the fuel reaches the dome: every injector through its port and into its swirler cup", the_fuel_reaches_the_dome)
+
+
+def the_explode_never_crosses():
+    """Each instance moves along the axis by its own multiple of `explode`.
+    Two parts one behind the other, whose radii and boxes across the axis
+    overlap, must still be in
+    that order at the parameter's limit: then they never pass through each
+    other on the way. (Parts that nest, one inside the other, slide along
+    their common axis by construction.) Each joint's bolts move with the
+    casing ahead of it and its nuts with the casing behind it."""
+    lim = 40.0
+    axis_rod = cylinder(0.01, X_END - X_SPIN + 20.0, at=(0, 0, 0), name="axis_rod").rotate(90.0, axis=(0, 1, 0)).translate((X_SPIN - 10.0, 0.0, 0.0))
+    outer_tube = ring(X_SPIN - 10.0, X_END + 10.0, 70.0, 75.0, "outer_tube")
+    radii = {}
+    boxes = []
+    for i in engine.instances:
+        lo, hi = i.body().bbox()
+        dy = 0.0 if lo[1] <= 0.0 and hi[1] >= 0.0 else min(lo[1] * lo[1], hi[1] * hi[1])
+        dz = 0.0 if lo[2] <= 0.0 and hi[2] >= 0.0 else min(lo[2] * lo[2], hi[2] * hi[2])
+        r0 = math.sqrt(dy + dz)
+        r1 = math.sqrt(max(lo[1] * lo[1], hi[1] * hi[1]) + max(lo[2] * lo[2], hi[2] * hi[2]))
+        if r0 == 0.0:  # round the axis: every such part here is a part of revolution, whose box's half-width is its radius
+            r1 = math.sqrt(max(lo[1] * lo[1], hi[1] * hi[1], lo[2] * lo[2], hi[2] * hi[2]))
+            r0 = distance(i, axis_rod).distance  # and whose bore is measured
+        if i.name in BOLT_CIRCLE:  # a box round a bolt at an angle reaches nearer the axis than the bolt does: measure one of each per joint
+            key = BOLT_CIRCLE[i.name]
+            if key not in radii:
+                radii[key] = (distance(i, axis_rod).distance, 70.0 - distance(i, outer_tube).distance)
+            r0, r1 = radii[key]
+        boxes.append((i.name, lo[0], hi[0], r0, r1, EXPLODE[i.name], lo, hi))
+    pairs = 0
+    for a in boxes:
+        for b in boxes:
+            yz = a[6][1] < b[7][1] and b[6][1] < a[7][1] and a[6][2] < b[7][2] and b[6][2] < a[7][2]
+            if a[2] <= b[1] + 0.01 and a[3] < b[4] and b[3] < a[4] and yz:
+                pairs += 1
+                assert_true(a[2] + a[5] * lim <= b[1] + b[5] * lim + 0.01, msg="%s passes through %s as the engine comes apart" % (a[0], b[0]))
+    for j in range(len(JOINTS)):
+        for i in joint_i[j]:
+            want = E_CASINGS[j] - E_PULL_BOLT if i.name.startswith("bolt") else E_CASINGS[j + 1] + E_PULL_NUT
+            assert_eq(EXPLODE[i.name], want, msg=i.name)
+    return pairs
+
+
+test("the explode: modules come away whole and nothing passes through anything", the_explode_never_crosses)
 
 print("bodies", len(engine.bodies))

@@ -23,7 +23,7 @@ module capability {
 
   // The registry: every rpc of `service CadpoleOps` in ops.proto.
   pure val OPS: Set[str] = Set(
-    "Evaluate", "Render", "Sweep", "Animate", "Export", "PrintCheck", "Plate", "Inspect", "Drawing",
+    "Evaluate", "Render", "Sweep", "Animate", "Export", "PrintCheck", "Inspect", "Drawing",
     "RunTests", "ApiDoc",
     "GetSession", "GetSelection", "SetScript", "SetParams", "SetSelection",
     "Reply", "StreamReply", "PostMessage", "Save", "WaitEvents", "ExplainRef",
@@ -35,7 +35,7 @@ module capability {
   // What a listener may call: `GRANTED` in capability.rs.
   pure val GRANTED: Set[str] = Set(
     "GetSession", "GetSelection", "ExplainRef", "WaitEvents", "Ack",
-    "GetAttachment", "ApiDoc", "Evaluate", "Render", "Sweep", "Animate", "PrintCheck", "Plate",
+    "GetAttachment", "ApiDoc", "Evaluate", "Render", "Sweep", "Animate", "PrintCheck",
     "Inspect", "Export", "Drawing", "RunTests", "ListAssets", "GetAsset", "SetParams",
     "EditScript", "Reply", "StreamReply", "ListJobs", "WaitJobs",
   )
@@ -50,7 +50,6 @@ module capability {
     "Evaluate" -> "Evaluate", "Render" -> "Render", "Sweep" -> "Sweep",
     "Animate" -> "Animate",
     "Export" -> "Export", "PrintCheck" -> "PrintCheck", "Inspect" -> "Inspect",
-    "Plate" -> "Plate",
     "Drawing" -> "Drawing", "RunTests" -> "RunTests",
     "ApiDoc" -> "ApiDoc", "GetSession" -> "GetSession",
     "GetSelection" -> "GetSelection", "SetScript" -> "SetScript",
@@ -72,7 +71,6 @@ module capability {
     "drawing" -> "Drawing", "reply" -> "Reply", "streamreply" -> "StreamReply",
     "api_doc" -> "ApiDoc",
     "printcheck" -> "PrintCheck", "apidoc" -> "ApiDoc",
-    "plate" -> "Plate",
     "runtests" -> "RunTests",
     "getsession" -> "GetSession", "getselection" -> "GetSelection",
     "setparams" -> "SetParams", "waitevents" -> "WaitEvents",
@@ -175,7 +173,7 @@ module capability {
   // ---- effects
 
   // Every evaluating operation accepts a caller-supplied `document`. Render,
-  // Sweep and Animate run inside the render gate; PrintCheck, Plate, Inspect, Export,
+  // Sweep and Animate run inside the render gate; PrintCheck, Inspect, Export,
   // Drawing and RunTests do their kernel work outside it.
   pure val EFFECTS: str -> Set[Effect] = Map(
     "ApiDoc" -> Set(),
@@ -194,7 +192,6 @@ module capability {
     "PrintCheck" -> Set(ReadSession, ReadModel, EvaluateCallerSuppliedScript, KernelWorkOutsideTheRenderGate),
     "Inspect" -> Set(ReadSession, ReadModel, EvaluateCallerSuppliedScript, KernelWorkOutsideTheRenderGate),
     "Export" -> Set(ReadSession, ReadModel, EvaluateCallerSuppliedScript, KernelWorkOutsideTheRenderGate),
-    "Plate" -> Set(ReadSession, ReadModel, EvaluateCallerSuppliedScript, KernelWorkOutsideTheRenderGate),
     "Drawing" -> Set(ReadSession, ReadModel, EvaluateCallerSuppliedScript, KernelWorkOutsideTheRenderGate),
     "RunTests" -> Set(ReadSession, ReadModel, EvaluateCallerSuppliedScript, KernelWorkOutsideTheRenderGate),
     "SetParams" -> Set(WriteParams),

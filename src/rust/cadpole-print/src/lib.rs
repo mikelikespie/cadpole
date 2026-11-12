@@ -16,7 +16,6 @@
 //! | [`bed`] | does it fit the build volume, and by how much it does not |
 //! | [`orient`] | which way up to print it, scored and explained |
 //! | [`analysis`] | those per-triangle fields as colour ramps with a legend |
-//! | [`support`] | what else needs support or fails without it: hanging tips that start in mid-air (islands), round horizontal holes too wide to bridge, tall thin features, a first layer too small for the part's height |
 //! | [`assembly`] | the rules *between* bodies printed together: gaps that fuse, horizontal gaps that are not whole layers, bodies in the air |
 //!
 //! The thickness and overhang checks also return a **per-triangle field**
@@ -25,7 +24,7 @@
 //! (docs/views.md) and no analysis is computed twice.
 
 use cadpole_core::geom::Vec3;
-use cadpole_core::tessellate::{Mesh, Topology};
+use cadpole_core::tessellate::Mesh;
 
 pub mod analysis;
 pub mod assembly;
@@ -34,9 +33,7 @@ pub mod chord;
 pub mod mesh_checks;
 pub mod orient;
 pub mod overhang;
-pub mod plate;
 pub mod printers;
-pub mod support;
 pub mod thickness;
 
 pub use analysis::{Analysis, Legend};
@@ -46,7 +43,6 @@ pub use mesh_checks::{Hole, MeshReport};
 pub use orient::{Candidate, Orientation};
 pub use overhang::OverhangReport;
 pub use printers::{printer, printer_ids, printer_list, BedShape, Printer, PRINTERS};
-pub use support::SupportReport;
 pub use thickness::ThicknessReport;
 
 /// Weld tolerance for the topology checks, in mm. The same value the mesh
@@ -153,77 +149,6 @@ pub struct Profile {
     /// gap to another body gets a warning. [`CHORD_GAP_FRACTION`], a third,
     /// unless a profile says otherwise; no printer does today.
     pub chord_gap_fraction: f64,
-    /// The support rules ([`support`], [`overhang`]): what a slicer prints
-    /// without support and what it does not. Each is a Cadpole number with
-    /// its reason on [`SupportRules`]; a printer profile carries them so a
-    /// machine that bridges or cools better can say so once.
-    pub support: SupportRules,
-}
-
-/// The rules that decide whether a part prints **without support**, beyond
-/// the overhang angle and `max_bridge`. Every one is a length, an area or a
-/// ratio a script can pass (`print_check(max_cantilever=5)`), a printer
-/// profile can carry, and `cadpole check` takes as a flag. The defaults are
-/// Cadpole's, chosen for a 0.4 mm nozzle printing PLA with its part fan on;
-/// none is a vendor's number.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct SupportRules {
-    /// The largest connected patch of overhang, in mm², a slicer prints
-    /// without support. 4 mm² by default: a patch that size is at most a
-    /// couple of millimetres across, which the perimeters around it carry
-    /// (the run-out of a thread, the lip of a chamfer, the tip of a 45°
-    /// teardrop). The total is still reported; the rule judges the largest
-    /// *connected* patch, because ten specks are not one ceiling. 0 counts
-    /// every patch.
-    pub max_overhang_area: f64,
-    /// How far a near-level downward face held up on one side only -- a
-    /// ledge, a shelf, an outstretched thumb -- may stick out past what
-    /// holds it, in mm. 3 mm by default: about seven extrusions at a 0.4 mm
-    /// nozzle, the reach a flat perimeter loop holds out over air before it
-    /// curls up into the nozzle. A ledge within it is printed off its
-    /// perimeters and is not counted as overhang; a longer one is a
-    /// `cantilever` warning. 0 judges every ledge.
-    pub max_cantilever: f64,
-    /// The widest round horizontal hole, in mm across, whose top a slicer
-    /// bridges. 7 mm by default: past 6-8 mm the top of a round bore sags
-    /// into the hole, and the usual fix is a teardrop or diamond top that
-    /// turns the ceiling into two 45° slopes. Smaller bores print as they
-    /// are and their tops are not counted as overhang. Needs the body's face
-    /// classes (a B-rep body); a bare mesh is not judged.
-    pub max_horizontal_hole: f64,
-    /// A downward tip shallower than this, in mm, is not an island: it joins
-    /// the rest of the part within a layer, and the slicer prints it as part
-    /// of that layer. One layer height by default, and it follows
-    /// `layer_height` the way `min_wall` follows the nozzle.
-    pub min_island: f64,
-    /// The tallest a slender feature may be, as a multiple of its width,
-    /// before it wobbles under the nozzle and snaps: 8 by default. 0 turns
-    /// the `slender` check off.
-    pub max_slenderness: f64,
-    /// What counts as slender, in mm: a cross-section narrower than this
-    /// (as the diameter of a circle of the same area). 3 mm by default --
-    /// about seven extrusions, a pin rather than a post.
-    pub slender_width: f64,
-    /// The tallest a part may be over the square root of its first-layer
-    /// area -- its height over the side of a square with the same footprint
-    /// -- before it risks tipping or coming off the plate: 6 by default. A
-    /// 20 mm cube is 1, a 10 mm pin 60 mm tall is 6.8. 0 turns the
-    /// `bed_contact` check off.
-    pub max_height_to_base: f64,
-}
-
-impl Default for SupportRules {
-    fn default() -> SupportRules {
-        SupportRules {
-            max_overhang_area: 4.0,
-            max_cantilever: 3.0,
-            max_horizontal_hole: 7.0,
-            min_island: 0.2,
-            max_slenderness: 8.0,
-            slender_width: 3.0,
-            max_height_to_base: 6.0,
-        }
-    }
 }
 
 impl Default for Profile {
@@ -241,7 +166,6 @@ impl Default for Profile {
             material: Material::PLA,
             build_direction: Vec3::Z,
             chord_gap_fraction: CHORD_GAP_FRACTION,
-            support: SupportRules::default(),
         }
     }
 }
@@ -280,14 +204,6 @@ impl Profile {
         non_negative(self.min_wall, "min_wall")?;
         non_negative(self.min_gap, "min_gap")?;
         non_negative(self.chord_gap_fraction, "chord_gap_fraction")?;
-        let r = &self.support;
-        non_negative(r.max_overhang_area, "max_overhang_area")?;
-        non_negative(r.max_cantilever, "max_cantilever")?;
-        non_negative(r.max_horizontal_hole, "max_horizontal_hole")?;
-        non_negative(r.min_island, "min_island")?;
-        non_negative(r.max_slenderness, "max_slenderness")?;
-        non_negative(r.slender_width, "slender_width")?;
-        non_negative(r.max_height_to_base, "max_height_to_base")?;
         let o = self.max_overhang_degrees;
         if !(o.is_finite() && (0.0..=90.0).contains(&o)) {
             return Err(format!("max_overhang must be between 0 and 90 degrees from vertical, got {o}"));
@@ -370,28 +286,6 @@ pub enum Check {
     /// profile's fraction of its gap to another body ([`chord`]).
     /// Always a warning: the file is still written.
     ChordError,
-    /// A region of one body whose lowest point is in mid-air: a downward
-    /// tip, a chin, a hanging finger, the underside of a ball off the bed.
-    /// Its first layer has nothing under it ([`support`]).
-    Island,
-    /// A near-level ledge held up on one side only sticks out further than
-    /// `max_cantilever` ([`overhang`]).
-    Cantilever,
-    /// A round horizontal hole wider than `max_horizontal_hole` whose top
-    /// is a ceiling over air: it wants a teardrop or diamond top
-    /// ([`support`]).
-    HorizontalHole,
-    /// A feature taller than `max_slenderness` times its width, under
-    /// `slender_width` wide: it wobbles under the nozzle ([`support`]).
-    /// Always a warning.
-    Slender,
-    /// The first layer is small for the part's height: it may tip or come
-    /// off the plate ([`support`]). Always a warning.
-    BedContact,
-    /// The part is placed for printing in a clearly worse orientation than
-    /// the best the planner finds ([`plate::score::judge`]). Always a
-    /// warning.
-    PrintOrientation,
 }
 
 impl Check {
@@ -413,22 +307,7 @@ impl Check {
             Check::Bridge => "bridge",
             Check::Bridged => "bridged",
             Check::ChordError => "chord_error",
-            Check::Island => "island",
-            Check::Cantilever => "cantilever",
-            Check::HorizontalHole => "horizontal_hole",
-            Check::Slender => "slender",
-            Check::BedContact => "bed_contact",
-            Check::PrintOrientation => "print_orientation",
         }
-    }
-
-    /// The checks that answer "does this print without support":
-    /// overhangs past the allowances, islands, ledges, round horizontal
-    /// holes too wide to bridge, and a body of a print that sits in the air
-    /// ([`assembly`]'s `bridge`). What `assert_support_free` and
-    /// `cadpole check --support-free` judge.
-    pub fn is_support(self) -> bool {
-        matches!(self, Check::Overhang | Check::Island | Check::Cantilever | Check::HorizontalHole | Check::Bridge)
     }
 }
 
@@ -449,7 +328,7 @@ pub struct Issue {
 }
 
 impl Issue {
-    pub fn new(check: Check, severity: Severity, message: impl Into<String>, at: Option<Vec3>, value: f64) -> Issue {
+    fn new(check: Check, severity: Severity, message: impl Into<String>, at: Option<Vec3>, value: f64) -> Issue {
         Issue { check, severity, message: message.into(), at, value }
     }
 }
@@ -466,8 +345,6 @@ pub struct Report {
     pub thickness: ThicknessReport,
     pub overhang: OverhangReport,
     pub bed: BedReport,
-    /// Islands, horizontal holes, slender features and the first layer.
-    pub support: SupportReport,
     /// Every finding, worst first.
     pub issues: Vec<Issue>,
     /// The profile the checks judged this against, so a report can say what
@@ -487,12 +364,6 @@ impl Report {
     /// overhangs) still print.
     pub fn ok(&self) -> bool {
         !self.issues.iter().any(|i| i.severity == Severity::Error)
-    }
-
-    /// The findings that say the part needs support ([`Check::is_support`]),
-    /// information left out. Empty means it prints without support.
-    pub fn support_findings(&self) -> impl Iterator<Item = &Issue> {
-        self.issues.iter().filter(|i| i.severity != Severity::Info && i.check.is_support())
     }
 
     pub fn errors(&self) -> impl Iterator<Item = &Issue> {
@@ -559,23 +430,13 @@ pub fn check(mesh: &Mesh, profile: &Profile) -> Report {
 /// counts every such face. Not a [`Profile`] field because the printer table
 /// builds profiles field by field and the rule is not a machine's.
 pub fn check_with(mesh: &Mesh, profile: &Profile, max_bridge: f64) -> Report {
-    check_named(mesh, None, profile, max_bridge)
-}
-
-/// [`check_with`], with the body's topology: findings name the face they
-/// are on (`plate/hole/side`), and the round horizontal hole rule, which
-/// needs to know a face is a cylinder, runs. Without it a finding says
-/// `face:N` and holes are not judged.
-pub fn check_named(mesh: &Mesh, topo: Option<&Topology>, profile: &Profile, max_bridge: f64) -> Report {
     let mut issues = Vec::new();
-    let adj = Adjacency::new(mesh);
+    let welded = mesh.welded(WELD_EPS);
 
-    let mesh_report = mesh_checks::check(mesh, &adj.welded, &mut issues);
+    let mesh_report = mesh_checks::check(mesh, &welded, &mut issues);
     let thickness = thickness::check(mesh, profile, &mut issues);
-    let (holes, skip) = support::horizontal_holes(mesh, topo, profile, &mut issues);
-    let overhang = overhang::check_support(mesh, &adj, topo, profile, None, max_bridge, &skip, &mut issues);
+    let overhang = overhang::check_bridged(mesh, profile, None, max_bridge, &mut issues);
     let bed = bed::check(mesh, profile, &mut issues);
-    let support = support::check(mesh, &adj, topo, profile, holes, &mut issues);
 
     sort_issues(&mut issues);
 
@@ -592,7 +453,6 @@ pub fn check_named(mesh: &Mesh, topo: Option<&Topology>, profile: &Profile, max_
         thickness,
         overhang,
         bed,
-        support,
         issues,
         profile_name: profile.name.clone(),
         mass_g: profile.material.mass_g(volume_mm3.abs()),
@@ -624,72 +484,6 @@ pub(crate) fn tri_normal_area(v: &[Vec3; 3]) -> (Vec3, f64) {
 
 pub(crate) fn centroid(v: &[Vec3; 3]) -> Vec3 {
     (v[0] + v[1] + v[2]) * (1.0 / 3.0)
-}
-
-/// The name of the face triangle `t` belongs to: the topology's
-/// (`plate/hole/side`), or `face:N` without one.
-pub(crate) fn face_name(mesh: &Mesh, topo: Option<&Topology>, t: usize) -> String {
-    let id = mesh.face_ids.get(t).copied().unwrap_or(0);
-    match topo.and_then(|tp| tp.faces.get(id as usize)) {
-        Some(f) => f.name.clone(),
-        None => format!("face:{id}"),
-    }
-}
-
-/// A mesh welded once (at [`WELD_EPS`]) with its edges indexed: which
-/// welded triangles meet across an edge, and which input triangle each
-/// welded one was. The overhang regions, the bridge spans, the islands
-/// and the sections all walk the surface through it.
-pub struct Adjacency {
-    pub welded: Mesh,
-    /// The input triangle each welded triangle came from.
-    pub origin: Vec<u32>,
-    /// The welded triangle each input triangle became, `u32::MAX` for one
-    /// the weld collapsed.
-    welded_of: Vec<u32>,
-    edges: std::collections::HashMap<(u32, u32), Vec<usize>>,
-}
-
-impl Adjacency {
-    pub fn new(mesh: &Mesh) -> Adjacency {
-        let (welded, origin) = mesh.welded_with_map(WELD_EPS);
-        let mut welded_of = vec![u32::MAX; mesh.triangle_count()];
-        for (w, &t) in origin.iter().enumerate() {
-            if let Some(x) = welded_of.get_mut(t as usize) {
-                *x = w as u32;
-            }
-        }
-        let mut edges: std::collections::HashMap<(u32, u32), Vec<usize>> =
-            std::collections::HashMap::with_capacity(welded.triangle_count() * 2);
-        for w in 0..welded.triangle_count() {
-            let t = [welded.indices[3 * w], welded.indices[3 * w + 1], welded.indices[3 * w + 2]];
-            for k in 0..3 {
-                let (a, b) = (t[k], t[(k + 1) % 3]);
-                edges.entry(if a < b { (a, b) } else { (b, a) }).or_default().push(w);
-            }
-        }
-        Adjacency { welded, origin, welded_of, edges }
-    }
-
-    pub fn welded_of(&self, t: usize) -> Option<usize> {
-        self.welded_of.get(t).copied().filter(|w| *w != u32::MAX).map(|w| w as usize)
-    }
-
-    pub fn wpos(&self, v: u32) -> Vec3 {
-        let i = v as usize * 3;
-        let p = &self.welded.positions;
-        Vec3::new(p[i] as f64, p[i + 1] as f64, p[i + 2] as f64)
-    }
-
-    pub fn wtri(&self, w: usize) -> [u32; 3] {
-        let i = &self.welded.indices;
-        [i[3 * w], i[3 * w + 1], i[3 * w + 2]]
-    }
-
-    /// The welded triangles on the edge between two welded vertices.
-    pub fn across(&self, a: u32, b: u32) -> &[usize] {
-        self.edges.get(&if a < b { (a, b) } else { (b, a) }).map(|v| v.as_slice()).unwrap_or(&[])
-    }
 }
 
 /// Longest diagonal of the mesh's bounding box, or 1 mm for an empty mesh.

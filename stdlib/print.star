@@ -1,6 +1,6 @@
-"""@cadpole/print.star -- printing a model in pieces: registration pegs, story bands, the bed, snap fits.
+"""@cadpole/print.star -- printing a model in pieces: registration pegs, story bands, the bed.
 
-    load("@cadpole/print.star", "pegs", "peg_sites", "story_bands", "drop_to_bed", "is_box", "teardrop", "snap_fit", "PEG")
+    load("@cadpole/print.star", "pegs", "peg_sites", "story_bands", "drop_to_bed", "is_box", "PEG")
 
 A building printed one story at a time is a stack of pieces that has to go
 back together where it came apart. This module makes the pieces and the
@@ -17,14 +17,7 @@ features that line them up:
 * `story_bands(parts, levels, ...)` cuts a model into horizontal bands,
   joins each into one printable solid (`union(weld=)`), pegs every
   band to the next and drops each onto the bed;
-* `drop_to_bed(body)` moves a body so its lowest point is z = 0;
-* `teardrop(d, length, ...)` is the tool that cuts a horizontal hole with
-  a 45 degree peaked top, the shape that prints without support where a
-  round bore wider than about 7 mm sags (`print_check`'s
-  `horizontal_hole`, `assert_support_free`).
-* `snap_fit(length, thickness, deflection, ...)` is the peak bending strain
-  in a cantilever snap arm, tapered or not, to hold against the material's
-  limit for the way the arm is printed.
+* `drop_to_bed(body)` moves a body so its lowest point is z = 0.
 
 Every length is in the model's units at the moment of the call -- the
 peg sizes are millimetres because pegs are made after a model drawn in feet
@@ -74,98 +67,6 @@ def drop_to_bed(body, name = None):
     a print starts. Returns the moved body; the original is consumed."""
     lo, _ = body.bbox()
     return translate(body, (0, 0, -lo[2]), name = name)
-
-def teardrop(d, length, at = (0, 0, 0), axis = "y", segments = 48, name = "teardrop"):
-    """The tool for a horizontal hole `d` across that prints without
-    support: a bore along `axis` ("x" or "y"), `length` long and centred on
-    `at`, whose top is two 45 degree flats meeting `d / sqrt(2)` above the
-    centre instead of a round ceiling. Subtract it from the part.
-
-    A slicer bridges the round top of a horizontal bore up to about 7 mm
-    across; past that the top sags into the hole. Two 45 degree slopes are
-    self-supporting at any size, and the bore below them is the full circle,
-    so a pin or a screw still bears on it. The profile is a polygon of
-    `segments` steps round the circle, every vertex on it, so the hole is a
-    chord error under `d` and never over."""
-    if not d > 0 or not length > 0:
-        fail("teardrop: d and length must be positive, got %s and %s" % (d, length))
-    if axis not in ("x", "y"):
-        fail("teardrop: axis is \"x\" or \"y\" (a horizontal hole), got %s" % repr(axis))
-    r = d / 2.0
-    n = max(8, segments)
-    pts = [(r * math.cos(135.0 + 270.0 * i / n), r * math.sin(135.0 + 270.0 * i / n)) for i in range(n + 1)]
-    pts.append((0.0, r * math.sqrt(2.0)))
-    # On XZ: sketch x is world x, sketch y world z, extruded along -y.
-    tool = extrude(sketch(XZ, name = name + "_profile").polygon(pts), length, name = name + "_bore")
-    lo, hi = tool.bbox()
-    tool = translate(tool, (at[0], at[1] - (lo[1] + hi[1]) / 2.0, at[2]), name = name if axis == "y" else name + "_y")
-    if axis == "x":
-        tool = rotate(tool, 90, axis = (0, 0, 1), origin = at, name = name)
-    return tool
-
-def snap_fit(length, thickness, deflection, thickness_tip = None, width = 1.0, width_tip = None, modulus = None, max_strain = None, steps = 400):
-    """The peak bending strain in a cantilever snap arm: fixed at its root,
-    its load point `length` from the root pushed `deflection` sideways (the
-    barb's interference). `thickness` is the arm's depth in the direction it
-    bends, `width` the other side of its section; each tapers linearly from
-    the root to `thickness_tip` / `width_tip` at the load point.
-
-    For a uniform arm this is the textbook 1.5 t y / L^2. A thickness taper
-    to half at the tip brings it down to about 0.61 of that, a width taper
-    to nothing to 0.67: both put more of the bend where the arm is
-    thinner. Integrated numerically (midpoint rule, `steps` slices), so any
-    mix of the two tapers is exact to a part in 10^4.
-
-    Returns a dict: `strain` (the peak surface strain, a fraction), `at`
-    (its distance from the root), `factor` (`strain` over the uniform arm's
-    1.5 t y / L^2 at the root's thickness), and with `modulus` (N/mm^2 when
-    lengths are mm) the `force` that deflects the load point and the
-    `stiffness`, force per unit deflection. With `max_strain`, an arm that
-    bends further fails, naming both.
-
-    Layered prints are anisotropic: an arm whose bend runs along its layers
-    takes roughly the material's strain (PLA about 0.02 once, 0.01 again and
-    again); one whose bend crosses the layers pulls them apart at a fraction
-    of that. Choose `max_strain` for the way the arm is printed."""
-    if not (length > 0 and thickness > 0 and deflection >= 0):
-        fail("snap_fit: length and thickness must be positive and deflection not negative, got %s, %s, %s" % (length, thickness, deflection))
-    t1 = thickness if thickness_tip == None else thickness_tip
-    b0 = width
-    b1 = width if width_tip == None else width_tip
-    if not (t1 > 0 and b0 > 0 and b1 >= 0):
-        fail("snap_fit: thickness_tip and width must be positive, width_tip not negative")
-    dx = length / steps
-
-    # Curvature per unit load is M / (E I), with M = F (L - x): so the load
-    # point's deflection per unit load is the integral of that times (L - x),
-    # and the surface strain is the curvature times half the thickness.
-    def curvature(x):
-        f = x / length
-        t = thickness + (t1 - thickness) * f
-        b = b0 + (b1 - b0) * f
-        return (length - x) * 12.0 / (b * t * t * t), t
-
-    compliance = 0.0
-    k, t = curvature(0.0)
-    peak = (k * t / 2, 0.0)
-    for i in range(steps):
-        x = (i + 0.5) * dx
-        k, t = curvature(x)
-        compliance += k * (length - x) * dx
-        if k * t / 2 > peak[0]:
-            peak = (k * t / 2, x)
-    strain = peak[0] * deflection / compliance
-    out = {
-        "strain": strain,
-        "at": peak[1],
-        "factor": strain / (1.5 * thickness * deflection / (length * length)) if deflection > 0 else 1.0,
-    }
-    if modulus != None:
-        out["stiffness"] = modulus / compliance
-        out["force"] = modulus * deflection / compliance
-    if max_strain != None and strain > max_strain:
-        fail("snap_fit: the arm bends to %s strain at %s from its root, over max_strain %s" % (strain, peak[1], max_strain))
-    return out
 
 def _opts(overrides):
     o = dict(PEG)

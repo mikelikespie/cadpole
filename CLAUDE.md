@@ -27,8 +27,6 @@ $C export examples/cabin_site.star --model-unit ft -o /tmp/cabin.glb    # glTF
 $C export examples/storey_kit.star --run-exports --out-dir /tmp/kit -p printer=bambu_h2d -p slots=4   # a Bambu project
 $C publish examples/cabin_site.star --model-unit ft --out-dir /tmp/cabin   # a read-only static site
 $C check examples/story_kit.star --layer kit --max-bridge 20            # printability checks
-$C check examples/thumbscrew.star -p layout=print -p thread_form=print --support-free   # does it print without support
-$C plate examples/print_plan.star --printer bambu_h2c -o /tmp/plates.3mf   # plate a model for printing: ALWAYS make print files this way
 $C inspect examples/impeller.star                   # per body: counts, solid verdict, kernel decisions
 $C op Drawing --doc examples/bracket.star --view three-view --format svg
 $C test examples/room_layout_opt.star               # `opt`: LP/MILP solved by HiGHS (native only)
@@ -224,12 +222,6 @@ When unsure, leave it out.
   never by tessellation order. `cadpole_core::naming` is the only place the
   grammar lives; `docs/design.md` (Topological naming) is its normative
   statement.
-- **Print files are plated, never hand-placed.** To make a 3MF for a
-  printer, use `print_plan(...)` in the script or `cadpole plate` / the
-  `Plate` operation (docs/starlark-api.md §6.5, docs/plating.md): it orients,
-  groups print-in-place sets, packs plates and explains itself. Do not
-  export the assembled model, and do not rotate and translate copies onto
-  a bed by hand; pin what the planner cannot know with `print_part(...)`.
 - **Errors from scripts are diagnostics with spans, never panics.**
 - **Authentication is a capability on the token, server side.** `cadpole serve`
   mints a browser token, a session token and a listener token per run, and

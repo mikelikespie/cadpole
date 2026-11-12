@@ -212,9 +212,11 @@ def ss(x):
 
 
 def jet(run):
-    """The turbojet, cut away throughout, assembled to apart in one direction under a slow orbit. Each frame
-    is its own render, fitted to the model, so the model is centred in every one; framing then sets its share
-    of the picture's width, eased from the first frame to the last, for a 16:9 set and a 4:3 one."""
+    """The turbojet, closed, then its casings opening as the cutaway wedge widens to 90 degrees under the
+    "Cut open" step, then assembled to apart in one direction, all under a slow orbit while the spool turns
+    a little. Each frame is its own render, fitted to the model, so the model is centred in every one;
+    framing then sets its share of the picture's width, eased from the first frame to the last, for a 16:9
+    set and a 4:3 one."""
     N = sets.JET["frames"]
     first = int(run.args[0]) if run.args else 0
     last = int(run.args[1]) if len(run.args) > 1 else N - 1
@@ -225,7 +227,9 @@ def jet(run):
         if os.path.exists(f) and os.path.exists(f + ".json"):
             continue
         t = i / (N - 1)
-        pose = [run.script(sets.JET["script"]), "--param", f"explode={18 * ss((t - .06) / .86):.4f}", "--param", "cutaway=true",
+        cut = 90 * ss((t - .27) / .15)
+        cutaway = ["--param", "cutaway=true", "--param", f"cutaway_angle={cut:.3f}"] if cut >= 0.5 else ["--param", "cutaway=false"]
+        pose = [run.script(sets.JET["script"]), "--param", f"explode={18 * ss((t - .06) / .86):.4f}", *cutaway, "--param", f"spool={60 * t:.3f}",
                 "--view", f"az={-32 + 14 * ss(t):.3f},el={16 + 3 * ss(t):.3f}", "--fov", "24", "--size", "2160x1440", "--threads", run.threads]
         if os.path.exists(f):
             # A master without its camera: the camera comes from the model and the view, not from the

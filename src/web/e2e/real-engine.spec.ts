@@ -13,25 +13,7 @@
 // so `cadpole_core::time::Stopwatch` reports zero there and the page measures
 // evaluation with `performance.now()`; these cases cover that path.
 
-import { expect, test, type Page } from "@playwright/test";
-
-/**
- * Drop the engine's measurement of the session document. A first local
- * evaluation that a loaded machine stretches past the promotion threshold
- * sends the next one to the dev server, whose `Evaluate` answers with a canned
- * body, not the script's: the case would then be checking the dev server
- * rather than the wasm engine. Each case here is about the wasm engine, so it
- * starts the document unmeasured.
- */
-async function forgetVerdicts(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    try {
-      localStorage.removeItem("cadpole.engineVerdicts.v1");
-    } catch {
-      /* storage disabled: nothing was measured */
-    }
-  });
-}
+import { expect, test } from "@playwright/test";
 
 test.describe("real wasm engine", () => {
   test("loads the wasm engine rather than falling back to the mock", async ({ page }) => {
@@ -141,7 +123,6 @@ test.describe("real wasm engine", () => {
     // -- has to evaluate it. `//src/web:examples_test` checks every example
     // through `cadpole eval`; this is the same claim made through the page.
     const before = await page.locator("html").getAttribute("data-evals");
-    await forgetVerdicts(page);
     await page.getByRole("tab", { name: "Examples" }).click();
     await page.getByRole("button", { name: "Load example Plate with boss" }).click();
     await expect.poll(() => page.locator("html").getAttribute("data-evals"), { timeout: 30_000 }).not.toBe(before);
@@ -167,7 +148,6 @@ test.describe("real wasm engine", () => {
     await expect(page.locator("html")).toHaveClass(/ready/);
     await expect(page.locator("html")).toHaveAttribute("data-evals", /[1-9]/);
     await expect(page.getByRole("group", { name: "View", exact: true })).toBeHidden();
-    await forgetVerdicts(page);
     await page.getByRole("tab", { name: "Examples" }).click();
     await page.getByRole("button", { name: "Load example Print plates" }).click();
     const platesBtn = page.getByRole("button", { name: "Plates", exact: true });

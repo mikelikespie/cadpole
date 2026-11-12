@@ -174,10 +174,6 @@ details.more[open] > summary::after { content: "\2212"; }
 .cmd code { font-size: 13.5px; line-height: 1.5; padding: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .cmd code::before { content: "$ "; color: var(--brand-2); }
 .cmd-note { font-size: 14.5px; color: var(--muted); margin: 10px 2px 0; }
-/* A repository path or address in running text and in a box to copy: the text's own colour, a quiet underline. */
-a.ref { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 38%, transparent); text-decoration-thickness: 1px; text-underline-offset: .2em; }
-a.ref:hover { text-decoration-color: currentColor; }
-a.ref:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 2px; border-radius: 3px; }
 footer { border-top: 1px solid var(--line); padding-top: 28px; padding-bottom: 28px; color: var(--muted); font-size: 14.5px; display: grid; gap: 10px; }
 footer a { display: inline-flex; align-items: center; min-height: 44px; }
 
@@ -620,9 +616,6 @@ input, select, textarea { font-size: 16px; }
 .group::before { content: ""; height: 1px; background: var(--line); margin-bottom: 20px; }
 .group > .lede, .group > .cmd-note { max-width: 720px; }
 .group > .cmd-note { margin: 0; }
-/* On a phone the tools section ends on the accordion's bottom rule, which reads as a divider: the
-   next eyebrow sits the usual section padding below it, not that padding twice. */
-@media (max-width: 999.9px) { #tools { padding-bottom: 0; } }
 .group + .block, .group + .scene { margin-top: 0; }
 .group + .block { padding-top: 28px; }
 /* after a section, its own bottom padding is the room above the rule: the part's eyebrow sits as far below the last words as any section's */
