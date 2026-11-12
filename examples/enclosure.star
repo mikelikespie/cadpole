@@ -871,6 +871,7 @@ def coupon_prints():
             r = print_check(piece, printer="bambu_h2c")
             assert_true(r.solid and r.components == 1, msg="the %s coupon's %s is not one solid" % (label, piece))
             assert_true(r.unsupported_area == 0.0, msg="the %s coupon's %s needs support: %s mm2" % (label, piece, r.unsupported_area))
+            assert_support_free(piece, printer="bambu_h2c")
         lo, hi = lp.bbox()
         assert_close(lo[2], 0.0, tol=1e-4)
         # Seated, the stretch of lid sits on the stretch of base and its hook
@@ -892,6 +893,10 @@ def printable():
     assert_true(rl.unsupported_area == 0.0, msg="the lid needs support: %s mm2" % rl.unsupported_area)
     assert_true(rb.min_wall >= 0.79 and rl.min_wall >= 0.79, msg="walls %s and %s" % (rb.min_wall, rl.min_wall))
     assert_true(rb.fits_bed and rl.fits_bed)
+    # The support rules too: no ledge, island or sagging hole, the clips'
+    # hooks and the lid's pillars included.
+    assert_support_free(base_print, printer="bambu_h2d", max_bridge=20)
+    assert_support_free(lid_print, printer="bambu_h2d", max_bridge=20)
 
 
 test("base and lid are each one solid", solids)
