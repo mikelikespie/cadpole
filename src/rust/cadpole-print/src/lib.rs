@@ -34,6 +34,7 @@ pub mod chord;
 pub mod mesh_checks;
 pub mod orient;
 pub mod overhang;
+pub mod plate;
 pub mod printers;
 pub mod support;
 pub mod thickness;
