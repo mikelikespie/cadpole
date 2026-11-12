@@ -1,0 +1,2 @@
+# Runs a rust_test binary as one shard of a sharded sh_test (see the script).
+exports_files(["libtest_sharded.sh"])

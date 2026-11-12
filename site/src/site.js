@@ -867,8 +867,10 @@ function setupPlay() {
     if (r.key !== current?.dataset.src) return;
     root.dataset.shown = r.drawn ? r.key : "";
     if (r.ok) {
-      // A slider moved or a line edited while the stage was lent: it is here again.
-      if (away) { away = false; takeStage(host, lent); }
+      // A slider moved or a line edited while the stage was lent: it is here again. A
+      // result for something asked before the stage was lent is not: under load it can
+      // arrive after a lightbox opened, and must not close it to take the stage back.
+      if (away && (askedAway || r.drawn)) { away = false; askedAway = false; takeStage(host, lent); }
       if (r.drawn) view.classList.add("is-live");
       view.classList.remove("is-switching");
       buildSliders(r.model);
@@ -877,14 +879,15 @@ function setupPlay() {
       memory();
     } else { view.classList.remove("is-switching"); say("err", r.error.split("\n")[0].slice(0, 220)); log(`evaluation failed: ${r.error}`); }
   }
-  function run(preview) { live?.run(editor.value, overrides, preview); }
+  function run(preview) { if (away) askedAway = true; live?.run(editor.value, overrides, preview); }
   // The page has one 3D stage. When a lightbox or a scene takes it, or the browser takes its
   // context, the picture comes back in place of the model; when the stage is free and this
   // section is on screen, the script is run again and the model is back, sliders as they were.
-  let away = false, seen = false;
+  let away = false, seen = false, askedAway = false;
   function lent() {
     if (!started || away) return;
     away = true;
+    askedAway = false;
     view.classList.remove("is-live", "is-taken");
     if (take) { take.setAttribute("aria-pressed", "false"); take.textContent = "Zoom and pan"; take.classList.remove("primary"); }
   }
@@ -954,7 +957,7 @@ function setupPlay() {
     if (root.classList.contains("code-open")) more?.click();
     root.classList.toggle("code-short", src.trimEnd().split("\n").length <= 12);
     if (!live) { setPoster(tab); return; }
-    if (away) { away = false; takeStage(host, lent); }
+    if (away) { away = false; askedAway = false; takeStage(host, lent); }
     view.classList.add("is-switching");
     live.show(tab.dataset.src, viewOf(tab.dataset.view));
     say("busy", "evaluating…");
@@ -1004,6 +1007,8 @@ function setupPlay() {
     start, select: (i) => tabs[i].click(), state: () => status.textContent, cam: () => m3?.cameraNow() ?? null, memory: () => m3?.engineMemory(),
     // The tab selected, and what the view draws: the tab its model was evaluated for, and its triangles.
     selected: () => current?.dataset.src ?? "", shown: () => m3?.shownIn(host) ?? null,
+    // Nothing asked of the engine is still waiting or running.
+    idle: () => live?.idle ?? true,
   };
 }
 

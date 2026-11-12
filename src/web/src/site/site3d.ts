@@ -720,6 +720,11 @@ export class Live {
     if (stage?.host === this.host) stage.blank();
   }
 
+  /** Nothing is queued or in the worker: every result asked for has been delivered. */
+  get idle(): boolean {
+    return !this.busy && !this.next;
+  }
+
   /** Latest wins: while one evaluation runs, only the newest request is kept. */
   run(source: string, overrides: Record<string, ParamValue>, preview = false): void {
     claimant = this.host;

@@ -569,7 +569,7 @@ mod tests {
 
     /// The library's own test document, `stdlib/gears_test.star`: the
     /// closed-form checks, the meshing checks and the sweeps, run exactly as
-    /// `every_example_test_passes` runs an example's.
+    /// `example_gate` runs an example's.
     #[test]
     fn every_stdlib_test_passes() {
         // `cadpole test stdlib/opt_test.star` solves with the CLI's HiGHS.

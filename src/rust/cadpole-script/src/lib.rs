@@ -3173,80 +3173,11 @@ assert_eq(u.kind, "brep")
         assert!(msg.is_empty(), "{msg}");
     }
 
-    /// Does the script declare a `kernel` parameter? Decided from the source
-    /// so the two tests below split the corpus without evaluating anything
-    /// twice, and confirmed against the declaration after evaluation.
+    /// Does the script declare a `kernel` parameter? Decided from the source,
+    /// so the solid gate knows which half of the corpus a script is in before
+    /// evaluating it, and confirmed against the declaration after evaluation.
     fn offers_a_kernel(src: &str) -> bool {
         src.contains("param(\"kernel\"")
-    }
-
-    /// Every body every example produces at the default tolerance is a
-    /// solid: closed, consistently oriented, no crossings, no doubled or
-    /// internal faces (`cadpole_core::solid`). This half is the scripts with no
-    /// `kernel` parameter; the other test takes the rest, on every kernel.
-    #[test]
-    fn every_example_body_is_a_solid() {
-        let (dir, files) = example_files();
-        let assets = example_assets(&dir);
-        let mut found = Vec::new();
-        let mut ran = Vec::new();
-        for p in &files {
-            let src = std::fs::read_to_string(p).unwrap();
-            if offers_a_kernel(&src) {
-                continue;
-            }
-            let file = p.file_name().unwrap().to_str().unwrap().to_owned();
-            let (ctx, bad) = validate_example(&example_scripts(&dir, p), &assets, &file, None, "default");
-            assert!(
-                !ctx.params.iter().any(|(d, _)| d.name == "kernel"),
-                "{file} declares a kernel parameter in a form offers_a_kernel does not recognise"
-            );
-            found.extend(bad);
-            ran.push((file, "default".to_owned()));
-        }
-        assert!(!ran.is_empty(), "no examples without a kernel parameter found in {dir}");
-        judge_solids(found, &ran);
-    }
-
-    /// Every exact body of every example tessellates closed *by vertex id*
-    /// — no weld — at the default tolerance and at 0.01, the export range,
-    /// which is what the edge-first tessellator promises. Judged on
-    /// `MeshedSolid::unmatched_edges`, the raw output of the tessellator,
-    /// not on the welded mesh the solid gates judge. Every body that can be
-    /// tessellated at all must be; a refusal is a failure here too.
-    #[test]
-    fn every_example_brep_body_tessellates_closed_by_id() {
-        let (dir, files) = example_files();
-        let assets = example_assets(&dir);
-        let mut bodies = 0;
-        let mut open = Vec::new();
-        for p in &files {
-            let file = p.file_name().unwrap().to_str().unwrap().to_owned();
-            let ctx = evaluate(EvalInput { scripts: example_scripts(&dir, p), assets: Some(assets.clone()), ..Default::default() });
-            let mut here = 0;
-            for b in ctx.bodies.iter().filter(|b| b.visible) {
-                let Ok(solid) = b.solid() else { continue };
-                for tol in [cadpole_core::kernel::DEFAULT_TOLERANCE, 0.01] {
-                    match cadpole_core::kernel::tessellate(solid, tol) {
-                        Ok(meshed) => {
-                            let (n, _) = meshed.unmatched_edges();
-                            if n > 0 {
-                                open.push(format!("{file} `{}` at {tol}: {n} unmatched edges by id", b.name));
-                            }
-                            if meshed.faces.len() != solid.face_iter().count() {
-                                open.push(format!("{file} `{}` at {tol}: {} of {} faces", b.name, meshed.faces.len(), solid.face_iter().count()));
-                            }
-                        }
-                        Err(e) => open.push(format!("{file} `{}` at {tol}: refused: {e}", b.name)),
-                    }
-                }
-                here += 1;
-            }
-            bodies += here;
-            eprintln!("{file}: {here} exact bod{} judged by id at 0.05 and 0.01", if here == 1 { "y" } else { "ies" });
-        }
-        assert!(bodies > 0, "no exact bodies in {dir}");
-        assert!(open.is_empty(), "{}", open.join("\n"));
     }
 
     /// The impeller's cap nut — a hex prism intersected with a chamfer
@@ -3269,132 +3200,6 @@ assert_eq(u.kind, "brep")
             let chord = t.chord.expect("a cone to measure against").max;
             assert!(chord <= 1.5 * tol, "at {tol}: chord error {chord}");
         }
-    }
-
-    /// Every example's exact bodies carry at least one recognised face, no
-    /// face truck holds as a plane is called anything else, and the two
-    /// faces whose class is known by construction — the impeller's shaft (an
-    /// extruded circle) and its cap nut's chamfer band (a loft between two
-    /// circles of different radius, cut to the hex) — come out as a cylinder
-    /// of the shaft's radius and a cone of the taper's half-angle.
-    /// The counts go to stderr so a run reads as a census of the corpus.
-    #[test]
-    fn every_example_has_recognised_faces_and_none_misclassified() {
-        use cadpole_core::SurfaceClass;
-        let (dir, files) = example_files();
-        let assets = example_assets(&dir);
-        let mut impeller_checked = (false, false);
-        for p in &files {
-            let file = p.file_name().unwrap().to_str().unwrap().to_owned();
-            let mut ctx = evaluate(EvalInput {
-                scripts: example_scripts(&dir, p),
-                assets: Some(assets.clone()),
-                ..Default::default()
-            });
-            let bodies: Vec<(cadpole_core::BodyId, String, bool)> =
-                ctx.bodies.iter().filter(|b| b.visible).map(|b| (b.id, b.name.clone(), b.kind() == "brep")).collect();
-            let mut counts: std::collections::BTreeMap<&'static str, usize> = std::collections::BTreeMap::new();
-            let mut exact = 0usize;
-            for (id, name, is_brep) in &bodies {
-                let Ok((_, topo)) = ctx.body_mesh(*id) else { continue };
-                for f in &topo.faces {
-                    // A mesh body's groups inherit the source's `surface_kind`
-                    // as provenance but carry no exact surface to classify.
-                    if *is_brep && f.surface_kind == "plane" {
-                        assert!(
-                            matches!(f.surface, SurfaceClass::Plane { .. }),
-                            "{file} {name} {}: truck's plane classified as {:?}",
-                            f.name,
-                            f.surface
-                        );
-                    }
-                    *counts.entry(f.surface_class()).or_default() += 1;
-                    exact += usize::from(*is_brep);
-                }
-                if file == "impeller.star" && name == "shaft" {
-                    let walls: Vec<&cadpole_core::tessellate::FaceInfo> =
-                        topo.faces.iter().filter(|f| f.surface_kind != "plane").collect();
-                    assert!(!walls.is_empty());
-                    for f in walls {
-                        match &f.surface {
-                            SurfaceClass::Cylinder { axis, radius, axis_point } => {
-                                // bore / 2 - 0.05 with the script's default bore of 12.
-                                assert!((radius - 5.95).abs() < 1e-6, "{}: radius {radius}", f.name);
-                                assert!(axis.cross(cadpole_core::Vec3::Z).length() < 1e-9, "{}: axis {axis:?}", f.name);
-                                assert!(axis_point.x.abs() < 1e-6 && axis_point.y.abs() < 1e-6, "{}: {axis_point:?}", f.name);
-                            }
-                            other => panic!("{}: the shaft's wall is a cylinder, got {other:?}", f.name),
-                        }
-                    }
-                    impeller_checked.0 = true;
-                }
-                if file == "impeller.star" && name == "nut" {
-                    let cones: Vec<&SurfaceClass> =
-                        topo.faces.iter().map(|f| &f.surface).filter(|s| matches!(s, SurfaceClass::Cone { .. })).collect();
-                    assert!(!cones.is_empty(), "the nut's chamfer band survives the intersection");
-                    // r_c + 0.5 at z = nose_h + 5.5 down to across_flats / 2 - 0.3 at
-                    // z = nose_h + 8.1, with across_flats = 2 hub_r - 3 and hub_r = 11.
-                    let across_flats = 2.0 * 11.0 - 3.0;
-                    let r_c = across_flats / 2.0 / fmath::cos(30f64.to_radians());
-                    let want = fmath::atan2((r_c + 0.5) - (across_flats / 2.0 - 0.3), 2.6);
-                    for c in cones {
-                        let SurfaceClass::Cone { half_angle, axis, .. } = c else { unreachable!() };
-                        assert!((half_angle - want).abs() < 1e-6, "half angle {half_angle}, expected {want}");
-                        assert!(axis.cross(cadpole_core::Vec3::Z).length() < 1e-9, "axis {axis:?}");
-                    }
-                    impeller_checked.1 = true;
-                }
-            }
-            let recognised: usize = counts.iter().filter(|(k, _)| **k != "other").map(|(_, n)| n).sum();
-            eprintln!("{file}: {} bod{}, faces by surface {counts:?}", bodies.len(), if bodies.len() == 1 { "y" } else { "ies" });
-            if exact > 0 {
-                assert!(recognised > 0, "{file}: {exact} exact faces and not one recognised");
-            }
-        }
-        assert_eq!(impeller_checked, (true, true), "the impeller's shaft and nut were not both inspected");
-    }
-
-    /// The scripts with a `kernel` parameter (`choices=["auto", "brep",
-    /// "mesh"]`), on the default and on every other choice, so the exact
-    /// and the mesh kernel are both held to the same standard on the same
-    /// models.
-    #[test]
-    fn every_kernel_choice_an_example_offers_returns_solids() {
-        let (dir, files) = example_files();
-        let assets = example_assets(&dir);
-        let mut found = Vec::new();
-        let mut ran = Vec::new();
-        for p in &files {
-            let src = std::fs::read_to_string(p).unwrap();
-            if !offers_a_kernel(&src) {
-                continue;
-            }
-            let file = p.file_name().unwrap().to_str().unwrap().to_owned();
-            // The default run first: it is where the declaration, and so the
-            // list of choices, comes from.
-            let (ctx, bad) = validate_example(&example_scripts(&dir, p), &assets, &file, None, "default");
-            let (decl, value) = ctx
-                .params
-                .iter()
-                .find(|(d, _)| d.name == "kernel")
-                .unwrap_or_else(|| panic!("{file} mentions a kernel parameter but declares none"));
-            let default = match value {
-                ParamValue::Text(s) => s.clone(),
-                other => panic!("{file}: the kernel parameter is not text: {other:?}"),
-            };
-            found.extend(bad.into_iter().map(|(f, _, b, c, s)| (f, default.clone(), b, c, s)));
-            ran.push((file.clone(), default.clone()));
-            for choice in decl.choices.clone() {
-                if choice == default {
-                    continue;
-                }
-                let (_, bad) = validate_example(&example_scripts(&dir, p), &assets, &file, Some(&choice), &choice);
-                found.extend(bad);
-                ran.push((file.clone(), choice));
-            }
-        }
-        assert!(!ran.is_empty(), "no examples with a kernel parameter found in {dir}");
-        judge_solids(found, &ran);
     }
 
     /// `assert_solid` is `assert_true(print_check(b).solid)` without the
@@ -3465,40 +3270,6 @@ assert_eq(u.kind, "brep")
              assert_solid(u)\n",
         );
         assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
-    }
-
-    #[test]
-    fn examples_evaluate_cleanly() {
-        cadpole_opt::install();
-        let dir = std::env::var("CADPOLE_EXAMPLES").unwrap_or_else(|_| "examples".into());
-        // Examples that import files resolve them out of `examples/assets`,
-        // exactly as `cadpole eval examples/x.star` does.
-        let (assets, warnings) = cadpole_assets::load_dir(std::path::Path::new(&dir).join("assets").as_path());
-        assert!(warnings.is_empty(), "{warnings:?}");
-        let assets: Arc<dyn AssetStore> = Arc::new(assets);
-        let mut count = 0;
-        if let Ok(rd) = std::fs::read_dir(&dir) {
-            for entry in rd.flatten() {
-                let p = entry.path();
-                if p.extension().and_then(|e| e.to_str()) != Some("star") {
-                    continue;
-                }
-                // `*_future.star` examples are written against planned API and
-                // are documented as not runnable yet.
-                if p.file_name().and_then(|n| n.to_str()).map(|n| n.ends_with("_future.star")).unwrap_or(false) {
-                    continue;
-                }
-                let ctx = evaluate(EvalInput {
-                    scripts: example_scripts(&dir, &p),
-                    assets: Some(assets.clone()),
-                    ..Default::default()
-                });
-                assert!(errors(&ctx).is_empty(), "{}: {:?}", p.display(), errors(&ctx));
-                assert!(ctx.bodies.iter().any(|b| b.visible), "{} produced no bodies", p.display());
-                count += 1;
-            }
-        }
-        assert!(count > 0, "no examples found in {dir}");
     }
 
     /// Run a script against an in-memory asset table, the way every front end
@@ -5669,52 +5440,377 @@ assert_printable(b, printer=\"bambu_a1\", min_wall=1.0)
         assert!(run.ok(), "vacuously; the caller reads the diagnostics");
     }
 
-    /// The examples' own tests are CI: every `test(...)` an example declares
-    /// passes, sweeps included, the way `cadpole test examples/x.star` would run
-    /// them. At least three examples declare some, so the gate
-    /// cannot pass by running nothing.
-    #[test]
-    fn every_example_test_passes() {
+    /// Whether an example declares tests, decided from the source.
+    fn declares_tests(p: &std::path::Path) -> bool {
+        std::fs::read_to_string(p).unwrap().contains("\ntest(")
+    }
+
+    /// The examples gate, for the example `name`, on one evaluation:
+    ///
+    /// - it evaluates cleanly, exactly as `cadpole eval examples/<name>.star`
+    ///   does, and makes a visible body;
+    /// - every body it makes at the default tolerance is a solid: closed,
+    ///   consistently oriented, no crossings, no doubled or internal faces
+    ///   (`cadpole_core::solid`). A script with a `kernel` parameter
+    ///   (`choices=["auto", "brep", "mesh"]`) is checked on the default and on
+    ///   every other choice, so the exact and the mesh kernel are held to the
+    ///   same standard on the same models;
+    /// - its exact bodies tessellate closed by id (`closed_by_id`) and carry
+    ///   recognised faces (`faces_are_recognised`).
+    ///
+    /// Its own `test(...)` declarations are `example_tests_pass`.
+    fn example_gate(name: &str) {
         let (dir, files) = example_files();
         let assets = example_assets(&dir);
-        let mut with_tests = 0;
-        let mut failures = Vec::new();
-        for p in &files {
-            let file = p.file_name().unwrap().to_str().unwrap().to_owned();
-            // Decided from the source, so the examples without tests are
-            // not evaluated a third time here (the two solid gates and
-            // `examples_evaluate_cleanly` already do); the run below still
-            // reports what the script really declared.
-            if !std::fs::read_to_string(p).unwrap().contains("\ntest(") {
-                continue;
+        let p = files
+            .iter()
+            .find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(name))
+            .unwrap_or_else(|| panic!("no example {name}.star"));
+        let file = format!("{name}.star");
+        let src = std::fs::read_to_string(p).unwrap();
+        let scripts = example_scripts(&dir, p);
+        // The default run first: for a script with a kernel parameter it is
+        // where the declaration, and so the list of choices, comes from.
+        let (mut ctx, bad) = validate_example(&scripts, &assets, &file, None, "default");
+        assert!(errors(&ctx).is_empty(), "{file}: {:?}", errors(&ctx));
+        assert!(ctx.bodies.iter().any(|b| b.visible), "{file} produced no bodies");
+        let mut found = Vec::new();
+        let mut ran = Vec::new();
+        let kernel = ctx.params.iter().find(|(d, _)| d.name == "kernel").cloned();
+        if offers_a_kernel(&src) {
+            let (decl, value) = kernel.unwrap_or_else(|| panic!("{file} mentions a kernel parameter but declares none"));
+            let default = match value {
+                ParamValue::Text(s) => s,
+                other => panic!("{file}: the kernel parameter is not text: {other:?}"),
+            };
+            found.extend(bad.into_iter().map(|(f, _, b, c, s)| (f, default.clone(), b, c, s)));
+            ran.push((file.clone(), default.clone()));
+            for choice in decl.choices.clone() {
+                if choice == default {
+                    continue;
+                }
+                let (_, bad) = validate_example(&scripts, &assets, &file, Some(&choice), &choice);
+                found.extend(bad);
+                ran.push((file.clone(), choice));
             }
-            let run = run_tests(
-                EvalInput { scripts: example_scripts(&dir, p), assets: Some(assets.clone()), ..Default::default() },
-                &[],
-                0,
-            );
-            let errs = errors(&run.base.ctx);
-            assert!(errs.is_empty(), "{file}: {errs:?}");
-            assert!(!run.base.tests.is_empty(), "{file} mentions test( but declares no test");
-            with_tests += 1;
-            eprintln!(
-                "{file}: {} test{}, {} result{}, {} failed",
-                run.base.tests.len(),
-                if run.base.tests.len() == 1 { "" } else { "s" },
-                run.outcomes.len(),
-                if run.outcomes.len() == 1 { "" } else { "s" },
-                run.outcomes.iter().filter(|o| !o.ok).count()
-            );
-            for o in run.outcomes.iter().filter(|o| !o.ok) {
+        } else {
+            assert!(kernel.is_none(), "{file} declares a kernel parameter in a form offers_a_kernel does not recognise");
+            found.extend(bad);
+            ran.push((file.clone(), "default".to_owned()));
+        }
+        judge_solids(found, &ran);
+
+        let open = closed_by_id(&file, &ctx);
+        assert!(open.is_empty(), "{}", open.join("\n"));
+        let impeller_checked = faces_are_recognised(&file, &mut ctx);
+        if name == "impeller" {
+            assert_eq!(impeller_checked, (true, true), "the impeller's shaft and nut were not both inspected");
+        }
+    }
+
+    /// Every exact body of one evaluated example tessellates closed *by
+    /// vertex id* — no weld — at the default tolerance and at 0.01, the
+    /// export range, which is what the edge-first tessellator promises.
+    /// Judged on `MeshedSolid::unmatched_edges`, the raw output of the
+    /// tessellator, not on the welded mesh the solid gate judges. Every body
+    /// that can be tessellated at all must be; a refusal is a failure too.
+    fn closed_by_id(file: &str, ctx: &Context) -> Vec<String> {
+        let mut open = Vec::new();
+        let mut here = 0;
+        for b in ctx.bodies.iter().filter(|b| b.visible) {
+            let Ok(solid) = b.solid() else { continue };
+            for tol in [cadpole_core::kernel::DEFAULT_TOLERANCE, 0.01] {
+                match cadpole_core::kernel::tessellate(solid, tol) {
+                    Ok(meshed) => {
+                        let (n, _) = meshed.unmatched_edges();
+                        if n > 0 {
+                            open.push(format!("{file} `{}` at {tol}: {n} unmatched edges by id", b.name));
+                        }
+                        if meshed.faces.len() != solid.face_iter().count() {
+                            open.push(format!("{file} `{}` at {tol}: {} of {} faces", b.name, meshed.faces.len(), solid.face_iter().count()));
+                        }
+                    }
+                    Err(e) => open.push(format!("{file} `{}` at {tol}: refused: {e}", b.name)),
+                }
+            }
+            here += 1;
+        }
+        eprintln!("{file}: {here} exact bod{} judged by id at 0.05 and 0.01", if here == 1 { "y" } else { "ies" });
+        open
+    }
+
+    /// An example's tests are run in this many slices, each its own test, so
+    /// one example with many sweep points is not one long test.
+    const TEST_SLICES: usize = 4;
+
+    /// The tests an example declares, as its source reads: one entry per
+    /// top-level `test(`, its first argument when that is a string literal.
+    /// A name the script computes (`"... %s ..." % x`) reads as the literal,
+    /// which `example_tests_pass` notices and corrects.
+    fn declared_test_names(src: &str) -> Vec<String> {
+        src.match_indices("\ntest(")
+            .map(|(i, m)| {
+                let rest = src[i + m.len()..].trim_start();
+                rest.strip_prefix('"').and_then(|r| r.find('"').map(|end| r[..end].to_owned())).unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// The examples' own tests are CI: every `test(...)` the example `name`
+    /// declares passes, sweeps included, the way `cadpole test
+    /// examples/<name>.star` runs them. This is slice `slice` of them: every
+    /// `TEST_SLICES`-th test in declaration order.
+    fn example_tests_pass(name: &str, slice: usize) {
+        let (dir, files) = example_files();
+        let p = files
+            .iter()
+            .find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(name))
+            .unwrap_or_else(|| panic!("no example {name}.star"));
+        let file = format!("{name}.star");
+        let read = declared_test_names(&std::fs::read_to_string(p).unwrap());
+        let mut mine: Vec<String> = read.iter().skip(slice).step_by(TEST_SLICES).cloned().collect();
+        if mine.is_empty() {
+            return;
+        }
+        let input = EvalInput { scripts: example_scripts(&dir, p), assets: Some(example_assets(&dir)), ..Default::default() };
+        let mut run = run_tests(input.clone(), &mine, 0);
+        let errs = errors(&run.base.ctx);
+        assert!(errs.is_empty(), "{file}: {errs:?}");
+        // The declarations are what counts; the source only saves an
+        // evaluation when its names are the declared ones.
+        let declared: Vec<String> = run.base.tests.iter().map(|t| t.name.clone()).collect();
+        assert_eq!(
+            declared.len(),
+            read.len(),
+            "{file}: {} tests declared but {} top-level test( calls, so slicing by the source would skip some",
+            declared.len(),
+            read.len()
+        );
+        let wanted: Vec<String> = declared.iter().skip(slice).step_by(TEST_SLICES).cloned().collect();
+        if wanted != mine {
+            mine = wanted;
+            run = run_tests(input, &mine, 0);
+        }
+        eprintln!(
+            "{file} slice {slice}: {} of {} tests, {} result{}, {} failed",
+            mine.len(),
+            declared.len(),
+            run.outcomes.len(),
+            if run.outcomes.len() == 1 { "" } else { "s" },
+            run.outcomes.iter().filter(|o| !o.ok).count()
+        );
+        let failures: Vec<String> = run
+            .outcomes
+            .iter()
+            .filter(|o| !o.ok)
+            .map(|o| {
                 let at = if o.point.is_empty() { String::new() } else { format!(" at {}", point_label(&o.point)) };
-                failures.push(format!("- {file}: {:?}{at}: {}", o.name, o.message));
+                format!("- {file}: {:?}{at}: {}", o.name, o.message)
+            })
+            .collect();
+        assert!(failures.is_empty(), "example tests failed:\n{}", failures.join("\n"));
+    }
+
+    /// The face census of one evaluated example: its exact bodies carry at
+    /// least one recognised face, no face truck holds as a plane is called
+    /// anything else, and the two faces whose class is known by construction
+    /// — the impeller's shaft (an extruded circle) and its cap nut's chamfer
+    /// band (a loft between two circles of different radius, cut to the hex)
+    /// — come out as a cylinder of the shaft's radius and a cone of the
+    /// taper's half-angle. Returns whether the shaft and the nut were seen.
+    /// The counts go to stderr so a run reads as a census of the corpus.
+    fn faces_are_recognised(file: &str, ctx: &mut Context) -> (bool, bool) {
+        use cadpole_core::SurfaceClass;
+        let file = file.to_owned();
+        let mut impeller_checked = (false, false);
+        let bodies: Vec<(cadpole_core::BodyId, String, bool)> =
+            ctx.bodies.iter().filter(|b| b.visible).map(|b| (b.id, b.name.clone(), b.kind() == "brep")).collect();
+        let mut counts: std::collections::BTreeMap<&'static str, usize> = std::collections::BTreeMap::new();
+        let mut exact = 0usize;
+        for (id, name, is_brep) in &bodies {
+            let Ok((_, topo)) = ctx.body_mesh(*id) else { continue };
+            for f in &topo.faces {
+                // A mesh body's groups inherit the source's `surface_kind`
+                // as provenance but carry no exact surface to classify.
+                if *is_brep && f.surface_kind == "plane" {
+                    assert!(
+                        matches!(f.surface, SurfaceClass::Plane { .. }),
+                        "{file} {name} {}: truck's plane classified as {:?}",
+                        f.name,
+                        f.surface
+                    );
+                }
+                *counts.entry(f.surface_class()).or_default() += 1;
+                exact += usize::from(*is_brep);
+            }
+            if file == "impeller.star" && name == "shaft" {
+                let walls: Vec<&cadpole_core::tessellate::FaceInfo> =
+                    topo.faces.iter().filter(|f| f.surface_kind != "plane").collect();
+                assert!(!walls.is_empty());
+                for f in walls {
+                    match &f.surface {
+                        SurfaceClass::Cylinder { axis, radius, axis_point } => {
+                            // bore / 2 - 0.05 with the script's default bore of 12.
+                            assert!((radius - 5.95).abs() < 1e-6, "{}: radius {radius}", f.name);
+                            assert!(axis.cross(cadpole_core::Vec3::Z).length() < 1e-9, "{}: axis {axis:?}", f.name);
+                            assert!(axis_point.x.abs() < 1e-6 && axis_point.y.abs() < 1e-6, "{}: {axis_point:?}", f.name);
+                        }
+                        other => panic!("{}: the shaft's wall is a cylinder, got {other:?}", f.name),
+                    }
+                }
+                impeller_checked.0 = true;
+            }
+            if file == "impeller.star" && name == "nut" {
+                let cones: Vec<&SurfaceClass> =
+                    topo.faces.iter().map(|f| &f.surface).filter(|s| matches!(s, SurfaceClass::Cone { .. })).collect();
+                assert!(!cones.is_empty(), "the nut's chamfer band survives the intersection");
+                // r_c + 0.5 at z = nose_h + 5.5 down to across_flats / 2 - 0.3 at
+                // z = nose_h + 8.1, with across_flats = 2 hub_r - 3 and hub_r = 11.
+                let across_flats = 2.0 * 11.0 - 3.0;
+                let r_c = across_flats / 2.0 / fmath::cos(30f64.to_radians());
+                let want = fmath::atan2((r_c + 0.5) - (across_flats / 2.0 - 0.3), 2.6);
+                for c in cones {
+                    let SurfaceClass::Cone { half_angle, axis, .. } = c else { unreachable!() };
+                    assert!((half_angle - want).abs() < 1e-6, "half angle {half_angle}, expected {want}");
+                    assert!(axis.cross(cadpole_core::Vec3::Z).length() < 1e-9, "axis {axis:?}");
+                }
+                impeller_checked.1 = true;
             }
         }
-        assert!(with_tests >= 3, "only {with_tests} examples declare tests; the gate would be vacuous");
-        if !failures.is_empty() {
-            eprintln!("example tests failed:\n{}", failures.join("\n"));
+        let recognised: usize = counts.iter().filter(|(k, _)| **k != "other").map(|(_, n)| n).sum();
+        eprintln!("{file}: {} bod{}, faces by surface {counts:?}", bodies.len(), if bodies.len() == 1 { "y" } else { "ies" });
+        if exact > 0 {
+            assert!(recognised > 0, "{file}: {exact} exact faces and not one recognised");
         }
-        assert!(failures.is_empty(), "example tests failed:\n{}", failures.join("\n"));
+        impeller_checked
+    }
+
+    /// Tests per example (`examples::<name>::gate` and `::tests_<k>`), so
+    /// the examples gate runs in parallel and spreads over the target's
+    /// shards; `the_example_gates_cover_every_example` keeps the list equal to
+    /// the examples directory.
+    // The macro writes one `tests_<k>` per slice.
+    const _: () = assert!(TEST_SLICES == 4);
+    macro_rules! example_gates {
+        ($($name:ident),* $(,)?) => {
+            const EXAMPLES: &[&str] = &[$(stringify!($name)),*];
+            mod examples {
+                $(
+                    mod $name {
+                        use super::super::{example_gate, example_tests_pass};
+                        #[test]
+                        fn gate() {
+                            example_gate(stringify!($name));
+                        }
+                        #[test]
+                        fn tests_0() {
+                            example_tests_pass(stringify!($name), 0);
+                        }
+                        #[test]
+                        fn tests_1() {
+                            example_tests_pass(stringify!($name), 1);
+                        }
+                        #[test]
+                        fn tests_2() {
+                            example_tests_pass(stringify!($name), 2);
+                        }
+                        #[test]
+                        fn tests_3() {
+                            example_tests_pass(stringify!($name), 3);
+                        }
+                    }
+                )*
+            }
+        };
+    }
+
+    example_gates!(
+        bearing_608,
+        bracket,
+        cabin_parts,
+        cabin_plan,
+        cabin_site,
+        charging_stand,
+        chess_rook,
+        color_plan,
+        compressor_wheel,
+        constrained_bracket,
+        constrained_lprofile,
+        desk_mascot,
+        dice,
+        drawing_sheet,
+        effusion_liner,
+        embossed_mug,
+        enclosure,
+        filleted_bracket,
+        gear_toy,
+        gears,
+        gridfinity_baselid,
+        gridfinity_baseplate,
+        gridfinity_bin,
+        gridfinity_showcase,
+        hex_coaster,
+        hillside_lot,
+        house_set,
+        impeller,
+        import_demo,
+        iris,
+        knurled_knob,
+        lamp_shade,
+        layers_demo,
+        lithophane_lamp,
+        material_bar,
+        materials,
+        nightstand,
+        nightstand_scene,
+        part,
+        peg_board,
+        pillow_block,
+        plan_parti_compare,
+        plan_parti_fits,
+        plan_toy_house,
+        planetary,
+        planter,
+        print_plan,
+        print_ready,
+        radial_engine,
+        room_layout_opt,
+        scan_underlay,
+        shadow_study,
+        showcase,
+        site_survey,
+        soap_dish,
+        split_for_bed,
+        spring_and_bolt,
+        storey_kit,
+        story_kit,
+        svg_badge,
+        table_lamp,
+        text_label,
+        thumbscrew,
+        turbojet,
+        vase,
+        vendor_bearing,
+        wing,
+    );
+
+    /// Every example has its gate above and nothing else does; and the gate
+    /// cannot pass by running nothing: both halves of the solid gate (with
+    /// and without a kernel parameter) and the examples' own tests have
+    /// examples to run.
+    #[test]
+    fn the_example_gates_cover_every_example() {
+        let (dir, files) = example_files();
+        let mut on_disk: Vec<String> = files.iter().map(|p| p.file_stem().unwrap().to_str().unwrap().to_owned()).collect();
+        on_disk.sort();
+        let mut listed: Vec<String> = EXAMPLES.iter().map(|s| (*s).to_owned()).collect();
+        listed.sort();
+        assert_eq!(on_disk, listed, "example_gates! must name exactly the examples in {dir}");
+        let sources: Vec<String> = files.iter().map(|p| std::fs::read_to_string(p).unwrap()).collect();
+        assert!(sources.iter().any(|s| offers_a_kernel(s)), "no examples with a kernel parameter found in {dir}");
+        assert!(sources.iter().any(|s| !offers_a_kernel(s)), "no examples without a kernel parameter found in {dir}");
+        let with_tests = files.iter().filter(|p| declares_tests(p)).count();
+        assert!(with_tests >= 3, "only {with_tests} examples declare tests; the gate would be vacuous");
     }
 
     // ---- clearance and the multi-body print checks ----------------

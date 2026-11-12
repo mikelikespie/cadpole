@@ -34,11 +34,15 @@ SWEEP="${SWEEP:-//... -//src/apple/CadpoleiOS:CadpoleiOS -//src/apple/CadpoleMac
 #       needs the iOS Simulator on the Mac worker (--config=apple-remote).
 #   //src/apple/CadpoleLocalEngine:LocalEngineTests
 #       macOS-only (target_compatible_with), the FFI round trip.
+#   //src/rust/cadpole-script:cadpole_script_test_bin
+#       the crate's test binary; //src/rust/cadpole-script:cadpole_script_test
+#       runs it in shards.
 #   //src/web:ts_transitive_typecheck_test
 #       typechecks every transitive .d.ts; minutes, and //src/web:ts_typecheck_test
 #       covers our own sources on every run.
 EXPECTED="//src/apple/CadpoleKitTests:SimulatorTests
 //src/apple/CadpoleLocalEngine:LocalEngineTests
+//src/rust/cadpole-script:cadpole_script_test_bin
 //src/web:ts_transitive_typecheck_test"
 
 # The sweep's patterns as a query expression: `-x` is `except x`.

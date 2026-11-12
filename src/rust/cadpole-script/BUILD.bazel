@@ -1,4 +1,5 @@
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -83,10 +84,9 @@ rust_library(
     ],
 )
 
+# The crate's tests, run by :cadpole_script_test in shards rather than here.
 rust_test(
-    name = "cadpole_script_test",
-    # Evaluates every example three times over in the debug configuration.
-    timeout = "eternal",  # the examples gate: ~40 documents, ~10 min in a debug build under load
+    name = "cadpole_script_test_bin",
     crate = ":cadpole_script",
     data = [
         "//docs:starlark-api.md",  # its code blocks that say they run are run
@@ -98,11 +98,31 @@ rust_test(
         "CADPOLE_EXAMPLES": "examples",
         "CADPOLE_STDLIB": "stdlib",
     },
+    tags = ["manual"],
     # The tests install the CLI's solver so the examples and the
     # stdlib test documents solve the way `cadpole eval` and `cadpole test` do. The
     # library itself never depends on it: the wasm engine and the FFI compile
     # this crate, and HiGHS is native only.
     deps = ["//src/rust/cadpole-opt:cadpole_opt"],
+)
+
+# The examples gate evaluates every example in the debug configuration, and
+# runs each one's own tests with their sweeps. Each example is a gate test of
+# its own and its tests a few more (`examples::<name>::gate`, `::tests_<k>`),
+# so the suite spreads over the shards and over the threads within each. A
+# shard takes about ten minutes on a loaded machine; the slowest example's
+# tests alone take most of that, and the timeout is per shard.
+sh_test(
+    name = "cadpole_script_test",
+    timeout = "eternal",
+    srcs = ["//build_support/rust:libtest_sharded.sh"],
+    args = ["$(rootpath :cadpole_script_test_bin)"],
+    data = [":cadpole_script_test_bin"],
+    env = {
+        "CADPOLE_EXAMPLES": "examples",
+        "CADPOLE_STDLIB": "stdlib",
+    },
+    shard_count = 8,
 )
 
 # The crate's sources as files, for //src/rust/cadpole-wasm:transcendental_lint_test:

@@ -45,7 +45,7 @@ test("lightbox, scene, playground and a viewer page", async ({ browser, site }) 
   await p.waitForTimeout(600);
   await p.evaluate(() => document.querySelector<HTMLElement>("[data-open3d]")!.click());
   await p.waitForSelector(".vis.is-live .live canvas", { timeout: 60_000 });
-  expect((await link(".scene")).href).toMatch(/^view\/turbojet_cut\/\?eye=/);
+  expect((await link(".scene")).href).toMatch(/^view\/turbojet\/\?eye=/);
   await p.evaluate(() => document.querySelector<HTMLElement>(".scene [data-close3d]")!.click());
 
   // The playground: the real engine, compiled and run in the page.
@@ -122,11 +122,14 @@ test("the playground and the lightbox draw the model, through a resize and throu
   const slider = p.locator("#play .sliders input").first();
   await slider.evaluate((el: HTMLInputElement) => { el.value = el.max; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); });
   const moved = await p.locator("#play .sliders output").first().textContent();
-  await expect.poll(() => drawn(p, ".play-view")).toBeGreaterThan(0.03);
 
-  // The lightbox takes the stage, draws its own model, through a resize too.
+  // The lightbox takes the stage, draws its own model, through a resize too. It opens
+  // while the slider's evaluation may still be running: that result, asked for before
+  // the stage was lent, arrives with the lightbox open and must leave it be.
   await p.evaluate(() => { const el = document.querySelector<HTMLElement>("button[data-pic][data-sheet3d]")!; el.scrollIntoView({ block: "center", behavior: "instant" }); el.click(); });
   await p.waitForSelector(".sheet-view.is-live .live canvas", { timeout: 60_000 });
+  await expect.poll(() => p.evaluate(() => (window as unknown as { __play: { idle(): boolean } }).__play.idle()), { timeout: 60_000, message: "the playground's evaluations delivered" }).toBe(true);
+  expect(await p.evaluate(() => document.querySelector<HTMLDialogElement>("dialog.sheet")!.open), "the lightbox stays open").toBe(true);
   expect(await drawn(p, ".sheet-view"), "in the lightbox").toBeGreaterThan(0.03);
   await p.setViewportSize({ width: 1100, height: 760 });
   expect(await drawn(p, ".sheet-view"), "in the lightbox, resized").toBeGreaterThan(0.03);

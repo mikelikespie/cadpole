@@ -1406,7 +1406,7 @@ real server with no model. Nothing runs while no event arrives.
 | Layer | What | Where |
 | --- | --- | --- |
 | unit | geometry, sketches, kernels, naming, context, renderers, each front end | a `rust_test` per crate: `bazel test //src/rust/...` |
-| script tests | `test(name, fn, *, sweep=, monotone=)` declarations in `.star` files, run after the model is built, with `assert_solid`, `assert_volume`, `assert_bbox`, `assert_printable`, `assert_close` | `cadpole test`; `every_example_test_passes` in `cadpole-script` runs every test the examples declare |
+| script tests | `test(name, fn, *, sweep=, monotone=)` declarations in `.star` files, run after the model is built, with `assert_solid`, `assert_volume`, `assert_bbox`, `assert_printable`, `assert_close` | `cadpole test`; `cadpole-script`'s `examples::<name>` run every test the examples declare, one test per example |
 | render physics | furnace, energy conservation, refraction, absorption, BVH against brute force, thread-count determinism | in `cadpole-core` (see [The CPU path tracer](#the-cpu-path-tracer)) |
 | registry | the front ends expose exactly the registry; a golden JSON Schema | `cadpole-cli` and `cadpole-ops` tests |
 | protocol | Quint models of the session protocol, the event log, revisions, the browser's job seam, the reload loop, the FFI deadlines and the capability boundary. `//spec:names_test` diffs the models' operation lists and spellings against the Rust and the proto | `//spec:quint_test`, `//spec:names_test`; `bazel run //spec:quint_check` is the same check with more samples |
