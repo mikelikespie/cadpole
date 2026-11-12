@@ -14,6 +14,7 @@ load(
     "bevel",
     "centre_distance",
     "helical",
+    "fluted_outline",
     "herringbone",
     "internal",
     "involute_profile",
@@ -504,6 +505,35 @@ def internal_gear():
 
 
 test("an internal gear: spaces are external teeth, addendum and dedendum swap, space 0 on +x", internal_gear)
+
+
+def fluted_ring():
+    # The outline: lands on the circle, grooves `depth` deep, a vertex at
+    # each groove's ends shared with the land, counter-clockwise.
+    r, n, depth = 50.0, 24, 0.8
+    pts = fluted_outline(r, n, depth, radius=1.6, tolerance=0.005)
+    radii = [p[0] for p in pts]
+    assert_close(max(radii), r, tol=1e-9)
+    assert_close(min(radii), r - depth, tol=1e-9, msg="each groove bottoms out `depth` in")
+    lands = [p for p in pts if abs(p[0] - r) < 1e-9]
+    assert_true(len(lands) >= 2 * n, msg="every groove starts and ends on the circle")
+    turns = [(pts[i + 1][1] - pts[i][1]) % 360.0 for i in range(len(pts) - 1)]
+    assert_true(all([t > 0 and t < 10 for t in turns]), msg="the outline runs counter-clockwise without doubling back")
+    # A herringbone ring with the grip in its section: exact, one solid, the
+    # housing faces the outline's segments in both halves, and no loft warns
+    # that it is twisted (the twist is the helix).
+    lay = layout(M, 36, internal=True, helix_angle=30)
+    g = internal(M, 36, 12, 4, helix_angle=30, herringbone=True, flutes=n, flute_depth=depth, flute_radius=1.6, name="ring_grip")
+    assert_solid(g)
+    assert_eq(g.kind, "brep")
+    housing = fluted_outline(lay["r_root"] + 4, n, depth, radius=1.6, tolerance=0.005)
+    assert_eq(len(g.faces(name="*side[1.*")), 2 * len(housing))
+    lo, hi = g.bbox()
+    assert_close(hi[2] - lo[2], 12, tol=1e-6)
+    return len(housing)
+
+
+test("a ring's grip is part of its section: grooves on the housing loop, chevrons on a herringbone, one exact solid", fluted_ring)
 
 
 def bevel_gear():

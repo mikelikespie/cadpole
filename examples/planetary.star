@@ -1,7 +1,8 @@
 # A print-in-place herringbone planetary: a sun, three planets, a ring and
 # the carrier that captures the planets on pins, exported as ONE 3MF of six
 # bodies that never touch. Printed as it stands here it comes off the bed
-# already assembled, and it turns.
+# already assembled, and it turns: grip the ring by its chevron flutes, drive
+# the sun by its hex, and the carrier, marked with its reduction, is the output.
 #
 # Why herringbone: two helical halves of opposite hand make every tooth a V,
 # so the sun cannot slide out of the planets and the planets cannot leave the
@@ -67,7 +68,7 @@
 #     the sun turns, each planet spins back by z_s/z_p about its own pin and
 #     the ring turns by z_s/z_r, the carrier held -- so a sweep of that one
 #     parameter through a tooth pitch re-measures every running gap at each
-#     angle. `explode=` is a view offset on the assembly, never geometry:
+#     angle. `explode=` is a view offset on the instances, never geometry:
 #     every test measures the assembled position whatever the picture shows.
 #   The STEP export carries the exact flanks (every body here is a B-rep:
 #   lofts, a glue, an exact union), the 3MF the 0.01 mm tessellation.
@@ -84,6 +85,7 @@ load(
     "@cadpole/gears.star",
     "base_diameter",
     "centre_distance",
+    "fluted_outline",
     "pitch_diameter",
     "planetary_set",
     "tip_diameter",
@@ -104,7 +106,7 @@ pin = param("pin", 8, unit="mm", min=6, max=12, doc="Carrier pin diameter")
 plate = param("plate", 3, unit="mm", min=2, max=6, doc="Carrier plate thickness")
 rim = param("rim", 4, unit="mm", min=2, max=10, doc="Ring wall outside the root circle")
 chord = param("chord", 0.01, unit="mm", min=0.002, max=0.05, doc="Tessellation tolerance of every body: what the 3MF and every measurement below carry")
-lift = param("explode", 0.0, unit="mm", min=0, max=60, doc="Exploded view: the carrier stays, the ring lifts this much, the planets twice it, the sun three times; a picture only, the fit tests measure the assembled position")
+lift = param("explode", 0.0, unit="mm", min=0, max=60, doc="Exploded view: the ring and the carrier stay, the planets rise this much clear of the ring and the sun as much again clear of the planets; a picture only, the fit tests measure the assembled position")
 sun_angle = param("sun_angle", 0.0, unit="deg", min=0, max=360, doc="Turn the sun by this; the planets spin back and the ring turns with it, the carrier held, so the set stays in mesh and the tests re-measure every gap (through a tooth pitch); the animation takes it round once")
 
 PRINTER = printer("bambu_a1")
@@ -145,6 +147,69 @@ RIM_GAP = 0.5  # the plate turns inside the ring's tips; nothing meshes there, s
 layers_up = 2  # the vertical gaps, in layers
 head_rise = 1.2  # the head cone grows by 1.0 over this: 39.8°, under the 45° overhang rule with the facets' margin
 head_height = 1.5
+
+# --- The ring's outside: a grip. `FLUTES` round grooves sunk `FLUTE_DEPTH`
+# into the housing wall are part of the ring's own section, so they turn
+# with its teeth and come out as chevrons over the whole height -- the
+# herringbone read from outside -- with no boolean on the exact ring. A
+# chevron's slope at the wall is the teeth's twist at that radius, about
+# 34° from vertical: the upper side of each groove stays under the 45°
+# overhang rule. Each groove leaves `rim - FLUTE_DEPTH` of wall behind it.
+FLUTES = 36
+FLUTE_DEPTH = 0.8
+FLUTE_R = 1.6
+
+# --- The carrier's face: the reduction it delivers with the ring held
+# (`4:1` at the defaults), raised between each pair of planets. The figures
+# turn with the carrier and stand `FIGURE_CLEAR` clear of every planet's and
+# the sun's tip circle; where a planet count leaves no room for them, the
+# plate stays plain.
+FIGURE_H = 1.0  # five layers proud of the plate, in the open space between the planets
+FIGURE_CLEAR = 2.0
+FIGURE_SIZE = 4.0 * module  # the em size; the label's half-extent is under `FIGURE_HALF`
+FIGURE_HALF = 0.75 * FIGURE_SIZE
+
+
+def ratio_label():
+    r = 1.0 + (teeth_sun + 2 * teeth_planet) / teeth_sun
+    return ("%d:1" % int(r)) if r == int(r) else ("%s:1" % math.round(r, 1))
+
+
+def figure_sites(info):
+    """Where each figure goes, `(x, y, angle)` in each gap between planets, or
+    [] when one would come within `FIGURE_CLEAR` of a gear's tip circle."""
+    r_sun = info["lay_sun"]["r_tip"]
+    r_planet = info["lay_planet"]["r_tip"]
+    r_ring = info["lay_ring"]["r_tip"]
+    r_fig = 0.5 * (r_sun + r_ring)
+    if r_fig - FIGURE_HALF < r_sun + FIGURE_CLEAR or r_fig + FIGURE_HALF > r_ring - FIGURE_CLEAR:
+        return []
+    angles = info["P"]["planet_angles"]
+    sites = []
+    for k in range(planets):
+        t = angles[k] + 180.0 / planets
+        x, y = r_fig * math.cos(t), r_fig * math.sin(t)
+        for tj in angles:
+            if math.hypot(x - info["a"] * math.cos(tj), y - info["a"] * math.sin(tj)) - FIGURE_HALF < r_planet + FIGURE_CLEAR:
+                return []
+        sites.append((x, y, t))
+    return sites
+
+
+def carrier_face(plate_body, info):
+    out = plate_body
+    for k, (x, y, t) in enumerate(figure_sites(info)):
+        # Read from outside the set, as a dial is: the baseline runs along the
+        # circle and the letters stand up toward the sun.
+        frame = plane(origin=(x, y, plate), normal=(0, 0, 1), x_dir=(-math.sin(t), math.cos(t), 0))
+        label = text(ratio_label(), size=FIGURE_SIZE, weight=800, align="center", baseline="middle", plane=frame, name="ratio_%d_text" % k)
+        # Every pointed corner of a glyph rounded to two perimeters across,
+        # so no tip of a figure prints as a wall the nozzle cannot lay.
+        label = label.offset(-NOZZLE, name="ratio_%d_in" % k).offset(NOZZLE, name="ratio_%d_round" % k)
+        out = emboss(out, "plate/end", label, FIGURE_H, kind=emboss.raised, name="ratio_%d" % k)
+    return out
+
+
 S = planetary_set(
     module,
     teeth_sun,
@@ -165,6 +230,10 @@ S = planetary_set(
     head_height=head_height,
     ring_trim=RING_TRIM,
     tolerance=chord,
+    ring_flutes=FLUTES,
+    ring_flute_depth=FLUTE_DEPTH,
+    ring_flute_radius=FLUTE_R,
+    plate_extra=carrier_face,
 )
 P = S["P"]
 teeth_ring = S["teeth_ring"]
@@ -180,20 +249,28 @@ sun = S["sun"]
 planet_bodies = S["planets"]
 ring = S["ring"]
 carrier = S["carrier"]
-sun.material(preset="pla_silk", color="#d9a441")
+# A brass sun, teal planets, a silver ring and a bronze carrier: the gears
+# carry the colour, and the housing reads as one quiet metal body around them.
+sun.material(preset="pla_silk", color="#c9a35a")
 for g in planet_bodies:
-    g.material(preset="pla_silk", color="#2f8f8f")
-ring.material(preset="pla_silk", color="#3b3f46")
-carrier.material(preset="pla_silk", color="#c8552b")
+    g.material(preset="pla_silk", color="#2f9a92")
+ring.material(preset="pla_silk", color="#8d96a0")
+carrier.material(preset="pla_silk", color="#a8714c")
 
-# --- The assembly. Nothing moves here: it groups the six instances
-# so the view can explode them as one, and so `export` and the tests can
-# take the set by name. `explode` is a view offset ranked along z -- the
-# carrier stays, the ring (the larger part at the planets' height) lifts by
-# `explode`, the planets by twice it, the sun by three times -- and it never
-# reaches the geometry, the exports or a measurement.
+# --- The assembly. Nothing moves here: it groups the six instances so that
+# `export` and the tests can take the set by name. `explode` is a view
+# offset, and it never reaches the geometry, the exports or a measurement.
+# A herringbone cannot slide out of its mate, so the exploded picture lifts
+# every gear clear of what it meshes with before it spreads them: the ring
+# and the carrier stay together as the housing, each planet rises off its
+# pin until its bottom face is `explode` over the ring's top, and the sun
+# rises a face width and `explode` more again, clear of the planets.
 gearbox = assembly(S["instances"], name="gearbox")
-explode(gearbox, lift, along="z")
+if lift > 0:
+    planet_rise = ring_height - z_gears + lift
+    for g in planet_bodies:
+        explode(g, (0, 0, planet_rise))
+    explode(sun, (0, 0, planet_rise + width + lift))
 
 # --- The pose: kinematics-lite. With the carrier held, turning the sun by
 # `sun_angle` spins each planet back by z_s/z_p about its own pin and turns
@@ -456,6 +533,45 @@ def in_mesh_at_this_angle():
 
 
 test("the sun turns through a tooth pitch and never touches a planet, nor a planet the ring", in_mesh_at_this_angle, sweep={"sun_angle": [0, 7.5, 15, 22.5, 30]})
+
+
+def the_ring_has_its_grip():
+    # The housing loop is the fluted outline, segment for segment, in both
+    # herringbone halves: the grooves are the ring's own faces, no boolean.
+    r_out = lay_ring["r_root"] + rim
+    outline = fluted_outline(r_out, FLUTES, FLUTE_DEPTH, radius=FLUTE_R, tolerance=0.005)
+    radii = [r for r, t in outline]
+    assert_close(max(radii), r_out, tol=1e-6, msg="the lands are the housing circle")
+    assert_close(min(radii), r_out - FLUTE_DEPTH, tol=1e-6, msg="each groove is %s mm deep" % FLUTE_DEPTH)
+    assert_true(r_out - FLUTE_DEPTH - lay_ring["r_root"] >= 2 * NOZZLE, msg="the wall behind a groove is under two perimeters")
+    housing = ring.body().faces(name="*side[1.*")
+    assert_eq(len(housing), 2 * len(outline), msg="the ring's outside is the fluted outline in both halves")
+    lo, hi = ring.body().bbox()
+    assert_close(hi[0] - lo[0], 2 * r_out, tol=0.2, msg="the lands reach the housing circle")
+    return len(housing)
+
+
+test("the ring's outside is a grip: chevron grooves in its own section, a full wall behind each", the_ring_has_its_grip)
+
+
+def the_carrier_shows_its_ratio():
+    # One figure in each gap between planets, raised on the plate, and none
+    # within `FIGURE_CLEAR` of a gear that turns past it.
+    assert_eq(ratio_label(), "%d:1" % int(P["ratio_fixed_ring"]), msg="the figure is the reduction with the ring held")
+    assert_eq(len(figure_sites(S)), planets, msg="a figure fits in every gap at these numbers")
+    body = carrier.body()
+    for k in range(planets):
+        tops = body.faces(name="ratio_%d/end*" % k, allow_empty=True)
+        assert_true(len(tops) >= 3, msg="figure %d has %d top faces, not its three glyphs" % (k, len(tops)))
+        for f in tops:
+            assert_close(f.centroid[2], plate + FIGURE_H, tol=1e-6, msg="figure %d stands %s mm proud" % (k, FIGURE_H))
+    for g in [sun] + planet_bodies:
+        for d, pa, pb, fa, fb in clearance_map(g, carrier, below=FIGURE_CLEAR):
+            assert_true("ratio_" not in fb, msg="%s comes %s mm from a figure at %s" % (g.name, math.round(d, 3), fb))
+    return planets
+
+
+test("the carrier carries its ratio between the planets, clear of every gear", the_carrier_shows_its_ratio, sweep={"sun_angle": [0, 15]})
 
 
 # The declared ends that once failed build: the widest gap (0.6 met an edge

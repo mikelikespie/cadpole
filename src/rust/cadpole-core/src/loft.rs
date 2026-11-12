@@ -1312,12 +1312,52 @@ fn twist_warning(sections: &[PlannedSection]) -> Vec<String> {
                     best_k = k;
                 }
             }
-            if best_k != 0 && c0 > best * TWIST_RATIO && c0 > 1e-12 {
+            if best_k != 0
+                && c0 > best * TWIST_RATIO
+                && c0 > 1e-12
+                && !deliberate_turn(&va, ca, &vb, cb, best_k)
+            {
                 out.push(rotation_warning(l, w, best_k, c0 / best.max(1e-12)));
             }
         }
     }
     out
+}
+
+/// The best rigid turn of `a` (about `ca`) onto `b` (about `cb`) with vertex
+/// `j` of `a` paired to vertex `j + k` of `b`: its angle in radians and the
+/// summed squared distance left after it.
+fn rigid_turn(a: &[(f64, f64)], ca: (f64, f64), b: &[(f64, f64)], cb: (f64, f64), k: usize) -> (f64, f64) {
+    let n = a.len();
+    let (mut dot, mut cross, mut aa, mut bb) = (0.0, 0.0, 0.0, 0.0);
+    for j in 0..n {
+        let p = (a[j].0 - ca.0, a[j].1 - ca.1);
+        let q = (b[(j + k) % n].0 - cb.0, b[(j + k) % n].1 - cb.1);
+        dot += p.0 * q.0 + p.1 * q.1;
+        cross += p.0 * q.1 - p.1 * q.0;
+        aa += p.0 * p.0 + p.1 * p.1;
+        bb += q.0 * q.0 + q.1 * q.1;
+    }
+    let angle = fmath::atan2(cross, dot);
+    let left = (aa + bb - 2.0 * fmath::hypot(dot, cross)).max(0.0);
+    (angle, left / aa.max(1e-300))
+}
+
+/// Is section `b` section `a` turned as a whole, vertex for vertex, by a
+/// smaller angle than the one the better-fitting seam `best_k` would need?
+/// That is a loft twisted on purpose -- a helical gear's outline turned a
+/// little at every section -- and pairing it in construction order is right,
+/// however well a shifted seam happens to fit a fine, nearly regular loop. A
+/// loop drawn from another corner is still caught: its shifted seam fits
+/// with no turn at all.
+fn deliberate_turn(a: &[(f64, f64)], ca: (f64, f64), b: &[(f64, f64)], cb: (f64, f64), best_k: usize) -> bool {
+    const RIGID: f64 = 1e-9; // squared residual relative to the loop's own spread
+    let (turn0, left0) = rigid_turn(a, ca, b, cb, 0);
+    if left0 > RIGID {
+        return false;
+    }
+    let (turn_k, left_k) = rigid_turn(a, ca, b, cb, best_k);
+    left_k > RIGID || turn0.abs() < turn_k.abs()
 }
 
 fn rotation_warning(l: usize, w: usize, best_k: usize, ratio: f64) -> String {
@@ -1598,6 +1638,48 @@ mod tests {
                 P2::new(5.0, -5.0),
             ])),
         );
+        let plan = LoftPlan::new(&[a, b], true, SectionMatch::Index).unwrap();
+        assert!(plan.warnings.iter().any(|w| w.contains("probably twisted")), "{:?}", plan.warnings);
+    }
+
+    /// A fine, nearly regular loop: `count` shallow scallops on a circle, each
+    /// drawn with several points, turned by `turn` radians.
+    fn scalloped(z: f64, turn: f64) -> Section {
+        let (count, per) = (36, 9);
+        let mut pts = Vec::new();
+        for i in 0..count * per {
+            let t = turn + std::f64::consts::TAU * (i as f64) / ((count * per) as f64);
+            let dip = if i % per == 0 { 0.0 } else { 0.8 * fmath::sin(std::f64::consts::PI * ((i % per) as f64) / (per as f64)) };
+            let r = 48.0 - dip;
+            pts.push(P2::new(r * fmath::cos(t), r * fmath::sin(t)));
+        }
+        Section::Profile(Sketch::new(Plane::XY.offset(z)).with_loop(Loop::polygon(&pts)))
+    }
+
+    #[test]
+    fn a_loop_turned_on_purpose_does_not_warn() {
+        // A helical outline: each section the last one turned by about two of
+        // its segments. A seam shifted by two fits the vertices better, but
+        // the turn is the design, and pairing in order builds it.
+        let step = 2.0 * std::f64::consts::TAU / (36.0 * 9.0) * 0.95;
+        let sections: Vec<Section> = (0..5).map(|k| scalloped(2.0 * k as f64, step * k as f64)).collect();
+        let plan = LoftPlan::new(&sections, false, SectionMatch::Index).unwrap();
+        assert!(plan.warnings.is_empty(), "{:?}", plan.warnings);
+    }
+
+    #[test]
+    fn a_loop_turned_and_restarted_still_warns() {
+        // The same loop restarted three segments on: the seam fits with no
+        // turn at all, so the turn this pairing would build is a mistake.
+        let a = scalloped(0.0, 0.0);
+        let b = match scalloped(4.0, 0.0) {
+            Section::Profile(sk) => {
+                let segs = &sk.loops[0].segments;
+                let pts: Vec<P2> = (0..segs.len()).map(|j| segs[(j + 3) % segs.len()].start()).collect();
+                Section::Profile(Sketch::new(Plane::XY.offset(4.0)).with_loop(Loop::polygon(&pts)))
+            }
+            _ => unreachable!(),
+        };
         let plan = LoftPlan::new(&[a, b], true, SectionMatch::Index).unwrap();
         assert!(plan.warnings.iter().any(|w| w.contains("probably twisted")), "{:?}", plan.warnings);
     }

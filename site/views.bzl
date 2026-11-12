@@ -33,7 +33,7 @@ VIEWS = [
     _v("enclosure", "gallery", "Enclosure for a Raspberry Pi 5", "//examples:enclosure.star", ["--tolerance", "0.1", "-p", "lid_lift=26", "--eye", "112,-159,125", "--target", "0,0,22", "--show-params", "wall,clearance,snap_len,barb,fastener,cooling,gpio,button,shell,lid_lift"]),
     _v("thumbscrew", "gallery", "Thumbscrew and nut", "//examples:thumbscrew.star", ["--tolerance", "0.1"]),
     _v("imports", "gallery", "Imported files", "//examples:import_demo.star", ["--tolerance", "0.15"]),
-    _v("planetary", "gallery", "Herringbone planetary", "//examples:planetary.star", ["--tolerance", "0.15", "-p", "explode=14", "-p", "chord=0.05"]),
+    _v("planetary", "gallery", "Herringbone planetary", "//examples:planetary.star", ["--tolerance", "0.15", "-p", "sun_angle=7.5", "-p", "chord=0.05"]),
     _v("wheel", "gallery", "Compressor wheel", "//examples:compressor_wheel.star", ["--tolerance", "0.15"]),
     _play("part", "A plate with a hole", "part.star"),
     _play("planter", "Planter", "planter.star"),

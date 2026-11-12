@@ -838,9 +838,14 @@ def _sub(name, suffix):
     return None if name == None else name + suffix
 
 
-def _section(z, pts, hole_r, name):
+def _section(z, pts, hole_r, name, turn=0.0):
+    """The outline `pts` and a second loop: a circle of radius `hole_r` (none
+    when 0), or, when `hole_r` is a list of polar points `(r, degrees)`, that
+    polygon turned with the outline by `turn` degrees."""
     s = sketch(XY.offset(z), name=name).polygon(pts)
-    if hole_r > 0:
+    if type(hole_r) == "list":
+        s = s.polygon([_polar(r, th + turn) for r, th in hole_r])
+    elif hole_r > 0:
         s = s.circle(hole_r)
     return s
 
@@ -849,14 +854,14 @@ def _stack(name, seq, teeth, phase, width, turn0, turn1, hole_r, suffix, z0=0.0)
     """A smooth loft of the outline from z0 to z0 + width, turned by `turn0`
     degrees at the bottom and `turn1` at the top. Equal turns are one extrude."""
     if turn0 == turn1:
-        s = _section(z0, _outline(seq, teeth, phase + turn0), hole_r, _sub(name, "_profile"))
+        s = _section(z0, _outline(seq, teeth, phase + turn0), hole_r, _sub(name, "_profile"), turn0)
         return extrude(s, width, name=name)
     n = max(4, int(math.ceil(abs(turn1 - turn0) / 20.0)) + 1)
     sections = []
     for k in range(n + 1):
         f = k / n
         turn = turn0 + (turn1 - turn0) * f
-        sections.append(_section(z0 + width * f, _outline(seq, teeth, phase + turn), hole_r, _sub(name, "%s_section_%d" % (suffix, k))))
+        sections.append(_section(z0 + width * f, _outline(seq, teeth, phase + turn), hole_r, _sub(name, "%s_section_%d" % (suffix, k)), turn))
     return loft(sections, ruled=False, name=name)
 
 
@@ -989,6 +994,9 @@ def internal(
     clearance=0.25,
     fillet=0.38,
     tolerance=0.02,
+    flutes=0,
+    flute_depth=0.8,
+    flute_radius=None,
     name=None,
 ):
     """A ring gear: the internal involute (the tooth space is the external
@@ -997,12 +1005,65 @@ def internal(
     circle, extruded -- or lofted with a helix, or as a herringbone. Space 0
     is centred on +x. One sketch, no boolean, exact.
 
-    Names: as `spur`; loop 0 is the teeth, loop 1 the housing circle."""
+    `flutes` > 0 makes the outer loop a grip instead of a circle: that many
+    round grooves of radius `flute_radius` (default `2 * flute_depth`) sunk
+    `flute_depth` into it (`fluted_outline`). The grooves are part of the
+    section, so they turn with the teeth: straight on a spur ring, helical on
+    a helical one and chevrons on a herringbone, and still no boolean.
+
+    Names: as `spur`; loop 0 is the teeth, loop 1 the housing."""
     if rim <= 0:
         _fail("internal", "rim must be positive (got %s)" % rim)
     half = _half("internal", module, teeth, pressure_angle, profile_shift, backlash, clearance, fillet, helix_angle, tolerance, True)
     seq, lay = _tooth_sequence(half, teeth, tolerance, True)
-    return _gear_body("internal", name, seq, half["geometry"], teeth, width, helix_angle, hand, herringbone, lay["r_root"] + rim, True)
+    housing = lay["r_root"] + rim
+    if flutes > 0:
+        if flute_depth <= 0 or flute_depth >= rim:
+            _fail("internal", "flute_depth %s must be positive and under the rim %s" % (flute_depth, rim))
+        housing = fluted_outline(housing, flutes, flute_depth, radius=flute_radius, tolerance=tolerance / 4.0)
+    return _gear_body("internal", name, seq, half["geometry"], teeth, width, helix_angle, hand, herringbone, housing, True)
+
+
+def fluted_outline(r, count, depth, *, radius=None, tolerance=0.005):
+    """A circle of radius `r` with `count` round grooves sunk `depth` into it,
+    each an arc of radius `radius` (default `2 * depth`) centred `radius -
+    depth` outside the circle; the first groove is centred half a pitch off
+    +x. The closed outline as polar points `(r, degrees)`, counter-clockwise,
+    every arc divided so its chords stand within `tolerance` of it: what
+    `internal(flutes=)` lofts as a ring's housing."""
+    if count < 3:
+        _fail("fluted_outline", "count must be at least 3 (got %s)" % count)
+    if radius == None:
+        radius = 2.0 * depth
+    if depth <= 0 or depth >= radius:
+        _fail("fluted_outline", "depth %s must be positive and under the groove radius %s" % (depth, radius))
+    rc = r + radius - depth
+    # The groove meets the circle where |C + radius (cos a, sin a)| = r, a
+    # in degrees from the outward radial at the groove's centre.
+    cos_a0 = (r * r - rc * rc - radius * radius) / (2.0 * rc * radius)
+    a0 = math.acos(max(-1.0, min(1.0, cos_a0)))
+    hit = _to_polar((rc + radius * math.cos(a0), -radius * math.sin(a0)))  # (r, deg) of the groove's leading corner, about its centre's angle
+    pitch = 360.0 / count
+    if 2.0 * abs(hit[1]) >= pitch:
+        _fail("fluted_outline", "%s grooves of radius %s overlap on a circle of radius %s" % (count, radius, r))
+    n_groove = max(4, int(math.ceil((360.0 - 2.0 * a0) / _arc_step(radius, tolerance))))
+    land = pitch - 2.0 * abs(hit[1])
+    n_land = max(1, int(math.ceil(land / _arc_step(r, tolerance))))
+    pts = []
+    for i in range(count):
+        c = pitch * (i + 0.5)
+        for j in range(n_groove + 1):
+            a = (360.0 - a0) - (360.0 - 2.0 * a0) * j / n_groove  # down through 180: the inner arc
+            pr, pt = _to_polar((rc + radius * math.cos(a), radius * math.sin(a)))
+            pts.append((pr, c + pt))
+        for j in range(1, n_land):
+            pts.append((r, c + abs(hit[1]) + land * j / n_land))
+    return pts
+
+
+def _arc_step(r, tolerance):
+    """The largest angle, degrees, whose chord on radius `r` sags at most `tolerance`."""
+    return 2.0 * math.acos(max(0.0, 1.0 - tolerance / r))
 
 
 def rack(
@@ -1207,6 +1268,9 @@ def planetary_set(
     tolerance=0.01,
     sun_boss=None,
     ring_extra=None,
+    ring_flutes=0,
+    ring_flute_depth=0.8,
+    ring_flute_radius=None,
     plate_extra=None,
     carrier_extra=None,
     ring_lift=0.0,
@@ -1256,6 +1320,8 @@ def planetary_set(
     its pins are united (the place to glue raised figures onto its still
     pristine top face); `carrier_extra(carrier, info)` the same for the
     carrier after its pins.
+    `ring_flutes` > 0 grooves the ring's outside for a grip (`internal`'s
+    `flutes`, `flute_depth`, `flute_radius`: chevrons, on this herringbone).
     `ring_lift` builds the ring gear that much shorter and lifts it by as
     much, so its apex stays on the planets' mid-plane while something else
     (a foot) stands on the bed under it.
@@ -1358,7 +1424,7 @@ def planetary_set(
 
     # The ring, turned back by what a left-hand ring has turned by the height
     # where the gears start, so its section there is planetary()'s outline.
-    ring_body = internal(module, teeth_ring, ring_height, rim, helix_angle=helix, hand="left", herringbone=True, pressure_angle=pressure_angle, backlash=ring_trim, clearance=clearance, profile_shift=ring_shift, name=_pfx(name, "ring_gear"))
+    ring_body = internal(module, teeth_ring, ring_height, rim, helix_angle=helix, hand="left", herringbone=True, pressure_angle=pressure_angle, backlash=ring_trim, clearance=clearance, profile_shift=ring_shift, flutes=ring_flutes, flute_depth=ring_flute_depth, flute_radius=ring_flute_radius, name=_pfx(name, "ring_gear"))
     ring_body.tessellation(tolerance=tolerance)
     if ring_extra != None:
         ring_body = ring_extra(ring_body, info)

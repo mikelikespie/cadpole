@@ -19,7 +19,9 @@ STILLS = {
     # The lid lifted off the seated board, so the snap arms and the board show.
     "enclosure": ("examples/enclosure.star", ["-p", "lid_lift=26", "--view", "az=35,el=28"]),
     "thumbscrew": ("examples/thumbscrew.star", []),
-    "planetary": ("examples/planetary.star", ["-p", "explode=14", "--view", "az=-30,el=32"]),
+    # Assembled, as it comes off the bed, the sun turned a little so the
+    # planets' phases and the chevrons on every gear show.
+    "planetary": ("examples/planetary.star", ["-p", "sun_angle=7.5", "--view", "az=-30,el=38"]),
     "wheel": ("examples/compressor_wheel.star", ["--view", "az=-30,el=30"]),
     # The lightbox's direction (az -35, el 30, 24 degrees), aimed at the row's middle
     # so the long, low scene sits centred in the square.
