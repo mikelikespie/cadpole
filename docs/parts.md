@@ -43,17 +43,20 @@ part = subtract(base, hole, name="part")
 export(part, "part.stl")
 ```
 
-`examples/part.star` is this plate with its tests. Render it, change the
-width, and open it in the web UI:
+`examples/part.star` grows this plate into a mounting plate, with rounded
+corners, an edge fillet, a centre bore and two counterbored screw holes whose
+spacing follows the width, and adds its tests. Render it, change the width,
+and open it in the web UI:
 
 ```
 cadpole render examples/part.star -o part.png
-cadpole render examples/part.star -p width=60 -o wide.png
+cadpole render examples/part.star -p width=90 -o wide.png
 cadpole serve examples/part.star
 ```
 
 Each call is in `starlark-api.md`: `param` §4.1, `sketch` §4.3, `extrude`
-§4.4, `subtract` §4.5, `export` §6.1.
+§4.4, `subtract` §4.5, `export` §6.1; `fillet`, `cylinder` and `cone` are
+in §4.4 too.
 
 ## P3. Commands and units
 

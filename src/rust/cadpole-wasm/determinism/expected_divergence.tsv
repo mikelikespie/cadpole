@@ -159,10 +159,11 @@ iris.star	volume	blade_0#42: 4086e773358b5b25 vs 4086e773358b5b28 -- the same ex
 iris.star	topology	blade_0#42: 18a215f21a941acf vs 292aada9209cbb61 -- the same exact union: its f64 digest in the last bits
 iris.star	mesh	blade_0#42: a76c1a04d5894d73 vs 1523bedf80f7ae56 -- the same exact union, tessellated: f32 positions in the last bits
 iris.star	inspect	blade_0#42: volume_mm3 732.9312544715109 vs 732.9312544715112 -- the same exact union: volume and area in the last bits
-part.star	order	part#2 edges[9]: "extrude_1/start|extrude_2/side[0.1]" vs "extrude_1/start|extrude_2/side[0.0]" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
-part.star	topology	part#2: 1cd56d964ac4c3b4 vs 379a5dc839731479 -- as the body's other rows: its f64 digest in the last bits
-part.star	mesh	part#2: 912d8ae02151c087 vs 47cbff0ef6704129 -- the f32 positions differ in their last bits
-part.star	inspect	part#2 at char 585: …586734, min_altitude_at: Some(Vec3 { x: -8.663540681203205, y: 3.443997874855995, z: 0.0 }), manifol vs …586734, min_altitude_at:... -- as volume
+part.star	order	part#10 edges[33]: "cylinder_1/side#1|plate/end" vs "cylinder_1/side#0|plate/end" -- a counterbore's two mouth edges on the top face come out of the exact subtract in another order, as bracket.star's order row
+part.star	volume	part#10: 40c29b30f0a162f8 vs 40c29b30e765001c -- follows the order row: the top face is triangulated from its loops in that order, so the mesh volume differs in its last digits
+part.star	topology	part#10: 8ebfc08fdca1ed40 vs df9c12f5e863fa17 -- as order
+part.star	mesh	part#10: 95c1d03f4f238f5c vs 7eb09d69b2db1c5f -- as order
+part.star	inspect	part#10: volume_mm3 9526.382343457532 vs 9526.382061600736, area_mm2 4667.871515246995 vs 4667.871465334522 -- as volume
 pillow_block.star	order	block#11 edges[13]: "foot/start|hole_b/side#0" vs "foot/start|hole_b/side#1" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
 pillow_block.star	volume	block#11: 40f3c0272cd0de4f vs 40f3c0272cce108b -- the mesh volume in its last bits
 pillow_block.star	topology	block#11: c80abe46fecb6aa3 vs 17b00a4a8de90216 -- as the body's other rows: its f64 digest in the last bits
