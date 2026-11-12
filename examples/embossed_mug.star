@@ -170,7 +170,7 @@ def handle_root(name, top_plane, dz):
     leaves. It starts inside the wall, so its edge meets the curved wall
     on a slant and leaves no ledge, and it ends a little inside the handle."""
     secs = []
-    for (d, grow) in [(0.0, 2.6), (wall / 2.0 - 1.4, 2.6), (wall / 2.0 + 1.4, 1.2), (wall / 2.0 + 3.6, 0.45), (wall / 2.0 + 5.8, 0.12), (wall / 2.0 + 7.6, -0.3)]:
+    for (d, grow) in [(0.0, 2.6), (max(0.2, wall / 2.0 - 1.4), 2.6), (wall / 2.0 + 1.4, 1.2), (wall / 2.0 + 3.6, 0.45), (wall / 2.0 + 5.8, 0.12), (wall / 2.0 + 7.6, -0.3)]:
         secs.append(sketch(top_plane.offset(d), name=name + "_s%d" % len(secs)).slot(HANDLE_W + 2 * grow, HANDLE_T + 2 * grow))
     return translate(loft(secs, ruled=False, name=name + "_loft"), (0, 0, dz), name=name)
 
@@ -191,7 +191,7 @@ def placements(name):
 DECAL_FILM = 0.1                # thickness of the coloured film over the art
 DECAL_LIFT = 0.2                # where the film's outside sits above the face it colours
 
-def decal(name, art, theta, z, outer_r, inset=0.0):
+def decal(name, art, theta, z, outer_r, inset=0.0, round_tips=0.0):
     """A thin coloured body in the shape of `art` as it lies on the mug,
     its outside at radius `outer_r` and its inside `DECAL_FILM` below it:
     the same wrap on a fresh cylinder of the mug's radius (so the loops sit
@@ -210,7 +210,11 @@ def decal(name, art, theta, z, outer_r, inset=0.0):
     h = DECAL_FILM + 0.4
     core = cylinder(r, height, name=name + "_core")
     sk = art(name + "_sketch")
-    if inset > 0:
+    if inset > 0 and round_tips > 0:
+        # Shrunk past the inset and grown back: the mark's sharp tips come
+        # out rounded, so a film's point stays off its pocket's walls.
+        sk = sk.offset(-inset - round_tips, name=name + "_shrunk").offset(round_tips, name=name + "_inset")
+    elif inset > 0:
         sk = sk.offset(-inset, name=name + "_inset")
     face = core.faces(name=name + "_core/side").nearest(on_wall(theta, height - 4.0))
     w = wrap(sk, face, method=wrap.unroll, origin=on_wall(theta, z), up=(0, 0, 1), name=name + "_wrap")
@@ -238,7 +242,7 @@ def mug(kind, name, glaze, art_colors):
             # The face the colour lies on: the relief's tops, the pocket's
             # floor, or the wall itself.
             under = r + relief if kind == "raised" else (r - relief if kind == "cut" else r)
-            d = decal(pname + "_decal", art, theta, z, under + DECAL_LIFT, inset=0.15 if kind == "cut" else 0.0)
+            d = decal(pname + "_decal", art, theta, z, under + DECAL_LIFT, inset=0.15 if kind == "cut" else 0.0, round_tips=0.4 * min(1.0, art_scale) if tone < 2 and pname.endswith(("_mark", "_rim")) else 0.0)
             d.material(preset="petg_glossy", color=art_color, roughness=0.12)
             films.append(d)
     if handle != "none":
@@ -336,9 +340,9 @@ def decals_sit_on_the_art():
     """Each colour film is only the art: no taller than the mark, clear of
     the mug's wall, and no further out than the face it colours. A film that
     let the trim cylinder miss the core would run the mug's full height."""
-    mark_h = 71.0 * mm
+    mark_h = LOGO_H
     for kind, films in DECALS.items():
-        assert_eq(len(films), 3 if decals else 0, msg=kind + ": a film for the mark and each half band")
+        assert_eq(len(films), len(placements("m")) if decals else 0, msg=kind + ": a film for each tone of the mark and each half band")
         for d in films:
             lo, hi = d.bbox()
             assert_true(hi[2] - lo[2] < mark_h + 1.0, msg="%s: %s is %s mm tall, more than the art" % (kind, d, hi[2] - lo[2]))
@@ -359,6 +363,7 @@ def thrown_details():
 
 test("colour films sit on the art", decals_sit_on_the_art, sweep={"relief": [0.4, 1.0, 1.6]})
 test("foot ring and handle roots", thrown_details, sweep={"handle": ["loop", "d", "none"]})
+test("handle roots at every wall", thrown_details, sweep={"wall": [2.4, 2.8, 6.0]})
 test("relief volume matches the art", relief_volume, sweep={"diameter": [64, 82, 100], "art_scale": [0.7, 1.0, 1.3]})
 test("more art, more relief", relief_volume, sweep={"art_scale": [0.6, 0.8, 1.0, 1.2, 1.4]}, monotone="increasing")
 test("mug size and solidity", mug_size, sweep={"diameter": [64, 82, 100], "handle": ["loop", "d", "none"]})

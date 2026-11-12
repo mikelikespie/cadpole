@@ -237,8 +237,9 @@ for f in range(fins):
     barrel_pts.append((SPIGOT_R, zf + FIN_T / 2.0))
 barrel_pts.append((SPIGOT_R, BARREL_TOP))
 barrel_pts.append((LINER_R, BARREL_TOP))
-NUT_R = LINER_R + 5.2
-nut = hex_between((NUT_R, 0.0, BARREL_BASE + 3.0), (NUT_R, 0.0, BARREL_BASE + 3.0 + 0.06 * B), 0.055 * B, "flange_nut")
+NUT_HR = min(0.055 * B, 2.0)  # across the corners; capped so the nut stays on the flange
+NUT_R = LINER_R + max(5.2, 3.4 + NUT_HR)  # its inner corner keeps 0.4 mm off the spigot
+nut = hex_between((NUT_R, 0.0, BARREL_BASE + 3.0), (NUT_R, 0.0, BARREL_BASE + 3.0 + 0.06 * B), NUT_HR, "flange_nut")
 barrel = union(rev_z(barrel_pts, "barrel_fins"), pattern_circular(nut, 8, axis=(0, 0, 1), merge=True, name="flange_nuts"), name="barrel", kernel="mesh")
 
 # --- Head: a finned cap with a dome inside; two poppet valves, the exhaust
