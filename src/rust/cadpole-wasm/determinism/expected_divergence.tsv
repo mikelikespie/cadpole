@@ -105,6 +105,11 @@ stdlib/building_test.star	volume	cupola#120: 41e415162465fe85 vs 41e415162465fe8
 stdlib/building_test.star	topology	cupola#120: f02e1dec14a68623 vs aab3c91d8111fdf4 -- the same union's face centroids in their last bits
 stdlib/building_test.star	mesh	cupola#120: 1c557fa01126a39b vs 9bdc50890120cf0b -- the same union's f32 positions in their last bits
 stdlib/building_test.star	inspect	cupola#120: volume_mm3 2695409955.1873193 vs 2695409955.187319 -- as volume
+stdlib/print_test.star	order	sf_round#4 edges[7]: "sf_round_blk/front|sf_round_cyl/side#0" vs "sf_round_blk/front|sf_round_cyl/side#1" -- a block with a lying cylinder subtracted: the exact kernel's intersection edges, as bracket.star's order row
+stdlib/print_test.star	volume	sf_tear#8: 40bdd246cddde893 vs 40bdd246cddde890 -- the teardropped block's mesh volume, the last bits of an f64
+stdlib/print_test.star	topology	sf_round#4: 00ab9690e1e5d970 vs be9766d4249ab4f8 -- as order
+stdlib/print_test.star	mesh	sf_round#4: c09e2ff7027f7543 vs 988337cab4a2a147 -- as order
+stdlib/print_test.star	inspect	sf_round#4: min_altitude_at (8.32, -6, 7.75) vs (-8.32, -6, 16.25) -- the hole is symmetric and two triangles tie for the thinnest; which is found first follows the order row, as split_for_bed.star's inspect row
 bearing_608.star	topology	ball#2: 7310097b603527b0 vs e94eeb2924db76b9 -- the ball, an exact sphere centred on the pitch circle: its f64 digest and its f32 positions differ in their last bits between the targets; the races, and the imported bodies of vendor_bearing.star, read from this file, are the same on both
 bearing_608.star	mesh	ball#2: 709687a314211449 vs 95a20d674591107d -- as topology
 vendor_bearing.star	order	housing#11 edges[4]: "bore_cutter/side[0.1]|plate/start" vs "bore_cutter/side[0.0]|plate/start" -- the exact boolean of a bored plate: the exact kernel's intersection edges, as bracket.star's order row; the nine imported bodies (bearing … bearing#8) are the same on both targets, which is the import's row to keep
