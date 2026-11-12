@@ -3551,7 +3551,7 @@ animation("assemble_and_turn", [
 
 ```
 $ cadpole animate examples/gear_toy.star --list
-assemble_and_turn: 9 s at 30 fps (270 frames, loops), keyframes at 0, 2, 2.5, 3, 9 s, moves explode, crank_lift, print_layout, crank_turn and the camera
+assemble_and_turn: 9 s at 30 fps (270 frames, loops), keyframes at 0, 2, 2.5, 3.5, 9 s, moves explode, crank_lift, print_layout, crank_turn and the camera
 $ cadpole animate examples/gear_toy.star --view product --lighting product --backdrop studio --tonemap neutral --no-grid --no-edges -o gear_toy.gif
 ```
 
@@ -3824,8 +3824,12 @@ rig, edges drawn, the Khronos PBR Neutral tone curve so a filament's
 colour is that colour. **Each part is drawn in the colour of the filament
 slot it prints in** — a body pinned to another slot with `extruder=` shows
 the colour it will come off the printer in, as Bambu's own thumbnails
-do, not its `material(color=)`. The camera is fitted to the whole bed, so
-every plate of a project is drawn at one scale and nothing is clipped.
+do, not its `material(color=)`. **Every part is drawn, opaque, whatever
+layer it is on**: a print layout kept on a hidden layer beside the
+assembled model (`examples/gear_toy.star`'s `print` layer) still fills its
+plate's picture and the thumbnails in the file. The camera is fitted to the
+whole bed, so every plate of a project is drawn at one scale and nothing is
+clipped.
 
 * `size=(width, height)` in pixels, 16 to 8192 a side; 1600 × 1200 by
   default.

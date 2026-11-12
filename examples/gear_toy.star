@@ -42,8 +42,9 @@
 # surface by construction; the test measures it back with `clearance_map`.
 # `thread()` returns a mesh body, so the ring and the lid are mesh bodies
 # here, their triangles the operands' own at 0.01 mm, which is the bound
-# every measurement against them carries. The gears, the carrier and the
-# knob stay exact.
+# every measurement against them carries. The gears and the carrier stay
+# exact; the crank and the knob are mesh bodies too, for their cross-drilling
+# and their grip flutes.
 #
 # The lock: a radial M3 set screw through the lid's skirt, bearing on the
 # ring's wall below the thread, which is turned down 1.5 mm for it. A parent
@@ -72,10 +73,11 @@
 #     and the knob's head recess is 13 mm (over 12).
 #   * EN 71-1 4.7, **edges**: every rounding is made in the *profile*, not
 #     by `chamfer()`. Every profile a hand meets is rounded --
-#     `fillet2d` on the carousel's figures, arcs on the crescent, a
-#     lofted radius on the foot and the knob's top, a 40 deg chamfer on the
-#     lid's rim and the hub's top (a round there would print as an overhang
-#     on a part that prints plate down).
+#     `fillet2d` on the carousel's figures, arcs on the crescent and the
+#     fish, a lofted radius on the foot, turned radii on the knob's top and
+#     shoulder and on the hub's top (the crank prints arm down, so those are
+#     on top), and a 40 deg chamfer on the lid's rim (a round there would
+#     print as an overhang on a part that prints plate down).
 #   * The print-in-place contract: no gap between moving parts under
 #     0.35 mm, measured within 0.02 mm; `assert_printable` on each print.
 #
@@ -98,15 +100,20 @@
 #     is asserted in the static test.
 #   * The scale sweep runs at 0.9 and 1.1: +/-10 % of every length in the
 #     mechanism.
-#   * The crank's hub, a loft of circles, stands its foot 1 mm into the arm,
-#     off the knob pin's foot plane: two lofts whose feet share a plane
-#     inside one slab are a contact the second union can trip on.
+#   * The crank's hub, turned, stands its foot 1 mm into the arm, off the
+#     knob pin's foot plane: two feet that share a plane inside one slab are
+#     a contact the second union can trip on.
+#   * The crank rests along the lid's bar, arm to the back (`ARM_REST`), so
+#     a picture from the front looks past the hub into both windows; the
+#     sun's hex post is turned 30 deg to match.
 #
 #   cadpole test examples/gear_toy.star
 #   cadpole check examples/gear_toy.star
 #   cadpole export examples/gear_toy.star --run-exports --out-dir /tmp
-#   cadpole render examples/gear_toy.star --param print_layout=false --backend path --samples 256 --size 1600x1200 --view product --lighting product --backdrop studio --floor gloss --tonemap neutral --denoise -o docs/demo/gear_toy.png
-#   cadpole render examples/gear_toy.star --param print_layout=false --param explode=40 --backend path --samples 256 --size 1600x1200 --view product --lighting product --backdrop studio --floor gloss --tonemap neutral --denoise -o docs/demo/gear_toy_open.png
+#   cadpole render examples/gear_toy.star --backend path --samples 256 --size 1600x1200 --view az=30,el=36 --lighting product --backdrop studio --floor gloss --tonemap neutral --denoise -o docs/demo/gear_toy.png
+#   cadpole render examples/gear_toy.star --param explode=40 --backend path --samples 256 --size 1600x1200 --view az=30,el=40 --lighting product --backdrop studio --floor gloss --tonemap neutral --denoise -o docs/demo/gear_toy_open.png
+#   cadpole render examples/gear_toy.star --layer lid=0.35 --view az=30,el=40 -o /tmp/ghost.png   # the train under a ghosted lid
+#   cadpole render examples/gear_toy.star --layer print=on -o /tmp/with_print_2.png              # print 2 laid out in front
 #   cadpole sweep examples/gear_toy.star --param crank_angle=0,10,20,30 -o /tmp/crank.png
 #   cadpole animate examples/gear_toy.star --view product --lighting product --backdrop studio --tonemap neutral --no-grid --no-edges -o docs/demo/gear_toy.gif
 
@@ -121,8 +128,8 @@ lift = param("explode", 0.0, unit="mm", min=0, max=80, doc="Lid-off view: the li
 crank_lift = param("crank_lift", 0.0, unit="mm", min=0, max=80, doc="The crank and its knob stand this much above the post, on top of what `explode` gives them; a picture only. The animation drops them last")
 crank_turn = param("crank_turn", 0.0, unit="deg", min=0, max=1440, doc="Turn the crank by this with the ring held, which is how the toy is played: the sun turns with it, the carrier and its carousel a quarter as far, each planet spins back on its pin as it rides round, and the crank and the knob follow the sun. What the animation drives; a pose, never geometry, and every test measures at 0")
 gap = param("gap", 0.35, unit="mm", min=0.3, max=0.5, doc="The running gap every flank, tip and rim stands from its neighbour in the core print")
-layer = param("layer", 0.2, unit="mm", min=0.1, max=0.3, doc="Layer height the vertical gaps are a whole number of")
-print_layout = param("print_layout", True, doc="Build print 2's layout -- the lid turned over and the crank beside it -- as well as the assembled toy. The tests need it; a picture does not, so the renders below turn it off")
+layer_h = param("layer", 0.2, unit="mm", min=0.1, max=0.3, doc="Layer height the vertical gaps are a whole number of")
+print_layout = param("print_layout", True, doc="Build print 2's layout -- the lid turned over and the crank beside it, set down in front of the toy -- on the hidden `print` layer, as well as the assembled toy. The tests and the exports need it; a picture shows it with `--layer print=on`")
 chord = param("chord", 0.01, unit="mm", min=0.002, max=0.05, doc="Tessellation tolerance of every body: what the 3MFs carry and what every measurement below is measured at")
 
 K = kid_size
@@ -143,7 +150,8 @@ PIN, PLATE = 8.0, 3.0
 BORE_CLEARANCE = 0.35
 RIM_GEAR = 2.0  # the ring gear's own housing wall; the collar adds the rest
 WALL = 4.0 * K  # the collar's wall over the gear's root circle: the thread's major radius
-FIG_H = 5.0 * K  # the carousel's figures stand this proud of the carrier plate
+FIG_H = 17.0 * K  # the carousel's figures stand this proud of the carrier plate: up into the windows, under the lid's plate
+FIG_SIZE = 8.0 * K  # and reach this far from their centre
 
 # The foot and the thread.
 FOOT_H = 4.0
@@ -180,16 +188,22 @@ BOSS_R = BOSS_AF / 2 / math.cos(30.0)
 SOCKET_CL = 0.35
 ARM_CLEAR = 14.0  # the arm's underside over the lid's top: clear of the 12 mm probe
 ARM_T = 6.0
-HUB_R = 13.0
+HUB_R = 13.0  # the arm's half-width round the hub
+HUB_BODY = HUB_R - 0.75  # the hub's own radius
 HUB_H = 24.0  # tall enough for the socket and its 40 deg pyramid roof
+HUB_ROUND = 3.0  # the hub's top edge: the crank prints arm down, so a round on top prints
+ARM_TIP = 10.0  # the arm's half-width round the knob's pin: it tapers from the hub
 SOCKET_DEPTH = 12.0
 CRANK_R = 35.0 * K
 KNOB_R = 17.0  # 34 mm across: over the small-parts cylinder even if it ever came free
 KNOB_H = 25.0
 KNOB_CL = 0.4
+KNOB_FLUTES = 8  # grip flutes round the knob's shoulder
+ARM_REST = 90.0  # the crank at rest lies along the lid's bar, arm to the back, out of both windows
 PIN_R = 4.0
 HEAD_FLARE, HEAD_RISE, HEAD_HEIGHT = 1.0, 1.2, 1.5
 PRINT_DX = 95.0 * K  # where print 2 puts the crank, beside the lid
+PRINT_DY = -150.0  # and where it puts print 2, in front of the toy: never inside it
 
 
 def polar(r, angle):
@@ -210,7 +224,7 @@ def teardrop(r, length, up, name):
 
 
 # --- Heights, in the world frame.
-z_gears = PLATE + LAYERS_UP * layer  # the gears float this high over the carrier plate
+z_gears = PLATE + LAYERS_UP * layer_h  # the gears float this high over the carrier plate
 ring_height = 2 * z_gears + width  # the ring gear's own height
 z_gear_top = ring_height
 z_collar_top = z_gear_top + 1.0  # the collar rises past the gear: no coplanar pair in the union
@@ -231,7 +245,9 @@ assert_true(z_screw < z_th0 - 1.0, msg="the set screw at %s is inside the thread
 # a lead-in chamfer, one ruled loft, glued on the sun's top face.
 def sun_post(z_top, info):
     def hexs(z_world, r):
-        return sketch(XY.offset(z_world - z_gears), name="post_%s" % math.round(z_world, 2)).ngon(6, r)
+        # Turned 30 deg, so the crank's socket fits it with the arm at rest
+        # along the lid's bar (`ARM_REST` is 30 deg modulo the hex's 60).
+        return sketch(XY.offset(z_world - z_gears), name="post_%s" % math.round(z_world, 2)).ngon(6, r, rotate=30.0)
 
     r_notch = BOSS_R - 0.65
     return loft(
@@ -262,7 +278,7 @@ def ring_collar(gear, info):
 
     secs = [
         sec(0.0, r_foot - FOOT_INSET, "foot_bed"),  # the first two layers inset, against elephant's foot
-        sec(LAYERS_UP * layer, r_foot, "foot_rise"),
+        sec(LAYERS_UP * layer_h, r_foot, "foot_rise"),
         sec(FOOT_H - FOOT_ROUND, r_foot, "foot_side"),
     ]
     for i, a in enumerate([45.0, 90.0]):
@@ -300,28 +316,47 @@ def ring_collar(gear, info):
 
 
 # --- The carousel: three figures glued on the carrier's plate before its
-# pins are united, while that face is still untrimmed. The star and the fish
-# are polygons rounded with `fillet2d`, the crescent is `subtract2d` of two
-# circles: all three are lines and arcs, which `glue` keys edge for edge.
-def figure_pts(kind, size):
-    if kind == "star":
-        return [polar(size if i % 2 == 0 else 0.45 * size, 90.0 + 36.0 * i) for i in range(10)]
-    if kind == "fish":
-        pts = [(1.0, 0.0), (0.55, 0.42), (0.0, 0.5), (-0.45, 0.3), (-0.55, 0.1), (-0.9, 0.45), (-1.0, 0.15), (-1.0, -0.15), (-0.9, -0.45), (-0.55, -0.1), (-0.45, -0.3), (0.0, -0.5), (0.55, -0.42)]
-        return [(x * size, y * size) for x, y in pts]
-    fail("no figure %s" % kind)
-
-
-def place_pts(pts, r_at, angle):
+# pins are united, while that face is still untrimmed. They stand up into the
+# lid's windows, so a child sees them ride round. The star is a polygon
+# rounded with `fillet2d`, the crescent `subtract2d` of two circles, and the
+# fish two arcs for its body, a forked tail and an eye cut through it: all
+# lines and arcs, which `glue` keys edge for edge.
+def place(p, r_at, angle, facing=None):
+    """A point of a figure drawn about the origin, nose along +x, set at
+    radius `r_at` and `angle` and turned to face `facing` (the radius out,
+    by default)."""
     c = polar(r_at, angle)
-    return [(c[0] + x * math.cos(angle) - y * math.sin(angle), c[1] + x * math.sin(angle) + y * math.cos(angle)) for x, y in pts]
+    f = angle if facing == None else facing
+    return (c[0] + p[0] * math.cos(f) - p[1] * math.sin(f), c[1] + p[0] * math.sin(f) + p[1] * math.cos(f))
+
+
+def star_pts(size):
+    return [polar(size if i % 2 == 0 else 0.45 * size, 90.0 + 36.0 * i) for i in range(10)]
+
+
+def fish_profile(size, r_at, angle, r_round):
+    def at(x, y):
+        return place((x * size, y * size), r_at, angle, angle + 90.0)  # swimming round the way the carousel turns
+
+    outline = (
+        path(at(1.0, 0.0))
+        .arc(at(-0.45, 0.16), via=at(0.2, 0.62))  # the back, one arc
+        .line(at(-1.0, 0.58))  # the tail's upper fork
+        .line(at(-0.78, 0.0))  # the fork's notch
+        .line(at(-1.0, -0.58))
+        .line(at(-0.45, -0.16))
+        .arc(at(1.0, 0.0), via=at(0.2, -0.62))  # the belly
+    )
+    body = fillet2d(sketch(XY.offset(PLATE), name="fish_outline").add(outline), r_round, name="fish_rounded")
+    eye = sketch(XY.offset(PLATE), name="fish_eye").circle(0.12 * size, center=at(0.5, 0.16))
+    return subtract2d(body, eye, name="fish_sketch")
 
 
 def carousel(plate_body, info):
     r_fig = 0.5 * (info["lay_sun"]["r_tip"] + info["lay_ring"]["r_tip"]) + 0.3  # the middle of the lid's window band
-    size = 8.0 * K
+    size = FIG_SIZE
     out = plate_body
-    for kind, angle, r_round in [("star", 60.0, 0.9 * K), ("moon", 180.0, 0.0), ("fish", 300.0, 0.5 * K)]:
+    for kind, angle in [("star", 60.0), ("moon", 180.0), ("fish", 300.0)]:
         if kind == "moon":
             c = polar(r_fig, angle)
             bite = (c[0] + 0.40 * size * math.cos(angle + 180.0), c[1] + 0.40 * size * math.sin(angle + 180.0))
@@ -336,8 +371,10 @@ def carousel(plate_body, info):
                 0.8 * K,
                 name="moon_sketch",
             )
+        elif kind == "fish":
+            profile = fish_profile(size, r_fig, angle, 0.6 * K)
         else:
-            profile = fillet2d(sketch(XY.offset(PLATE), name="%s_polygon" % kind).polygon(place_pts(figure_pts(kind, size), r_fig, angle)), r_round, name="%s_sketch" % kind)
+            profile = fillet2d(sketch(XY.offset(PLATE), name="star_polygon").polygon([place(p, r_fig, angle) for p in star_pts(size)]), 0.9 * K, name="star_sketch")
         out = glue(out, extrude(profile, FIG_H, name=kind), name="plate_with_%s" % kind)
     return out
 
@@ -350,7 +387,7 @@ S = planetary_set(
     planets=PLANETS,
     helix_angle=HELIX,
     gap=gap,
-    layer=layer,
+    layer=layer_h,
     layers_up=LAYERS_UP,
     bore_clearance=BORE_CLEARANCE,
     pin=PIN,
@@ -375,7 +412,7 @@ sun, planet_bodies, ring, carrier = S["sun"], S["planets"], S["ring"], S["carrie
 sun.material(preset="pla_silk", color="#e8b84a")
 for g in planet_bodies:
     g.material(preset="pla_silk", color="#2f8f8f")
-ring.material(preset="pla_matte", color="#3b3f46")
+ring.material(preset="pla_matte", color="#ece6d8")
 carrier.material(preset="pla_silk", color="#e0602c")
 
 # The figures turn with the carrier and never meet a planet.
@@ -383,8 +420,11 @@ r_fig = 0.5 * (lay_sun["r_tip"] + lay_ring["r_tip"]) + 0.3
 for angle in [60.0, 180.0, 300.0]:
     for k in range(PLANETS):
         d = math.hypot(r_fig * math.cos(angle) - S["pin_centres"][k][0], r_fig * math.sin(angle) - S["pin_centres"][k][1])
-        assert_true(d - 8.0 * K >= lay_planet["r_tip"] + 2.0, msg="the figure at %s deg reaches within 2 mm of planet %d's tip circle" % (angle, k))
-assert_true(r_fig - 8.0 * K >= lay_sun["r_tip"] + 2.0, msg="the figures reach the sun's tips")
+        assert_true(d - FIG_SIZE >= lay_planet["r_tip"] + 2.0, msg="the figure at %s deg reaches within 2 mm of planet %d's tip circle" % (angle, k))
+assert_true(r_fig - FIG_SIZE >= lay_sun["r_tip"] + 2.0, msg="the figures reach the sun's tips")
+assert_true(r_fig + FIG_SIZE <= lay_ring["r_tip"] - 2.0, msg="the figures reach the ring's tips")
+# They stand up into the windows, and still clear the lid's plate by 2 mm.
+assert_true(PLATE + FIG_H <= z_collar_top + PLATE_GAP - 2.0, msg="the figures' tops at %s reach the lid's plate" % (PLATE + FIG_H))
 
 # --- The lid: a skirt with the thread cut into it, a rim, and a plate with
 # a hub over the sun's mesh, an annulus over the planet-ring mesh and two
@@ -445,8 +485,7 @@ lid_body.material(preset="pla_matte", color="#4a7fd6")
 
 # --- The crank and its knob. Each is built once, where it is used; the
 # copies print 2 lays out are `copy`s moved aside, which is cheap because
-# the crank is a **mesh** body by then (a mesh transform is a remap) and
-# the knob is one loft with no boolean in it.
+# both are **mesh** bodies by then (a mesh transform is a remap).
 def build_crank(x0, z0, tag):
     """The arm with the knob's headed pin, the hub with the hex socket and
     its 50 deg roof, the clamp screw's cross-drilling and the spiral on the
@@ -455,7 +494,18 @@ def build_crank(x0, z0, tag):
     def nm(s):
         return "%s_%s" % (tag, s)
 
-    arm = extrude(sketch(XY.offset(z0), name=nm("arm_profile")).slot(CRANK_R + 2 * HUB_R, 2 * HUB_R, center=(x0 + CRANK_R / 2, 0)), ARM_T, name=nm("arm_slab"))
+    # The arm tapers from the hub to the knob: two circles and the two lines
+    # tangent to both.
+    th = math.acos((HUB_R - ARM_TIP) / CRANK_R)
+    p_hub, p_tip = polar(HUB_R, th), polar(ARM_TIP, th)
+    outline = (
+        path((x0 + p_hub[0], p_hub[1]))
+        .line((x0 + CRANK_R + p_tip[0], p_tip[1]))
+        .arc((x0 + CRANK_R + p_tip[0], -p_tip[1]), via=(x0 + CRANK_R + ARM_TIP, 0.0))
+        .line((x0 + p_hub[0], -p_hub[1]))
+        .arc((x0 + p_hub[0], p_hub[1]), via=(x0 - HUB_R, 0.0))
+    )
+    arm = extrude(sketch(XY.offset(z0), name=nm("arm_profile")).add(outline), ARM_T, name=nm("arm_slab"))
     z_pin_top = z0 + ARM_T + KNOB_CL + KNOB_H - 4.0 + KNOB_CL
     pin = loft(
         [
@@ -468,19 +518,29 @@ def build_crank(x0, z0, tag):
         name=nm("knob_pin"),
     )
     body = union(arm, pin, kernel="brep", name=nm("arm_with_pin"))
-    # The hub is a loft of circles. Its foot stands 1 mm into the arm,
-    # **not** on the pin's foot plane 0.5 mm down: two feet in one plane
-    # inside the slab are a contact the exact union can trip on.
-    hub = loft(
-        [
-            sketch(XY.offset(z0 + ARM_T - 1.0), name=nm("hub_foot")).circle(HUB_R - 0.75, center=(x0, 0)),
-            sketch(XY.offset(z0 + ARM_T + HUB_H - 2.0), name=nm("hub_shoulder")).circle(HUB_R - 0.75, center=(x0, 0)),
-            sketch(XY.offset(z0 + ARM_T + HUB_H), name=nm("hub_top")).circle(HUB_R - 2.4, center=(x0, 0)),  # a 40 deg chamfer
-        ],
-        ruled=True,
-        name=nm("hub"),
+    # The hub is turned: a wall and a rounded top, revolved. Its foot stands
+    # 1 mm into the arm, **not** on the pin's foot plane 0.5 mm down: two
+    # feet in one plane inside the slab are a contact the exact union can
+    # trip on. It is drawn about the origin and moved, solid to the axis
+    # (it is tessellated for the mesh union below, where the axis is only a
+    # fan of triangles), and the socket takes its middle out.
+    z_h0, z_h1 = ARM_T - 1.0, ARM_T + HUB_H
+    hub_profile = (
+        path((0.0, z_h0))
+        .h(HUB_BODY)
+        .v(z_h1 - HUB_ROUND)
+        .tangent_arc((HUB_BODY - HUB_ROUND, z_h1))
+        .h(0.0)
+        .v(z_h0)
     )
-    body = union(body, hub, kernel="brep", name=nm("arm_with_hub"))
+    hub = revolve(sketch(XZ, name=nm("hub_profile")).add(hub_profile), axis=(0, 0, 1), name=nm("hub_turned"))
+    hub.tessellation(tolerance=chord)
+    hub = hub.translate((x0, 0, z0), name=nm("hub"))
+    # The turned hub joins the arm on the mesh kernel, each operand at `chord`
+    # first: the exact union of a revolved wall with the slab's top face is
+    # a contact the B-rep kernel resolves only numerically.
+    body.tessellation(tolerance=chord)
+    body = union(body, hub, kernel="mesh", name=nm("arm_with_hub"))
     # The socket: **one** hex tool cut up through the arm from below, its
     # top drawn out to a point so the roof is a 40 deg pyramid. A second
     # tool for the roof would either leave a flat ceiling round its base or,
@@ -498,8 +558,8 @@ def build_crank(x0, z0, tag):
             ],
             ruled=True,
             name=nm("socket_tool"),
-        ),
-        kernel="brep",
+        ).tessellation(tolerance=chord),
+        kernel="mesh",
         name=nm("socketed"),
     )
     assert_true(ARM_T + SOCKET_DEPTH + roof_h < ARM_T + HUB_H - 2.0, msg="the socket's roof reaches the hub's top")
@@ -510,58 +570,94 @@ def build_crank(x0, z0, tag):
     screw_blank = teardrop(SCREW_R, HUB_R + 6.0, (0, 1, 0), nm("clamp_tool"))
     screw = screw_blank.rotate(90, axis=(1, 0, 0), name=nm("clamp_radial")).translate((x0, HUB_R + 2.0, z0 + (z_notch - z_arm0)), name=nm("clamp_placed"))
     body = subtract(body, screw, kernel="mesh", name=nm("drilled"))
-    # The spiral on the hub's top, two turns: it turns with the sun, four
-    # times for every turn of the carousel under the windows. (On the hub,
-    # not on the knob: the knob spins free on its pin, so a mark on it
-    # follows the child's fingers, not the mechanism.)
+    # The spiral on the hub's top, two turns standing 1.5 mm proud: it turns
+    # with the sun, four times for every turn of the carousel under the
+    # windows. (On the hub, not on the knob: the knob spins free on its pin,
+    # so a mark on it follows the child's fingers, not the mechanism.)
     pts = []
     n_sp = 36
+    r_sp0, r_sp1, band = 3.0, HUB_BODY - HUB_ROUND - 0.6, 2.4
     for i in range(2 * n_sp + 1):
-        th = 360.0 * i / n_sp
-        pts.append(polar(3.5 + 6.0 * th / 720.0, th))
+        a = 360.0 * i / n_sp
+        pts.append(polar(r_sp0 + (r_sp1 - r_sp0) * a / 720.0, a))
     for i in range(2 * n_sp, -1, -1):
-        th = 360.0 * i / n_sp
-        pts.append(polar(3.5 + 6.0 * th / 720.0 - 2.2, th))
+        a = 360.0 * i / n_sp
+        pts.append(polar(r_sp0 + (r_sp1 - r_sp0) * a / 720.0 - band, a))
     spiral = extrude(sketch(XY.offset(z0 + ARM_T + HUB_H - 0.5), name=nm("spiral_profile")).polygon([(x0 + x, y) for x, y in pts]), 2.0, name=nm("spiral"))
     spiral.tessellation(tolerance=chord)
     return union(body, spiral, kernel="mesh", name=nm("crank"))
 
 
 def build_knob(x0, z0, tag):
-    """The knob: a 40 deg cone over the arm, a barrel, a rounded top and the
-    recess the pin's head sits in. It floats `KNOB_CL` over the arm and runs
-    on the pin with the same gap, as a planet does on its own."""
+    """The knob, turned: a neck on the arm that flares out to a 40 deg
+    underside, a rounded shoulder and a short barrel with grip flutes, a
+    rounded top and the recess the pin's head sits in. Every face below the
+    shoulder stands 40 deg or less from vertical, so it prints on the arm
+    without support. It floats `KNOB_CL` over the arm and runs on the pin
+    with the same gap, as a planet does on its own."""
 
     def nm(s):
         return "%s_%s" % (tag, s)
 
-    c = (x0 + CRANK_R, 0)
-    z_k0 = z0 + ARM_T + KNOB_CL
-    z_k1 = z_k0 + KNOB_H
-    cone_h = (KNOB_R - 7.5) * math.tan(50.0)
-    secs = [
-        (z_k0, 7.5, PIN_R + KNOB_CL),
-        (z_k0 + cone_h, KNOB_R, PIN_R + KNOB_CL),
-        (z_k1 - 4.0, KNOB_R, PIN_R + KNOB_CL),
-        (z_k1 - 3.8, KNOB_R, PIN_R + HEAD_FLARE + 1.5),  # the head's recess: 13 mm across, over the finger band
-    ]
-    for ang in [30.0, 60.0, 90.0]:
-        secs.append((z_k1 - 3.0 + 3.0 * math.sin(ang), KNOB_R - 3.0 + 3.0 * math.cos(ang), PIN_R + HEAD_FLARE + 1.5))
-    return loft([sketch(XY.offset(z), name=nm("knob_%d" % i)).circle(r, center=c).circle(h, center=c) for i, (z, r, h) in enumerate(secs)], ruled=True, name=nm("knob"))
+    r_b = PIN_R + KNOB_CL  # the bore
+    r_rec = PIN_R + HEAD_FLARE + 1.5  # the head's recess: 13 mm across, over the finger band
+    r_neck, z_neck = 7.5, 1.0
+    flare_r, shoulder_r, top_r = 6.0, 5.0, 3.5
+    s40, c40 = math.sin(40.0), math.cos(40.0)
+    # The flare: a concave arc from the vertical neck to 40 deg from vertical.
+    p_flare = (r_neck + flare_r - flare_r * c40, z_neck + flare_r * s40)
+    # The shoulder: a convex arc from 40 deg back to vertical, at the barrel.
+    dr = (KNOB_R - shoulder_r + shoulder_r * c40) - p_flare[0]
+    z_sh = p_flare[1] + dr * c40 / s40  # where the 40 deg line meets the shoulder
+    p_sh = (p_flare[0] + dr, z_sh)
+    z_barrel = z_sh + shoulder_r * s40
+    assert_true(z_barrel < KNOB_H - top_r - 2.0, msg="the knob's barrel is %s mm tall" % (KNOB_H - top_r - z_barrel))
+    profile = (
+        path((r_b, 0.0))
+        .h(r_neck)
+        .v(z_neck)
+        .tangent_arc(p_flare)
+        .line(p_sh)
+        .tangent_arc((KNOB_R, z_barrel))
+        .v(KNOB_H - top_r)
+        .tangent_arc((KNOB_R - top_r, KNOB_H))
+        .h(r_rec)
+        .v(KNOB_H - 3.8)
+        .line((r_b, KNOB_H - 4.0))
+        .v(0.0)
+    )
+    turned = revolve(sketch(XZ, name=nm("knob_profile")).add(profile), axis=(0, 0, 1), name=nm("knob_turned"))
+    # The grip: vertical flutes from the barrel down the shoulder, running
+    # out on the 40 deg underside, so no flute has a ceiling. Cut on the mesh
+    # kernel, every operand at `chord`: a cylinder crossing a revolved
+    # shoulder arc is a cut the exact kernel resolves only numerically.
+    turned.tessellation(tolerance=chord)
+    flutes = []
+    for i in range(KNOB_FLUTES):
+        f = cylinder(2.2, KNOB_H, at=polar(KNOB_R + 0.7, 360.0 * (i + 0.5) / KNOB_FLUTES) + (z_sh - 4.0,), name=nm("flute_%d" % i))
+        f.tessellation(tolerance=chord)
+        flutes.append(f)
+    fluted = subtract(turned, flutes, kernel="mesh", name=nm("knob_fluted"))
+    return fluted.translate((x0 + CRANK_R, 0, z0 + ARM_T + KNOB_CL), name=nm("knob"))
 
 
 crank_body = build_crank(0.0, z_arm0, "c")
 crank_body.material(preset="pla_silk", color="#d94a3d")
 knob_body = build_knob(0.0, z_arm0, "c")
-knob_body.tessellation(tolerance=chord)
 knob_body.material(preset="pla_silk", color="#6cb33f")
 # Print 2's layout: the lid turned over so its plate is on the bed, and the
-# crank with its knob set down beside it, arm on the bed.
+# crank with its knob set down beside it, arm on the bed -- set down in front
+# of the toy, on a layer of its own that a picture leaves out.
+print_kit = layer("print", doc="Print 2 as it lies on the bed: the lid plate down, the crank and its knob beside it", visible=False)
 if print_layout:
-    lid_print = copy(lid_body, name="lid_copy").rotate(180, axis=(1, 0, 0), name="lid_turned").translate((0, 0, z_p1), name="lid_print")
-    crank_print = copy(crank_body, name="crank_copy").translate((PRINT_DX, 0, -z_arm0), name="crank_print")
-    knob_print = copy(knob_body, name="knob_copy").translate((PRINT_DX, 0, -z_arm0), name="knob_print")
-lid = instance(part(lid_body, name="lid_part"), name="lid")
+    lid_print = copy(lid_body, name="lid_copy", layer=print_kit).rotate(180, axis=(1, 0, 0), name="lid_turned").translate((0, PRINT_DY, z_p1), name="lid_print")
+    crank_print = copy(crank_body, name="crank_copy", layer=print_kit).translate((PRINT_DX, PRINT_DY, -z_arm0), name="crank_print")
+    knob_print = copy(knob_body, name="knob_copy", layer=print_kit).translate((PRINT_DX, PRINT_DY, -z_arm0), name="knob_print")
+# On the toy the crank rests along the lid's bar.
+crank_body = crank_body.rotate(ARM_REST, name="crank_at_rest")
+knob_body = knob_body.rotate(ARM_REST, name="knob_at_rest")
+lid_layer = layer("lid", doc="The screw-on lid: ghost it (`--layer lid=0.35`) to watch the train run under it")
+lid = instance(part(lid_body, name="lid_part"), name="lid", layer=lid_layer)
 crank = instance(part(crank_body, name="crank_part"), name="crank")
 knob = instance(part(knob_body, name="knob_part"), name="knob")
 
@@ -575,9 +671,12 @@ knob = instance(part(knob_body, name="knob_part"), name="knob")
 # -- and never a kernel op, which is what lets the animation below evaluate
 # a frame in Starlark time.
 toy = assembly(S["instances"] + [lid, crank, knob], name="toy")
-explode(lid, (0, 0, lift))
-explode(crank, (0, 0, 2 * lift + crank_lift))
-explode(knob, (0, 0, 2 * lift + crank_lift))
+# Lifted, the lid also slides back (+y) once it is off the thread, so a
+# camera from the front sees the gears under it; the crank goes with it.
+back = 0.9 * max(lift - THREAD_LEN, 0.0)
+explode(lid, (0, back, lift))
+explode(crank, (0, back, 2 * lift + crank_lift))
+explode(knob, (0, back, 2 * lift + crank_lift))
 # The lid screws on: a right-hand thread advances downward when turned
 # clockwise seen from above (a negative turn about +z), so a lid lifted
 # `lift` stands turned back by the lead of the travel still to go, up to the
@@ -626,18 +725,27 @@ plate_images("gear_toy.3mf")
 # --- The animation: `cadpole animate examples/gear_toy.star -o x.gif`.
 # The lid and the crank come down from the exploded view -- the lid turning
 # on over its last two turns of thread, the crank dropping onto the post
-# last -- a half-second beat, then two turns of the crank with the ring
-# held, the carousel passing the windows, the camera drifting 20 degrees
-# round. Every frame is a pose: after the first, zero kernel ops and zero
-# tessellations (`cadpole animate` prints the counts).
+# last -- a beat, then two turns of the crank with the ring held, the
+# carousel passing the windows. The camera is a free one, so each phase is
+# framed for itself: wide on the exploded stack, then closing in on the
+# assembled toy and drifting 20 degrees round and up while it turns, so the
+# windows open up. Every frame is a pose: after the first, zero kernel ops
+# and zero tessellations (`cadpole animate` prints the counts).
+def orbit(az, el, d, target):
+    """A camera `d` mm from `target`, at the azimuth and elevation the
+    presets use (az from the front towards the right, el above the
+    horizon)."""
+    return view(eye=(target[0] + d * math.cos(el) * math.sin(az), target[1] - d * math.cos(el) * math.cos(az), target[2] + d * math.sin(el)), target=target, fov=24)
+
+
 animation(
     "assemble_and_turn",
     [
-        keyframe(0.0, explode=30, crank_lift=0, print_layout=False, camera=view(az=30, el=18), ease=ease.ease_out),
-        keyframe(2.0, explode=0, crank_lift=24),
-        keyframe(2.5, crank_lift=0),
-        keyframe(3.0, crank_turn=0, ease=ease.linear),
-        keyframe(9.0, crank_turn=720, camera=view(az=50)),
+        keyframe(0.0, explode=30, crank_lift=0, print_layout=False, camera=orbit(30, 24, 520, (0, 10, 60)), ease=ease.ease_out),
+        keyframe(2.0, explode=0, crank_lift=24, camera=orbit(30, 26, 400, (0, 0, 42))),
+        keyframe(2.5, crank_lift=0, camera=orbit(32, 30, 350, (0, 0, 30)), ease=ease.smooth),
+        keyframe(3.5, crank_turn=0, camera=orbit(34, 32, 345, (0, 0, 28)), ease=ease.linear),
+        keyframe(9.0, crank_turn=720, camera=orbit(54, 38, 345, (0, 0, 28))),
     ],
     fps=30,
     loop=True,
@@ -718,7 +826,7 @@ def every_body_is_where_the_stack_puts_it():
     if print_layout:
         for b in [lid_print, crank_print, knob_print]:
             assert_solid(b)
-    for b, kind in [(S["sun_body"], "brep"), (S["planet_body"], "brep"), (S["carrier_body"], "brep"), (knob_body, "brep"), (S["ring_body"], "mesh"), (lid_body, "mesh"), (crank_body, "mesh")]:
+    for b, kind in [(S["sun_body"], "brep"), (S["planet_body"], "brep"), (S["carrier_body"], "brep"), (knob_body, "mesh"), (S["ring_body"], "mesh"), (lid_body, "mesh"), (crank_body, "mesh")]:
         assert_eq(b.kind, kind, msg="%s is %s" % (b.name, kind))
     lo, hi = ring.body().bbox()
     assert_close(lo[2], 0.0, tol=1e-4, msg="the ring stands on the bed, on its foot")
@@ -757,11 +865,11 @@ def the_core_runs():
                 float_gap = d if float_gap == None else min(float_gap, d)
             elif "pin_" in fb and fa.endswith("/end"):
                 head_gap = d if head_gap == None else min(head_gap, d)
-        assert_close(float_gap, LAYERS_UP * layer, tol=1e-3, msg="planet %d floats %s mm over the plate, not %s layers" % (k, float_gap, LAYERS_UP))
+        assert_close(float_gap, LAYERS_UP * layer_h, tol=1e-3, msg="planet %d floats %s mm over the plate, not %s layers" % (k, float_gap, LAYERS_UP))
         assert_true(head_gap != None and head_gap - 2 * c.tolerance >= MIN_GAP, msg="planet %d: the pin head is %s mm over the planet's top" % (k, head_gap))
     running_gap(distance(carrier, ring), "the carrier's rim to the ring's teeth", tol=chord)
     s = distance(sun, carrier)
-    assert_close(s.distance, LAYERS_UP * layer, tol=1e-3, msg="the sun floats %s mm over the carrier at %s/%s" % (math.round(s.distance, 4), s.face_a, s.face_b))
+    assert_close(s.distance, LAYERS_UP * layer_h, tol=1e-3, msg="the sun floats %s mm over the carrier at %s/%s" % (math.round(s.distance, 4), s.face_a, s.face_b))
     return worst
 
 
@@ -820,7 +928,9 @@ def the_crank_and_its_knob():
     running_gap(k, "the knob on its pin", tol=chord)
     float_gap, head_gap = None, None
     for d, pa, pb, fa, fb in clearance_map(knob, crank, below=1.0, spacing=2.0, limit=512):
-        if pa[2] < z_arm1 + 1.0:
+        if pa[2] < z_arm1 + 1.0 and abs(pb[2] - z_arm1) < 1e-3 and math.hypot(pa[0] - pb[0], pa[1] - pb[1]) < 1e-3:
+            # The knob's underside straight over the arm's top: the float.
+            # (The bore's corner beside it is the running gap, measured above.)
             float_gap = d if float_gap == None else min(float_gap, d)
         elif pa[2] > z_arm1 + KNOB_H - 6.0:
             head_gap = d if head_gap == None else min(head_gap, d)
@@ -832,6 +942,53 @@ def the_crank_and_its_knob():
 
 
 test("the crank fits the post with 0.35 mm and the knob runs on its pin with 0.4, captive under its head", the_crank_and_its_knob)
+
+
+def what_a_picture_shows():
+    """A plain render shows the toy and nothing else: print 2 is on its own
+    hidden layer and set down clear of the toy, no two shown bodies share
+    material, the figures stand up into the windows under the lid, the crank
+    rests along the lid's bar, and the knob and the hub carry their
+    details."""
+    shown = [b.name for b in bodies(visible=True)]
+    toy_bodies = [b.body() for b in core + [lid, crank, knob]]
+    toy_names = [b.name for b in toy_bodies]
+    for b in toy_bodies:
+        assert_true(b.name in shown, msg="%s is not shown" % b.name)
+    if print_layout:
+        for b in [lid_print, crank_print, knob_print]:
+            assert_eq(b.layer(), "print", msg="%s is on %s" % (b.name, b.layer()))
+            assert_true(b.name not in shown, msg="%s is shown with the toy" % b.name)
+            lo, hi = b.bbox()
+            assert_true(hi[1] < -r_o - 10.0, msg="%s stands inside the toy's footprint" % b.name)
+    assert_eq([n for n in shown if n not in toy_names], [], msg="a picture shows bodies that are not the toy")
+    for i in range(len(toy_bodies)):
+        for j in range(i + 1, len(toy_bodies)):
+            c = distance(toy_bodies[i], toy_bodies[j])
+            assert_true(not c.overlap, msg="%s and %s share material at %s" % (toy_bodies[i].name, toy_bodies[j].name, c.at))
+    # The figures rise past the gears' top faces, into the windows, and
+    # stop 2 mm under the lid's plate.
+    assert_true(PLATE + FIG_H > z_gears + width, msg="the figures stand below the gears' tops")
+    under = None
+    for d, pa, pb, fa, fb in clearance_map(carrier, lid, below=FINGER_LO, spacing=2.0, limit=512):
+        if abs(pa[2] - (PLATE + FIG_H)) < 1e-3:
+            under = d if under == None else min(under, d)
+    assert_true(under != None and under >= 2.0 and under < FINGER_LO, msg="the figures stand %s mm under the lid" % under)
+    # The crank at rest: the knob's pin over the lid's bar, not a window.
+    lo, hi = knob.body().bbox()
+    cx, cy = 0.5 * (lo[0] + hi[0]), 0.5 * (lo[1] + hi[1])
+    assert_true(abs(cx) < SPOKE and cy > r_hub_cover, msg="the knob rests at (%s, %s), not over the bar" % (cx, cy))
+    # The hub's spiral stands 1.5 mm proud of its top.
+    lo, hi = crank.body().bbox()
+    assert_close(hi[2], z_arm1 + HUB_H + 1.5, tol=1e-3, msg="the spiral's top")
+    # The knob: the flutes take material out of the turned form, and its
+    # widest is still the barrel.
+    lo, hi = knob.body().bbox()
+    assert_close(hi[0] - lo[0], 2 * KNOB_R, tol=0.05)
+    return under
+
+
+test("a picture shows the toy alone: print 2 hidden and clear, nothing overlapping, the figures up in the windows", what_a_picture_shows)
 
 
 def safe_by_the_rules():
@@ -887,16 +1044,16 @@ def at_of(w):
     return (p[0], p[1], p[2])
 
 
-def in_the_thread(pos, z_lo, z_hi):
-    """A finding on a thread: within the crest band, over the thread's own
-    height plus the pitch its run-out needs at each end."""
+def in_the_thread(pos, z_lo, z_hi, centre):
+    """A finding on a thread: within the crest band round `centre`, over the
+    thread's own height plus the pitch its run-out needs at each end."""
     if pos == None:
         return False
-    r = math.hypot(pos[0], pos[1])
+    r = math.hypot(pos[0] - centre[0], pos[1] - centre[1])
     return r_wall - WALL_RELIEF - 0.8 <= r and r <= r_wall + THREAD_CL + 0.8 and z_lo - PITCH <= pos[2] and pos[2] <= z_hi + PITCH
 
 
-def judged(bodies, ends, z_lo, z_hi, what):
+def judged(bodies, ends, z_lo, z_hi, what, centre=(0.0, 0.0)):
     """`print_check` on one print, with every finding classified. Nothing may
     fuse, no gap may miss the layer grid, nothing may print in the air and
     no chord error may eat a gap -- those are errors here. What is allowed,
@@ -919,7 +1076,7 @@ def judged(bodies, ends, z_lo, z_hi, what):
     Anything else fails, with the finding quoted."""
     bad = []
     area = 0.0
-    for r in print_check(bodies, printer=PRINTER, min_gap=MIN_GAP, layer_height=layer, min_wall=0.05):
+    for r in print_check(bodies, printer=PRINTER, min_gap=MIN_GAP, layer_height=layer_h, min_wall=0.05):
         for e in r.errors:
             bad.append("%s: error: %s" % (r.profile, e))
         for w in r.warnings:
@@ -927,9 +1084,9 @@ def judged(bodies, ends, z_lo, z_hi, what):
             if w.find("of overhang past") > 0:
                 area = area + float(w.split(" mm")[0])
                 continue
-            if in_the_thread(pos, z_lo, z_hi):
+            if in_the_thread(pos, z_lo, z_hi, centre):
                 continue
-            if w.startswith("wall is") and pos != None and len(ends) > 0 and min([abs(pos[2] - e) for e in ends]) < layer:
+            if w.startswith("wall is") and pos != None and len(ends) > 0 and min([abs(pos[2] - e) for e in ends]) < layer_h:
                 continue
             bad.append(w)
     assert_true(area <= MAX_OVERHANG, msg="%s: %s mm2 of overhang past 45 deg, over the %s mm2 the run-out and the two teardropped cross-holes account for" % (what, math.round(area, 2), MAX_OVERHANG))
@@ -958,7 +1115,7 @@ def print_two_the_lid_and_the_crank():
     if not print_layout:
         return 0.0
     # The lid prints turned over, so its thread band is mirrored about z_p1.
-    judged([lid_print, crank_print, knob_print], [], z_p1 - z_collar_top, z_p1 - z_th0, "print 2")
+    judged([lid_print, crank_print, knob_print], [], z_p1 - z_collar_top, z_p1 - z_th0, "print 2", centre=(0.0, PRINT_DY))
     lo, hi = lid_print.bbox()
     assert_close(lo[2], 0.0, tol=1e-4, msg="the lid prints plate down")
     lo, hi = crank_print.bbox()

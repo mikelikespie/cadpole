@@ -770,6 +770,17 @@ const BED_COLOR: [f64; 3] = [0.58, 0.58, 0.57];
 /// bed never share a plane.
 const BED_TOP: f64 = -0.02;
 
+/// Every layer drawn, opaque: what a plate's picture is drawn with. A plate
+/// holds the bodies its `export(...)` named, which a script often keeps on
+/// a hidden layer (a print layout beside the assembled model); the picture
+/// of the plate shows what will print, so a layer's display state -- hidden
+/// or ghosted -- does not apply to it.
+fn every_layer_shown(ctx: &Context) -> Vec<cadpole_core::layers::LayerOverride> {
+    let shown = |name: &str| cadpole_core::layers::LayerOverride { name: name.to_owned(), visible: Some(true), opacity: Some(1.0) };
+    // The empty name is the implicit layer, the bodies on no layer.
+    std::iter::once(shown("")).chain(ctx.layers.iter().map(|l| shown(&l.name))).collect()
+}
+
 /// A plate's scene: the given bodies where they stand on the plate -- each
 /// moved by its offset, the plate's centring and its object's set-down,
 /// so the scene is in the plate's own coordinates with the bed's
@@ -780,6 +791,7 @@ const BED_TOP: f64 = -0.02;
 /// returns.
 pub fn plate_scene(ctx: &mut Context, bodies: &[(BodyId, Option<[f64; 3]>, Vec3)]) -> anyhow::Result<crate::RenderScene> {
     let mut items = Vec::with_capacity(bodies.len());
+    let layers = every_layer_shown(ctx);
     let (mut lo, mut hi) = (Vec3::new(f64::MAX, f64::MAX, f64::MAX), Vec3::new(f64::MIN, f64::MIN, f64::MIN));
     for (id, colour, offset) in bodies {
         let (saved, id_string) = {
@@ -790,7 +802,7 @@ pub fn plate_scene(ctx: &mut Context, bodies: &[(BodyId, Option<[f64; 3]>, Vec3)
             }
             (saved, b.id_string())
         };
-        let scene = crate::scene_from_context(ctx, &[id_string], &[], &[]);
+        let scene = crate::scene_from_context(ctx, &[id_string], &[], &layers);
         ctx.body_mut(*id)?.material.base_color = saved;
         let moved = cadpole_core::Transform::translation(*offset);
         for mut item in scene.items {
@@ -847,9 +859,11 @@ pub fn plate_thumbnail_of(scene: &crate::RenderScene) -> cadpole_core::render::I
     img
 }
 
-/// [`plate_thumbnail_of`] for the bodies `body_ids`, in their own colours.
+/// [`plate_thumbnail_of`] for the bodies `body_ids`, in their own colours,
+/// whatever layer they are on ([`every_layer_shown`]).
 pub fn plate_thumbnail_image(ctx: &mut Context, body_ids: &[String]) -> cadpole_core::render::Image {
-    plate_thumbnail_of(&crate::scene_from_context(ctx, body_ids, &[], &[]))
+    let layers = every_layer_shown(ctx);
+    plate_thumbnail_of(&crate::scene_from_context(ctx, body_ids, &[], &layers))
 }
 
 /// The two PNGs a plate carries: [`plate_thumbnail_of`] at 512 px and a

@@ -3358,6 +3358,31 @@ export(plan, "plan.dxf")
         assert_eq!(small.rgba[((64 * 128 + 64) * 4 + 3) as usize], 255);
     }
 
+    /// A plate shows what it will print, whatever layer the bodies are on:
+    /// a print layout kept on a hidden layer, or on a ghosted one, beside
+    /// the assembled model still fills its plate's picture and thumbnail,
+    /// opaque.
+    #[test]
+    fn a_plate_draws_its_bodies_on_a_hidden_or_ghosted_layer() {
+        let src = concat!(
+            "kit = layer(\"kit\", visible=False)\n",
+            "ghost = layer(\"ghost\", opacity=0.3)\n",
+            "a = box(20, 20, 10, name=\"a\", layer=kit)\n",
+            "g = box(20, 20, 10, at=(40, 0, 0), name=\"g\", layer=ghost)\n",
+        );
+        let (mut ctx, _) = evaluate_document_with(&doc(src), &HashMap::new(), 0.0, 0.0);
+        let a = ctx.bodies.iter().find(|b| b.name == "a").unwrap().id;
+        let g = ctx.bodies.iter().find(|b| b.name == "g").unwrap().id;
+        // The display leaves the hidden one out and ghosts the other.
+        assert_eq!(scene_from_context(&mut ctx, &[], &[], &[]).items.len(), 1);
+        let scene = print::plate_scene(&mut ctx, &[(a, None, Vec3::ZERO), (g, None, Vec3::ZERO)]).unwrap();
+        assert_eq!(scene.items.len(), 2, "both bodies are on the plate");
+        assert!(scene.items.iter().all(|i| i.material.opacity == 1.0), "a plate is drawn opaque");
+        let a_id = ctx.body(a).unwrap().id_string();
+        let img = print::plate_thumbnail_image(&mut ctx, &[a_id]);
+        assert_eq!(img.rgba[((256 * img.width + 256) * 4 + 3) as usize], 255, "the hidden layer's body is in the thumbnail");
+    }
+
     #[test]
     fn evaluate_roundtrips_through_the_envelope() {
         let req = pb::Request {
