@@ -83,7 +83,7 @@ const HERO_BRAND = `<a class="brand hero-brand" href="#top" aria-label="Cadpole"
 const HERO = `<p class="eyebrow">${COPY.hero.eyebrow}</p>
 <h1>${COPY.hero.headline[0]} <span>${COPY.hero.headline[1]}</span></h1>
 <p class="lede">${COPY.hero.sub}</p>
-<div class="hero-cta"><a class="btn primary" href="#start">Get started</a><a class="btn" href="${GH}">${ICON_GH}GitHub</a></div>
+<div class="hero-cta"><a class="btn primary" href="${GH}">${ICON_GH}GitHub</a></div>
 <ul class="facts">${COPY.hero.facts.map((f) => `<li>${f}</li>`).join("")}</ul>`;
 
 function scene(s, first) {
@@ -333,9 +333,8 @@ const still = (name, alt, sizes = "(min-width:1000px) 560px, 100vw", w = 720, h 
 const docLink = (file, label) => `<a href="${GH}/blob/main/docs/${file}">${label}</a>`;
 
 function modes() {
-  const col = (m) => `<article class="mode"><a class="mode-pic" href="#${m.to}" aria-label="${E(m.title)}: go to the section">${still(m.img, m.alt, "(min-width:1000px) 560px, 100vw")}</a>
-<div class="txt"><h3>${m.title}</h3><p>${m.body}</p><ul class="tags">${m.tags.map((t) => `<li>${t}</li>`).join("")}</ul>
-${actRow({ open: [`<a class="pill act" href="#${m.to}">${m.go}</a>`] })}</div></article>`;
+  const col = (m) => `<article class="mode"><div class="mode-pic">${still(m.img, m.alt, "(min-width:1000px) 560px, 100vw")}</div>
+<div class="txt"><h3>${m.title}</h3><p>${m.body}</p><ul class="tags">${m.tags.map((t) => `<li>${t}</li>`).join("")}</ul></div></article>`;
   return `
 <section class="block wrap" id="modes">
 <div class="head"><p class="eyebrow">Two kinds of work</p><h2>Parts and buildings, one engine.</h2>
@@ -432,7 +431,6 @@ function agent() {
 <p class="cmd-note">Real session, sped up. No sound.</p>
 </div>
 </div>
-<p class="agent-more"><a href="#connect">Set it up ↓</a></p>
 </section>`;
 }
 
@@ -550,7 +548,7 @@ ${connect()}
 ${start()}
 </main>
 <footer class="wrap"><span>Cadpole is open source under Apache-2.0.</span><a href="${GH}">github.com/mikelikespie/cadpole</a></footer>
-<nav class="bar" aria-label="Quick actions"><a class="btn primary" href="#start">Get started</a><a class="btn" href="${GH}">${ICON_GH}GitHub</a><button class="btn icon" type="button" data-share hidden aria-label="Share this page">${ICON_SHARE}</button></nav>
+<nav class="bar" aria-label="Quick actions"><a class="btn primary" href="${GH}">${ICON_GH}GitHub</a><button class="btn icon" type="button" data-share hidden aria-label="Share this page">${ICON_SHARE}</button></nav>
 <dialog class="sheet" aria-labelledby="sheet-title"><div class="sheet-in">
 <div class="sheet-head"><h3 id="sheet-title" data-sheet-title>Model</h3><div class="sheet-acts">${fullLink("mascot")}<button class="btn small primary" type="button" data-sheet-close>Close</button></div></div>
 <div class="sheet-view"><img class="sheet-pic" alt="" decoding="async"><div class="live"></div><div class="sheet-draw" hidden></div></div>

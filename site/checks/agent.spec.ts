@@ -62,7 +62,7 @@ test("no phone recording on the page",async ({ browser, site }) => {
   await ctx.close();
 });
 
-test("the pictures first, the reading after: setup and Get started come last, and the link down reaches them", async ({ browser, site }) => {
+test("the pictures first, the reading after: setup and Get started come last, and nothing skips down to them", async ({ browser, site }) => {
   const ctx = await context(browser, "desk-1440");
   const p = await ctx.newPage();
   await p.goto(site + "?rm=1", { waitUntil: "load" });
@@ -72,11 +72,12 @@ test("the pictures first, the reading after: setup and Get started come last, an
   expect(at("tools")).toBeLessThan(at("connect"));
   expect(at("connect")).toBeLessThan(at("start"));
   expect(await p.locator("#agent .agent-how").count()).toBe(0);
-  await p.locator('#agent a[href="#connect"]').click();
-  await p.waitForTimeout(300);
-  const top = await p.evaluate(() => document.getElementById("connect")!.getBoundingClientRect().top);
-  expect(top).toBeGreaterThanOrEqual(0);
-  expect(top).toBeLessThan(200);
-  expect(new URL(p.url()).hash).toBe("#connect");
+  // Only the skip link and the header nav jump within the page; the hero, the
+  // quick-action bar, the agent section and the mode cards go to GitHub or nowhere.
+  expect(await p.locator('.hero-cta a[href^="#"], .bar a[href^="#"], #agent a[href^="#"], #modes a[href^="#"]').count()).toBe(0);
+  expect(await p.locator(".hero-cta a").count()).toBe(1);
+  expect(await p.locator(".hero-cta a.primary").textContent()).toContain("GitHub");
+  expect(await p.locator(".bar a").count()).toBe(1);
+  expect(await p.locator(".bar a.primary").textContent()).toContain("GitHub");
   await ctx.close();
 });
