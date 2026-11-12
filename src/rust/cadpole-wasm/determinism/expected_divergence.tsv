@@ -127,11 +127,11 @@ cabin_plan.star	volume	walls_above#44: 41fb8254eb1db6a5 vs 41fb8254eb1db6e1 -- t
 cabin_plan.star	topology	walls#21: 4a8e58a44b2a1ac0 vs b267d79dea656cd1 -- as the body's other rows: its f64 digest in the last bits
 cabin_plan.star	mesh	walls#21: c63cca513c836ea6 vs 6c16b19b75b1a3d1 -- the f32 positions differ in their last bits
 cabin_plan.star	inspect	walls#21 at char 125: …", faces: 88, edges: 252, triangles: 1612, thin_faces: 21, bbox: Some(BBox { min: Some(Vec3 { x: -15 vs …", faces: 88, edges: 252, triangles: 1610, thin_faces: 21, bbox: Some(BB... -- as volume
-embossed_mug.star	order	translate_9#83 edges[0]: "mug_paint_handle/side[0.0]#2|mug_paint_outer/side#0" vs "mug_paint_handle/side[0.3]#2|mug_paint_outer/side#0" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
-embossed_mug.star	volume	translate_1#25: 40fa63d9830362f9 vs 40fa63d9830362e7 -- the mesh volume in its last bits
-embossed_mug.star	topology	translate_1#25: a512141a26185a52 vs ebbdd648197fabc8 -- as the body's other rows: its f64 digest in the last bits
-embossed_mug.star	mesh	translate_1#25: 73502402e1e18b19 vs 22637d5ee2f1f8ac -- the f32 positions differ in their last bits
-embossed_mug.star	inspect	translate_1#25 at char 382: …96.0 }) }), volume_mm3: 108093.5944856516, area_mm2: 60026.95241383227, solid: Some(SolidVerdict { i vs …96.0 }) }), volu... -- as volume
+embossed_mug.star	counts	translate_9#104: {"faces":55,"edges":105,"vertices":65,"triangles":7922,"mesh_vertices":6232} vs {...,"triangles":7924,"mesh_vertices":6234} -- the handled mug comes out of a mesh-kernel union (over the B-rep face budget), which triangulates a face differently between the targets, as gridfinity_baselid.star's counts row
+embossed_mug.star	volume	translate_1#32: 40fa005014360367 vs 40fa00501436035c -- the mesh volume in its last bits
+embossed_mug.star	topology	translate_1#32: 32552213b1ff5892 vs e168f02e8de36510 -- as the body's other rows: its f64 digest in the last bits
+embossed_mug.star	mesh	translate_1#32: a4dde99c95902a5e vs 1bd4e0e5ab5baad5 -- the f32 positions differ in their last bits
+embossed_mug.star	inspect	translate_1#32 at char 383: …96.0 }) }), volume_mm3: 106501.00493432359, area_mm2: 59546.45612801585, solid: Some(SolidVerdict { vs …96.0 }) }), volu... -- as volume
 enclosure.star	order	board_i#193 edges[7]: "box_1/front|box_2/right" vs "box_1/front|box_2/top" -- a connector is an exact subtract of its mouth from its shell, and the exact boolean's intersection edges come out in another order, as bracket.star's
 enclosure.star	volume	board_i#193: 405a3f61a8c9ec6b vs 405a3f61a8c9ec65 -- the same connector's mesh volume in its last bits, as order
 enclosure.star	topology	board_i#164: 2a9083b38862212b vs 4dc6c8bea5f9b773 -- as order: a connector's f64 digest in the last bits

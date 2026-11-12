@@ -123,13 +123,21 @@ def side_face(body, body_name, theta):
     clear of every piece of art (just under the lip)."""
     return body.faces(name=body_name + "_outer/side").nearest(on_wall(theta, height - 4.0))
 
+FOOT_RING = 6.0                 # width of the ring the mug stands on
+FOOT_RECESS = 1.0               # depth of the shallow recess inside it
+
 def shell(name):
+    """The thrown form: a lip rounded over, the floor blended into the wall
+    inside the way a wheel leaves it, and a foot ring under a shallow
+    recess, so the mug stands on its rim and not on its whole base."""
     outer = cylinder(r, height, name=name + "_outer")
     cavity = cylinder(r - wall, height, at=(0, 0, floor_t), name=name + "_cavity")
     s = subtract(outer, cavity, name=name + "_shell", kernel="brep")
     s = fillet(s, wall * 0.42, edges=s.edges(on_plane=XY.offset(height)), name=name + "_lip")
+    s = fillet(s, min(6.0, floor_t + 1.0, r * 0.15), edges=s.edges(on_plane=XY.offset(floor_t)), name=name + "_floor")
     s = fillet(s, 2.0, edges=s.edges(on_plane=XY), name=name + "_foot")
-    return s
+    recess = cylinder(r - FOOT_RING, FOOT_RECESS + 1.0, at=(0, 0, -1.0), name=name + "_recess_cut")
+    return subtract(s, recess, name=name + "_recess", kernel="brep")
 
 def make_handle(name):
     zt = height * 0.78
@@ -147,8 +155,24 @@ def make_handle(name):
                  .line((x1 + 6.0 + c, 0, zb + c))
                  .arc((x1 + 6.0, 0, zb), via=(x1 + 6.0 + c - q, 0, zb + q))
                  .line((x0, 0, zb)))
-    profile = sketch(route.start_plane, name=name + "_section").slot(13.0, 8.5)
-    return sweep_along(profile, route, name=name)
+    profile = sketch(route.start_plane, name=name + "_section").slot(HANDLE_W, HANDLE_T)
+    return [sweep_along(profile, route, name=name),
+            handle_root(name + "_top", route.start_plane, 0.0),
+            handle_root(name + "_bottom", route.start_plane, zb - zt)]
+
+HANDLE_W = 13.0                 # the handle's section, a slot
+HANDLE_T = 8.5
+
+def handle_root(name, top_plane, dz):
+    """Where the handle is pulled from the wall: a smooth loft that starts
+    2.6 mm wider than the handle all round just under the wall and narrows
+    onto the handle's own section 6 mm out, the slip blend a potter
+    leaves. It starts inside the wall, so its edge meets the curved wall
+    on a slant and leaves no ledge, and it ends a little inside the handle."""
+    secs = []
+    for (d, grow) in [(0.0, 2.6), (wall / 2.0 - 1.4, 2.6), (wall / 2.0 + 1.4, 1.2), (wall / 2.0 + 3.6, 0.45), (wall / 2.0 + 5.8, 0.12), (wall / 2.0 + 7.6, -0.3)]:
+        secs.append(sketch(top_plane.offset(d), name=name + "_s%d" % len(secs)).slot(HANDLE_W + 2 * grow, HANDLE_T + 2 * grow))
+    return translate(loft(secs, ruled=False, name=name + "_loft"), (0, 0, dz), name=name)
 
 # The art placements on one mug: the mark's two tones, and the band in two
 # halves (one on the front half face, one on the back, each centred on its
@@ -164,26 +188,35 @@ def placements(name):
         (name + "_band1", lambda n: wave_band(n), 180.0, band_z, 0),
     ]
 
-def decal(name, art, theta, z, outer_r, film_t):
+DECAL_FILM = 0.1                # thickness of the coloured film over the art
+DECAL_LIFT = 0.2                # where the film's outside sits above the face it colours
+
+def decal(name, art, theta, z, outer_r, inset=0.0):
     """A thin coloured body in the shape of `art` as it lies on the mug,
-    its outside at radius `outer_r`: the same wrap and the same raise on a
-    fresh cylinder of the mug's radius (so the loops sit at the mug's
-    angles), all but the outer `film_t` of the relief taken away again, and
-    the shell left scaled radially into place. (A raised mark's decal is
-    only its top: the side walls would coincide with the relief's own, and
-    growing the loops with `Sketch.offset` leaves a sliver wall face the
-    tessellator refuses, so the walls stay the mug's colour.)
+    its outside at radius `outer_r` and its inside `DECAL_FILM` below it:
+    the same wrap on a fresh cylinder of the mug's radius (so the loops sit
+    at the mug's angles), raised by a fixed `h`, everything inside
+    `r + h - DECAL_FILM` taken away again, and the film scaled radially into
+    place. The raise is a constant and not the mug's `relief`: the trim
+    cylinder has to clear the whole core, or a full-height tube of it
+    survives into the film. (A raised mark's decal is only its top: the
+    side walls would coincide with the relief's own, so they stay the mug's
+    colour.)
 
     Only for the picture: `emboss(color=)` and `emboss.paint` colour the
     faces in a 3MF or GLB export, but `cadpole render` draws a body in one
-    colour, so the colour is shown by these."""
+    colour, so the colour is shown by these. `inset` shrinks the art first:
+    a film on a pocket's floor would otherwise share the pocket's walls."""
+    h = DECAL_FILM + 0.4
     core = cylinder(r, height, name=name + "_core")
     sk = art(name + "_sketch")
+    if inset > 0:
+        sk = sk.offset(-inset, name=name + "_inset")
     face = core.faces(name=name + "_core/side").nearest(on_wall(theta, height - 4.0))
     w = wrap(sk, face, method=wrap.unroll, origin=on_wall(theta, z), up=(0, 0, 1), name=name + "_wrap")
-    raised = emboss(core, face, w, relief, kind=emboss.raised, name=name + "_raised")
-    film = subtract(raised, cylinder(r + relief - film_t, height + 2, at=(0, 0, -1), name=name + "_trim"), name=name + "_film", kernel="mesh")
-    s = outer_r / (r + relief)
+    raised = emboss(core, face, w, h, kind=emboss.raised, name=name + "_raised")
+    film = subtract(raised, cylinder(r + h - DECAL_FILM, height + 2, at=(0, 0, -1), name=name + "_trim"), name=name + "_film", kernel="mesh")
+    s = outer_r / (r + h)
     return scale(film, (s, s, 1), name=name)
 
 def mug(kind, name, glaze, art_colors):
@@ -202,17 +235,18 @@ def mug(kind, name, glaze, art_colors):
         else:
             body = emboss(body, face, placed, relief, kind=kind, color=art_color, name=pname + "_art")
         if decals:
-            if kind == "raised":
-                d = decal(pname + "_decal", art, theta, z, r + relief + 0.2, 0.1)
-            elif kind == "cut":
-                d = decal(pname + "_decal", art, theta, z, r - relief + 0.2, 0.6)
-            else:
-                d = decal(pname + "_decal", art, theta, z, r + 0.2, 0.6)
-            d.material(preset="petg_glossy", color=art_color, roughness=0.18)
+            # The face the colour lies on: the relief's tops, the pocket's
+            # floor, or the wall itself.
+            under = r + relief if kind == "raised" else (r - relief if kind == "cut" else r)
+            d = decal(pname + "_decal", art, theta, z, under + DECAL_LIFT, inset=0.15 if kind == "cut" else 0.0)
+            d.material(preset="petg_glossy", color=art_color, roughness=0.12)
             films.append(d)
     if handle != "none":
-        body = union(body, make_handle(name + "_handle"), name=name)
-    body.material(preset="petg_glossy", color=glaze, roughness=0.18)
+        (pulled, top_root, bottom_root) = make_handle(name + "_handle")
+        body = union(body, pulled, top_root, bottom_root, name=name)
+    # A satin glaze on the body and a glossy one on the art, so the art
+    # separates by its sheen as well as its colour.
+    body.material(preset="petg_glossy", color=glaze, roughness=0.34)
     return [body] + films
 
 # Glazes: cream with teal relief, teal with cream cut into it, mustard with
@@ -255,8 +289,11 @@ def plaque(name):
     return out
 
 MUGS = {}
+DECALS = {}                     # finish -> its colour films, for the tests
 if scene == "single":
-    MUGS[finish] = mug(finish, "mug", STYLES[finish][0], STYLES[finish][1])[0]
+    bs = mug(finish, "mug", STYLES[finish][0], STYLES[finish][1])
+    MUGS[finish] = bs[0]
+    DECALS[finish] = bs[1:]
 else:
     gap = (36.0 if handle != "none" else 14.0)
     step = diameter + gap
@@ -265,6 +302,7 @@ else:
         bs = mug(kind, "mug_" + kind, STYLES[kind][0], STYLES[kind][1])
         moved = [b.translate(((i - 1) * step, 0, 0)) for b in bs]
         MUGS[kind] = moved[0]
+        DECALS[kind] = moved[1:]
     for b in plaque("source"):
         b.translate((-1.5 * step - PLAQUE_W * 0.5 + 9.0, -diameter * 0.3, 0))
 
@@ -294,15 +332,62 @@ def mug_size():
         assert_true(hi[1] - lo[1] <= diameter + 2 * relief + 0.05, msg=kind + ": nothing but the art stands proud of the wall")
         assert_solid(b, msg=kind + ": a closed solid")
 
+def decals_sit_on_the_art():
+    """Each colour film is only the art: no taller than the mark, clear of
+    the mug's wall, and no further out than the face it colours. A film that
+    let the trim cylinder miss the core would run the mug's full height."""
+    mark_h = 71.0 * mm
+    for kind, films in DECALS.items():
+        assert_eq(len(films), 3 if decals else 0, msg=kind + ": a film for the mark and each half band")
+        for d in films:
+            lo, hi = d.bbox()
+            assert_true(hi[2] - lo[2] < mark_h + 1.0, msg="%s: %s is %s mm tall, more than the art" % (kind, d, hi[2] - lo[2]))
+            c = distance(d, MUGS[kind])
+            assert_true(not c.overlap, msg="%s: %s cuts into the mug at %s" % (kind, d, c.at))
+            assert_true(c.distance < 0.5, msg="%s: %s floats %s mm off its face" % (kind, d, c.distance))
+
+def thrown_details():
+    """The foot ring and the handle's blended roots are really there."""
+    for kind, b in MUGS.items():
+        lo, hi = b.bbox()
+        under = b.faces(normal=(0, 0, -1), above=XY.offset(FOOT_RECESS - 0.01), below=XY.offset(FOOT_RECESS + 0.01), allow_empty=True)
+        assert_eq(len(under), 1, msg=kind + ": a recess face 1 mm up inside the foot ring")
+        if handle != "none":
+            assert_true(hi[0] - lo[0] > diameter + 20.0, msg=kind + ": the handle stands out from the wall")
+            roots = b.faces(name="*handle_top_loft*", allow_empty=True)
+            assert_true(len(roots) > 0 and len(b.faces(name="*handle_bottom_loft*", allow_empty=True)) > 0, msg=kind + ": both handle roots are blended")
+
+test("colour films sit on the art", decals_sit_on_the_art, sweep={"relief": [0.4, 1.0, 1.6]})
+test("foot ring and handle roots", thrown_details, sweep={"handle": ["loop", "d", "none"]})
 test("relief volume matches the art", relief_volume, sweep={"diameter": [64, 82, 100], "art_scale": [0.7, 1.0, 1.3]})
 test("more art, more relief", relief_volume, sweep={"art_scale": [0.6, 0.8, 1.0, 1.2, 1.4]}, monotone="increasing")
 test("mug size and solidity", mug_size, sweep={"diameter": [64, 82, 100], "handle": ["loop", "d", "none"]})
 
+# The default camera, for the trio and for one mug alike: from the art's
+# side, so the marks (and the plaque) face the camera and the handles show
+# in profile.
+def eye_at(az, el, dist, target):
+    """The eye `dist` from `target`, `az` degrees from the front toward +x
+    and `el` degrees up: the angles `--view az=,el=` takes."""
+    return (target[0] + dist * math.sin(az) * math.cos(el), target[1] - dist * math.cos(az) * math.cos(el), target[2] + dist * math.sin(el))
+
+if scene == "trio":
+    TRIO_C = (-0.3 * (diameter + 36.0), 0.0, height * 0.45)
+    render_defaults(camera=view(eye=eye_at(-30, 20, 5.4 * diameter + 160.0, TRIO_C), target=TRIO_C, fov=30))
+else:
+    SINGLE_C = (8.0, 0.0, height * 0.48)
+    render_defaults(camera=view(eye=eye_at(-24, 16, 3.4 * height, SINGLE_C), target=SINGLE_C, fov=30))
+
+# The site's story: paint, raise, cut. The camera stays near the mark (at
+# `art_angle`) so the art is the subject of every step, with the handle in
+# profile on the right; it swings off the mark while the relief grows so the
+# relief's walls catch the light, and comes back higher for the cut, where
+# the light rakes into the pockets.
 animation("scroll_story", [
-    keyframe(0.0, scene="single", finish="paint", relief=0.4, ease=ease.linear, camera=view(az=-58, el=14, fov=24)),
-    keyframe(1.2, finish="paint", relief=0.4, camera=view(az=-40, el=14, fov=24)),
+    keyframe(0.0, scene="single", finish="paint", relief=0.4, ease=ease.linear, camera=view(az=-14, el=14, fov=24)),
+    keyframe(1.2, finish="paint", relief=0.4, camera=view(az=-24, el=15, fov=24)),
     keyframe(1.25, finish="raised", relief=0.4),
-    keyframe(2.6, finish="raised", relief=1.6, camera=view(az=-14, el=18, fov=24)),
-    keyframe(2.65, finish="cut", relief=1.6),
-    keyframe(3.6, finish="cut", relief=1.0, camera=view(az=8, el=22, fov=24)),
+    keyframe(2.6, finish="raised", relief=1.2, camera=view(az=-4, el=18, fov=24)),
+    keyframe(2.65, finish="cut", relief=1.2),
+    keyframe(3.6, finish="cut", relief=1.0, camera=view(az=-24, el=24, fov=24)),
 ], fps=20)
