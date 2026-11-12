@@ -17,18 +17,18 @@
   },
   "seq/mg/d": {
    "count": 72,
-   "bytes": 933594,
-   "sha256": "46e07060dea7dcd24cc8be66a6f5190d5dc4b4bd24bb146c0289fd86ba18f48c"
+   "bytes": 980103,
+   "sha256": "443bc31cf83a2c2fb7e24e40bda028d2e9507f67da09aabab4bd965d5759da5a"
   },
   "seq/mg/m": {
    "count": 36,
-   "bytes": 559592,
-   "sha256": "0eb630cae9cefd622cd695a11563cd745b8b1e1209fa21b3fb783643bce6aa04"
+   "bytes": 580724,
+   "sha256": "ba9981e5d95fe0acfd06ee12c68692589226e34db3bd9856c667749fae6d64ee"
   },
   "seq/mg/w": {
    "count": 72,
-   "bytes": 1582644,
-   "sha256": "f1e45a607cfdd4774731d3460e7dfd5033a3877a409502a7e768539d88616f4e"
+   "bytes": 1642678,
+   "sha256": "8d1a29fbed55e403c36af7703a6fa31e22af9ea646ff4390613f53348278fbb8"
   },
   "seq/ra/d": {
    "count": 72,

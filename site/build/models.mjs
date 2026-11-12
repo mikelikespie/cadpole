@@ -65,7 +65,7 @@ export const CARDS = [
 
 // The gallery: [key, title, text, camera, script in examples/].
 export const GALLERY = [
-  ["mascot", "Desk mascot", "Signed-distance blends: an egg-shaped head and a tapering spline tail with a filleted neck, on a plinth with raised lettering.", "-30,24,24,1", "desk_mascot.star"],
+  ["mascot", "Desk mascot", "The logo stood up: its SVG imported as a prism, the front edge rounded by a signed-distance blend, the colours inlaid as parts that touch, on a plinth with raised lettering.", "-30,24,24,1", "desk_mascot.star"],
   ["gridfinity", "Gridfinity set", "One script for the baseplate and every bin: sizes, dividers, scoops and label tabs.", "-35,35,24,1", "gridfinity_showcase.star"],
   ["enclosure", "Enclosure for a Raspberry Pi 5", "A printable snap-fit case around a model of the board, made from its published drawing. One table places each port and cuts its opening.", "35,28,24,1", "enclosure.star"],
   ["planetary", "Herringbone planetary", "Sun, planets, ring and carrier that print as one piece and turn when they come off the bed.", "-30,32,24,1", "planetary.star"],

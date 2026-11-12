@@ -1,17 +1,25 @@
 # Embossed mugs: bring your existing art, wrap it round a part.
 #
 # The tadpole mark is an ordinary SVG (assets/tadpole.svg, the logo with ids
-# added so a script can pick its shapes) and the wave is a one-motif SVG
+# added so a script can pick its shapes: the silhouette, the dark tone drawn
+# over it, the eye and the pupil) and the wave is a one-motif SVG
 # (assets/wave.svg). Both come in through `import_svg` as exact sketches,
 # then `wrap(..., method=wrap.unroll)` lays them on the *developed* surface
 # of the mug's cylinder -- the sketch's millimetres become arc lengths, the
 # way a label wraps a can -- and `emboss` turns them into relief:
 #
 #   * raised (`emboss.raised`): the art stands proud of the wall, its tops an
-#     exact offset cylinder, glazed a second colour;
+#     exact offset cylinder, glazed in the mark's two tones;
 #   * cut (`emboss.cut`): the same loops sunk into the wall;
 #   * painted (`emboss.paint`): no geometry, the face is split along the
 #     loops and the pieces coloured -- a decal.
+#
+# The mark keeps the logo's colours as separate pieces of art, each embossed
+# in its own colour, so a multi-colour print carries them all: the dark body
+# (the eye open in it, so the glaze is its white), the light rim of the
+# tail's paddle and the ink pupil. An imprint splits one face, so two pieces
+# of art may not share an edge; the rim stops a hairline (`TONE_GAP`) short
+# of the dark tone, the way a two-colour relief is drawn for printing anyway.
 #
 # Next to them stands the flat source: the same imported sketches embossed
 # on a plain plaque, so one picture reads "flat file -> wrapped part".
@@ -33,9 +41,9 @@ height = param("height", 96.0, unit="mm", min=70, max=130, doc="Height of the mu
 wall = param("wall", 3.2, unit="mm", min=2.4, max=6, doc="Wall thickness")
 floor_t = param("floor", 5.0, unit="mm", min=3, max=10, doc="Floor thickness")
 handle = param("handle", "loop", choices=["loop", "d", "none"], doc="Handle style")
-art_scale = param("art_scale", 1.0, min=0.5, max=1.4, doc="Size of the tadpole mark (1 = 50 mm wide)")
+art_scale = param("art_scale", 1.0, min=0.5, max=1.4, doc="Size of the tadpole mark (1 = 44 mm tall)")
 art_angle = param("art_angle", -25.0, unit="deg", min=-45, max=45, doc="Where the mark sits round the mug: 0 faces front, + turns toward the handle")
-art_z = param("art_z", 58.0, unit="mm", min=30, max=100, doc="Height of the mark's centre")
+art_z = param("art_z", 56.0, unit="mm", min=30, max=100, doc="Height of the mark's centre")
 relief = param("relief", 1.0, unit="mm", min=0.4, max=1.6, doc="How far a raised mark stands out or a cut one sinks in")
 waves = param("waves", 10, min=6, max=16, step=2, doc="Wave motifs round the band (an even count: half on each half face)")
 band_z = param("band_z", 13.0, unit="mm", min=8, max=30, doc="Height of the wave band's centre")
@@ -48,31 +56,43 @@ assert_true(wall < r / 4, msg="the wall is too thick for that diameter")
 assert_true(art_z < height - 8 and band_z > 4, msg="the art must stay clear of the rim and the foot")
 
 # --- the art -----------------------------------------------------------------
-# SVG px are CSS px (96 dpi): the 128-px logo tile is 33.9 mm, and the
-# tadpole's silhouette (the `tadpole` group: body circle + tail) spans
-# 105 x 71 px of it. Scale so it comes out LOGO_W wide.
+# SVG px are CSS px (96 dpi): the 128-px logo tile is 33.9 mm, and the mark's
+# silhouette (the `mark` path) spans 99.7 x 119.9 px of it, its box centred on
+# SIL_C. Scale so it comes out LOGO_H tall.
 PX = 25.4 / 96.0
-LOGO_W = 50.0 * art_scale
-k = LOGO_W / (105.0 * PX)       # import_svg scale
+SIL_W = 99.66
+SIL_H = 119.93
+SIL_C = (65.97, 64.0)
+LOGO_H = 44.0 * art_scale
+k = LOGO_H / (SIL_H * PX)       # import_svg scale
 mm = PX * k                     # one SVG px in sketch millimetres
-# The silhouette's bounding-box centre, in SVG px, and the eye and pupil
-# centres; with flip_y the sketch's +y is the SVG's -y.
-SIL_C = (72.5, 63.5)
+LOGO_W = SIL_W * mm
+TONE_GAP = 0.3                  # mm between the two tones: art that shares an edge cannot be imprinted
 
-def svg_at(x, y):
-    """An SVG point (px) in the sketch, the silhouette centred on the origin."""
-    return ((x - SIL_C[0]) * mm, (SIL_C[1] - y) * mm)
+def mark_part(id, name, plane, at):
+    """One shape of the mark, in the file's own coordinates moved so the
+    silhouette's box is centred on `at`. (With flip_y the file's y runs up
+    from the bottom of its 128-px tile.)"""
+    return import_svg(asset("tadpole.svg"), ids=[id], plane=plane, align="none",
+                      at=(at[0] - SIL_C[0] * mm, at[1] - (128.0 - SIL_C[1]) * mm), scale=k, name=name)
 
 def tadpole(name, plane=XY, at=(0, 0)):
-    """The mark as one sketch: the silhouette with the eye as a hole and the
-    pupil as an island inside it -- three imports of one file, by id."""
-    def place(p):
-        q = svg_at(p[0], p[1])
-        return (at[0] + q[0], at[1] + q[1])
-    sil = import_svg(asset("tadpole.svg"), ids=["tadpole"], plane=plane, align="center", at=at, scale=k, name=name + "_silhouette")
-    eye = import_svg(asset("tadpole.svg"), ids=["eye"], plane=plane, align="center", at=place((60, 49)), scale=k, name=name + "_eye")
-    pupil = import_svg(asset("tadpole.svg"), ids=["pupil"], plane=plane, align="center", at=place((62.5, 49)), scale=k, name=name + "_pupil")
-    return union2d(subtract2d(sil, eye, name=name + "_eyed"), pupil, name=name)
+    """The dark tone: the body with the eye open in it, so the glaze is the
+    white of the eye."""
+    body = mark_part("body", name + "_body", plane, at)
+    eye = mark_part("eye", name + "_eye", plane, at)
+    return subtract2d(body, eye, name=name)
+
+def pupil(name, plane=XY, at=(0, 0)):
+    """The pupil: an island in the eye, clear of the body all round."""
+    return mark_part("pupil", name, plane, at)
+
+def paddle_rim(name, plane=XY, at=(0, 0)):
+    """The light tone: the paddle's rim, the silhouette less the dark tone,
+    kept TONE_GAP clear of it."""
+    sil = mark_part("mark", name + "_silhouette", plane, at)
+    body = mark_part("body", name + "_body", plane, at)
+    return subtract2d(sil, body.offset(TONE_GAP), name=name)
 
 circ = math.tau * r
 per_half = waves // 2
@@ -130,14 +150,18 @@ def make_handle(name):
     profile = sketch(route.start_plane, name=name + "_section").slot(13.0, 8.5)
     return sweep_along(profile, route, name=name)
 
-# The art placements on one mug: the mark, and the band in two halves (one
-# on the front half face, one on the back, each centred on its face so the
-# seams fall between motifs). Each is (name, sketch builder, angle, height).
+# The art placements on one mug: the mark's two tones, and the band in two
+# halves (one on the front half face, one on the back, each centred on its
+# face so the seams fall between motifs). Each is (name, sketch builder,
+# angle, height, tone): tone 0 is the art colour, 1 the paddle's light rim,
+# 2 the pupil.
 def placements(name):
     return [
-        (name + "_mark", lambda n: tadpole(n), art_angle, art_z),
-        (name + "_band0", lambda n: wave_band(n), 0.0, band_z),
-        (name + "_band1", lambda n: wave_band(n), 180.0, band_z),
+        (name + "_mark", lambda n: tadpole(n), art_angle, art_z, 0),
+        (name + "_rim", lambda n: paddle_rim(n), art_angle, art_z, 1),
+        (name + "_pupil", lambda n: pupil(n), art_angle, art_z, 2),
+        (name + "_band0", lambda n: wave_band(n), 0.0, band_z, 0),
+        (name + "_band1", lambda n: wave_band(n), 180.0, band_z, 0),
     ]
 
 def decal(name, art, theta, z, outer_r, film_t):
@@ -162,11 +186,16 @@ def decal(name, art, theta, z, outer_r, film_t):
     s = outer_r / (r + relief)
     return scale(film, (s, s, 1), name=name)
 
-def mug(kind, name, glaze, art_color):
+def mug(kind, name, glaze, art_colors):
     body = shell(name)
     films = []
-    for (pname, art, theta, z) in placements(name):
-        face = side_face(body, name, theta)
+    for (pname, art, theta, z, tone) in placements(name):
+        art_color = art_colors[tone]
+        if tone == 2:
+            # the eye is an island of the mark's raise or cut, a face of its own
+            face = body.faces(name=name + "_mark_art/island*").nearest(on_wall(theta, z))
+        else:
+            face = side_face(body, name, theta)
         placed = wrap(art(pname), face, method=wrap.unroll, origin=on_wall(theta, z), up=(0, 0, 1), name=pname + "_wrap")
         if kind == "paint":
             body = emboss(body, face, placed, kind=emboss.paint, color=art_color, name=pname + "_art")
@@ -187,32 +216,42 @@ def mug(kind, name, glaze, art_color):
     return [body] + films
 
 # Glazes: cream with teal relief, teal with cream cut into it, mustard with
-# deep-teal paint.
+# deep-teal paint; each with the lighter tone of the paddle's rim and an ink
+# pupil.
+INK = "#0b2e2a"
 STYLES = {
-    "raised": ("#efe7d6", "#14967f"),
-    "cut": ("#14967f", "#f3ecdc"),
-    "paint": ("#e7b33e", "#0e6e5e"),
+    "raised": ("#efe7d6", ("#14967f", "#7fd8b8", INK)),
+    "cut": ("#14967f", ("#f3ecdc", "#9fe6cc", INK)),
+    "paint": ("#e7b33e", ("#0e6e5e", "#3cb592", INK)),
 }
+
+PLAQUE_W = max(LOGO_W + 22.0, 2 * pitch + WAVE_W * wave_k + 1.0)   # the mark, or a row of three waves
 
 def plaque(name):
     """The flat source: the same two SVGs extruded on a flat tile standing on
     edge -- what the mugs are wrapped from. The art is its own body, the way
     a two-colour print carries it."""
-    w = LOGO_W + 22.0
+    w = PLAQUE_W
     t = 4.0
-    mark_h = 71.0 * mm             # the silhouette is 71 px tall
+    mark_h = LOGO_H
     wave_h = 11.0 * wave_k
     tile_h = mark_h + wave_h + 24.0
     tile = extrude(sketch(XY, name=name + "_outline").rounded_rect(w, tile_h, 5.0, center=(0, 0)), t, name=name + "_tile")
     tile.material(preset="pla_matte", color="#f7f4ee")
-    mark = extrude(tadpole(name + "_mark", plane=XY.offset(t), at=(0, tile_h / 2.0 - 7.0 - mark_h / 2.0)), relief, name=name + "_mark_relief")
+    mark_at = (0, tile_h / 2.0 - 7.0 - mark_h / 2.0)
+    mark = extrude(tadpole(name + "_mark", plane=XY.offset(t), at=mark_at), relief, name=name + "_mark_relief")
+    rim = extrude(paddle_rim(name + "_rim", plane=XY.offset(t), at=mark_at), relief, name=name + "_rim_relief")
+    eye = extrude(pupil(name + "_pupil", plane=XY.offset(t), at=mark_at), relief, name=name + "_pupil_relief")
     row = extrude(wave_band(name + "_waves", count=3, plane=XY.offset(t), at=(0, -tile_h / 2.0 + 7.0 + wave_h / 2.0)), relief, name=name + "_waves_relief")
+    mark = mark if type(mark) == "list" else [mark]
+    rim = rim if type(rim) == "list" else [rim]
+    colored = [(b, "#14967f") for b in mark] + [(b, "#7fd8b8") for b in rim] + [(eye, INK)] + [(b, "#14967f") for b in row]
     out = []
-    for b in [tile] + mark + row:
-        b2 = rotate(b, 90, axis=(1, 0, 0))
-        out.append(translate(b2, (0, 0, tile_h / 2.0)))
-    for b in out[1:]:
-        b.material(preset="pla_matte", color="#14967f")
+    for b, c in [(tile, None)] + colored:
+        b2 = translate(rotate(b, 90, axis=(1, 0, 0)), (0, 0, tile_h / 2.0))
+        if c:
+            b2.material(preset="pla_matte", color=c)
+        out.append(b2)
     return out
 
 MUGS = {}
@@ -227,11 +266,11 @@ else:
         moved = [b.translate(((i - 1) * step, 0, 0)) for b in bs]
         MUGS[kind] = moved[0]
     for b in plaque("source"):
-        b.translate((-1.5 * step - LOGO_W * 0.5 - 2.0, -diameter * 0.3, 0))
+        b.translate((-1.5 * step - PLAQUE_W * 0.5 + 9.0, -diameter * 0.3, 0))
 
 # --- tests -------------------------------------------------------------------
 # The art's area, from the same sketches the mugs were wrapped with.
-ART_AREA = tadpole("t_mark").area() + 2 * wave_band("t_band").area()
+ART_AREA = tadpole("t_mark").area() + paddle_rim("t_rim").area() + pupil("t_pupil").area() + 2 * wave_band("t_band").area()
 
 def relief_volume():
     """A raised mug holds about `relief` x the art's area more than the
