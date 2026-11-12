@@ -7,14 +7,22 @@
 # only tightens) and when a pair not listed here differs (a regression, or a
 # new example that needs a look). Categories: names, order, counts, volume,
 # bbox, topology, mesh, inspect, diagnostics, features, tests, ok.
-bracket.star	order	bracket#5 edges[17]: "hole_left/side#1|plate/top" vs "hole_left/side#0|plate/top" -- the face names and their order agree and the edge list does not: the exact subtract's B-rep lists the bolt hole's two rim edges in another order on the two targets (truck's arithmetic, its last bits), and the topology order is the B-rep's own, which the face step walks and does not decide
-bracket.star	topology	bracket#5: 7619582f836ce529 vs 169aec6cd89dfd9d -- as order
-bracket.star	mesh	bracket#5: 12efd5e9715bdc32 vs fbaebe8e02c58205 -- as order
+bracket.star	order	bracket#12 edges[17]: "foot/end|gusset_right/end" vs "foot/end|gusset_right/side[0.3]" -- the face names agree and the edge list does not: the exact union and subtract list the B-rep's edges in another order on the two targets (truck's arithmetic, its last bits), and the topology order is the B-rep's own, which the face step walks and does not decide
+bracket.star	names	bracket#12 faces[28]: "bracket/blend[bore/side[0.0]|boss/end]#1" vs "bracket/blend[bore/side[0.1]|boss/end]#1" -- the bore's rim blend is named after the first edge of its run, and which of the rim's two edges comes first differs between the targets (filleted_bracket.star's names row)
+bracket.star	features	bracket: edges arg "bore/side[0.0]|boss/end (...)" vs "bore/side[0.1]|boss/end (...)" -- follows the `names` row: the exact fillet records each run by its first edge and names its blend after it. The face, edge and vertex counts agree
+bracket.star	topology	bracket#12: 7c8c669cd71dc4ad vs a2f0a80ec2b9573c -- as order
+bracket.star	mesh	bracket#12: cc4fe0714c681692 vs 24c3f43cb1f1b379 -- as order
+bracket.star	inspect	bracket#12: area_mm2 12548.723343794489 vs 12548.723343794496 -- the exact fillet's mesh area in its last digits, as names
+bracket.star	keys	bracket#12: 128ce37c9218493224fabf6d245c8a13587cc60e4bf4122bf6daa1d6eb55b9b2 vs 77c66735abe187dae95f6e2da2c71a3843b63e1bb27f1167ba8090eb42082075 -- the fillet's memo key digests the edges as given, and their names carry the swap (the features row), as filleted_bracket.star's keys row
 charging_stand.star	topology	arm#2: da2b4b01f749ac22 vs ed25822785f461d0 -- the lofted arm's f64 digest in its last bits while its f32 mesh agrees
 constrained_lprofile.star	topology	angle#0: 1ca66904d5030d6e vs 5c4d03570bc33e07
-drawing_sheet.star	order	bracket#5 edges[17]: "hole_left/side#1|plate/top" vs "hole_left/side#0|plate/top" -- bracket.star's body, as its order row
-drawing_sheet.star	topology	bracket#5: 7619582f836ce529 vs 169aec6cd89dfd9d -- as order
-drawing_sheet.star	mesh	bracket#5: 12efd5e9715bdc32 vs fbaebe8e02c58205 -- as order
+drawing_sheet.star	order	bracket#12 edges[17]: "foot/end|gusset_right/end" vs "foot/end|gusset_right/side[0.3]" -- bracket.star's body, as its order row
+drawing_sheet.star	names	bracket#12 faces[28]: "bracket/blend[bore/side[0.0]|boss/end]#1" vs "bracket/blend[bore/side[0.1]|boss/end]#1" -- bracket.star's body, as its names row
+drawing_sheet.star	features	bracket: edges arg "bore/side[0.0]|boss/end (...)" vs "bore/side[0.1]|boss/end (...)" -- bracket.star's body, as its features row
+drawing_sheet.star	topology	bracket#12: 7c8c669cd71dc4ad vs a2f0a80ec2b9573c -- bracket.star's body, as its topology row
+drawing_sheet.star	mesh	bracket#12: cc4fe0714c681692 vs 24c3f43cb1f1b379 -- bracket.star's body, as its mesh row
+drawing_sheet.star	inspect	bracket#12: area_mm2 12548.723343794489 vs 12548.723343794496 -- bracket.star's body, as its inspect row
+drawing_sheet.star	keys	bracket#12: 128ce37c9218493224fabf6d245c8a13587cc60e4bf4122bf6daa1d6eb55b9b2 vs 77c66735abe187dae95f6e2da2c71a3843b63e1bb27f1167ba8090eb42082075 -- bracket.star's body, as its keys row
 filleted_bracket.star	names	rounded#6 faces[17]: "rounded/blend[hole_right/side#1|plate/top]#1" vs "rounded/blend[hole_right/side#0|plate/top]#1" -- a hole rim's blend is named after the first edge of its run, and which of the rim's two edges comes first differs between the targets (the order row, as bracket.star's)
 filleted_bracket.star	features	rounded: edges arg "hole_right/side#1|plate/top (...)" vs "hole_right/side#0|plate/top (...)" -- follows the `names` row: the exact fillet records each run by its first edge and names its blend after it, so the feature's `edges` arg and the blend names carry the edge order's swap. The exact fillet's face, edge and vertex counts agree
 filleted_bracket.star	order	rounded#6 edges[4]: "hole_left/side#0|plate/bottom" vs "hole_left/side#1|plate/bottom" -- the same swap

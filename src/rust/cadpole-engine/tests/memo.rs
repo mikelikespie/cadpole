@@ -403,8 +403,8 @@ fn a_one_shot_evaluation_pays_nothing_and_a_sweep_shares_one_memo() {
     // The sweep: two cells that differ in one parameter share the memo, and
     // the second cell hits everything the parameter does not reach.
     let memo = Arc::new(Memo::new());
-    let a = evaluate(&scripts, &[("width", n(40.0))], Some(memo.clone()), false);
-    let b = evaluate(&scripts, &[("width", n(50.0))], Some(memo.clone()), false);
+    let a = evaluate(&scripts, &[("width", n(60.0))], Some(memo.clone()), false);
+    let b = evaluate(&scripts, &[("width", n(70.0))], Some(memo.clone()), false);
     assert!(!a.memo_counts.runs.is_empty());
     assert!(b.memo_counts.runs.len() <= a.memo_counts.runs.len());
     let _ = HashMap::<String, String>::new();

@@ -574,17 +574,34 @@ pub fn project_occluded(
     // is not drawn twice (two dash patterns out of phase read as a solid
     // line). Visible lines go first so they take precedence; the sort above
     // makes which duplicate survives a function of the geometry.
+    //
+    // Within a pass the longest runs are inked first. Coincident edges often
+    // differ in how they were split: a through hole's top rim is one visible
+    // run per arc, while its bottom rim, seen straight down the bore, flickers
+    // between visible and hidden along the grazing wall and comes out in
+    // short runs. Whichever is inked first keeps its stretch whole and the
+    // other loses it, so taking the whole arc first draws the rim as one path
+    // and leaves the slivers nothing to add, instead of a circle stitched
+    // together from a dozen pieces that a cutter stops and starts on.
+    let mut order: Vec<usize> = (0..runs.len()).collect();
+    let lengths: Vec<f64> = runs.iter().map(|r| polyline_length(&r.0)).collect();
+    order.sort_by(|&a, &b| lengths[b].total_cmp(&lengths[a]).then(a.cmp(&b)));
     let cover_tol = diag * 1e-5;
+    // Points closer together than this are one point: a boundary found by
+    // bisection lands a hair from the sample before it, and a segment that
+    // short is a stop and start for a plotter and nothing on paper.
+    let merge_tol = cover_tol * 10.0;
     let mut drawn = Coverage::new(diag / 256.0, cover_tol);
     for pass_visible in [true, false] {
-        for (pts, visible, body) in &runs {
+        for &i in &order {
+            let (pts, visible, body) = &runs[i];
             if *visible != pass_visible {
                 continue;
             }
             let pieces = drawn.uncovered(pts);
             drawn.add(pts);
             for piece in pieces {
-                let piece = simplify(&dedupe(piece), simplify_eps);
+                let piece = simplify(&merge_close(dedupe(piece), merge_tol), simplify_eps);
                 if piece.len() < 2 || polyline_length(&piece) <= cover_tol * 10.0 {
                     continue;
                 }
@@ -759,6 +776,26 @@ fn dedupe(pts: Vec<P2>) -> Vec<P2> {
     for p in pts {
         match out.last() {
             Some(q) if (q.x - p.x).abs() < 1e-12 && (q.y - p.y).abs() < 1e-12 => {}
+            _ => out.push(p),
+        }
+    }
+    out
+}
+
+/// Drop every point within `tol` of the last one kept, keeping the
+/// polyline's own two ends: the last point replaces the one before it when
+/// the two are that close, so the line still ends where it ended.
+fn merge_close(pts: Vec<P2>, tol: f64) -> Vec<P2> {
+    let n = pts.len();
+    let mut out: Vec<P2> = Vec::with_capacity(n);
+    for (i, p) in pts.into_iter().enumerate() {
+        let near = |q: &P2| ((q.x - p.x).powi(2) + (q.y - p.y).powi(2)).sqrt() <= tol;
+        match out.last() {
+            Some(q) if near(q) => {
+                if i + 1 == n && out.len() > 1 {
+                    *out.last_mut().unwrap() = p;
+                }
+            }
             _ => out.push(p),
         }
     }

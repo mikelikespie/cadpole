@@ -20,8 +20,8 @@ use cadpole_core::tessellate::{Mesh, Topology};
 use crate::ir::{layer, Dash, Drawing, HatchItem, Item, Pattern, Rgb, Stroke, Style};
 use crate::painted::{BodyLabel, PaintStyle};
 use crate::view::{
-    append_body, clip_mesh, clip_topology, project_tagged, section_loops, BodyRanges, HalfSpace,
-    Hidden, ProjectOptions, ViewBasis,
+    append_body, clip_mesh, clip_topology, project_occluded, section_cap, section_loops, BodyRanges,
+    HalfSpace, Hidden, ProjectOptions, ViewBasis,
 };
 
 /// One body's share of a view: its tessellation and, when the script asked
@@ -182,10 +182,13 @@ pub fn axon_basis(az_deg: f64, el_deg: f64) -> ViewBasis {
 /// The projected lines of `bodies` (clipped by `clips`, all of them) through
 /// `basis`, as strokes on the standard layers or on each body's own, with
 /// `shift` subtracted so the frame's origin lands where the caller wants it.
+/// `occluders` hide lines as the bodies do and draw none of their own.
+#[allow(clippy::too_many_arguments)]
 fn project_bodies(
     d: &mut Drawing,
     bodies: &[ViewBody],
     clips: &[HalfSpace],
+    occluders: &Mesh,
     basis: &ViewBasis,
     shift: P2,
     opts: &ViewOptions,
@@ -211,7 +214,7 @@ fn project_bodies(
         hidden: opts.hidden,
         ..opts.project.clone()
     };
-    let p = project_tagged(&mesh, &topo, basis, &po, &ranges);
+    let p = project_occluded(&mesh, &topo, basis, &po, &ranges, occluders);
     let vis_default = d.layer(layer::VISIBLE);
     let hid = d.layer(layer::HIDDEN);
     let body_layers: Vec<usize> = bodies
@@ -292,13 +295,23 @@ pub fn section_view(
     }
     let mut out = ViewGeometry::default();
 
-    // What is beyond the cut, first, so the cut faces paint over it.
+    // What is beyond the cut, first. The clipped meshes are open at the
+    // cut, but the cut face is solid material: a hatch is lines, not paint,
+    // so an edge behind the cut face must be hidden by it rather than drawn
+    // through the hatching. The caps occlude and draw nothing.
     if beyond {
         let mut clips = vec![HalfSpace::new(plane.origin, -n)];
         if let Some(depth) = depth.filter(|v| v.is_finite() && *v > 0.0) {
             clips.push(HalfSpace::new(plane.origin - n * depth, n));
         }
-        project_bodies(d, bodies, &clips, &basis, shift, opts, &mut out);
+        let mut caps = Mesh::default();
+        for b in bodies {
+            let cap = section_cap(&section_loops(&b.mesh, plane, opts.tolerance), plane, opts.tolerance);
+            let base = caps.vertex_count() as u32;
+            caps.positions.extend_from_slice(&cap.positions);
+            caps.indices.extend(cap.indices.iter().map(|i| i + base));
+        }
+        project_bodies(d, bodies, &clips, &caps, &basis, shift, opts, &mut out);
     }
 
     let cut_layer = match &opts.cut_layer {
@@ -385,7 +398,7 @@ pub fn elevation_view(d: &mut Drawing, bodies: &[ViewBody], basis: &ViewBasis, o
         return crate::painted::paint(d, bodies, &[], basis, P2::new(0.0, 0.0), None, opts);
     }
     let mut out = ViewGeometry::default();
-    project_bodies(d, bodies, &[], basis, P2::new(0.0, 0.0), opts, &mut out);
+    project_bodies(d, bodies, &[], &Mesh::default(), basis, P2::new(0.0, 0.0), opts, &mut out);
     out
 }
 
@@ -474,6 +487,37 @@ mod tests {
         assert!(lo.y >= -1e-6 && hi.y <= 10.0 + 1e-6, "{lo:?} {hi:?}");
         let (_, hi) = all.bounds.unwrap();
         assert!((hi.y - 30.0).abs() < 1e-6, "the far box's top shows at 30: {hi:?}");
+    }
+
+    #[test]
+    fn a_section_hides_what_is_behind_its_cut_face() {
+        // A 60 x 30 x 6 plate with a 10 mm square hole through it at
+        // x = -15, cut at x = 0 looking toward -x. The hole's walls are
+        // behind the cut face, which is solid material: none of their edges
+        // may be drawn through the hatching, so no visible line runs inside
+        // the 30 x 6 cut.
+        let s = Sketch::new(Plane::XY)
+            .with_loop(Loop::rect(P2::new(0.0, 0.0), 60.0, 30.0))
+            .with_loop(Loop::rect(P2::new(-15.0, 0.0), 10.0, 10.0));
+        let solids = cadpole_core::kernel::extrude(&s, 6.0).expect("extrude");
+        let (mesh, topo) = cadpole_core::tessellate::tessellate(&solids[0], 0.05).expect("tess");
+        let plate = ViewBody::new("plate", mesh, topo);
+        let plane = Plane::new(Vec3::new(0.0, 0.0, 0.0), Vec3::X, Vec3::Y).unwrap();
+        let mut d = Drawing::new();
+        let g = section_view(&mut d, &[plate], &plane, None, true, &ViewOptions::default());
+        for p in flat(&d, &g.items) {
+            if let Prim::Path { style, path, .. } = &p {
+                if style.layer != layer::VISIBLE {
+                    continue;
+                }
+                let pts = crate::ir::sample_path(path, 0.1);
+                for w in pts.windows(2) {
+                    let q = P2::new((w[0].x + w[1].x) / 2.0, (w[0].y + w[1].y) / 2.0);
+                    let inside = q.x.abs() < 15.0 - 0.1 && q.y > 0.1 && q.y < 6.0 - 0.1;
+                    assert!(!inside, "a line behind the cut face is drawn through it: {w:?}");
+                }
+            }
+        }
     }
 
     #[test]

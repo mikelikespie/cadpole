@@ -244,3 +244,41 @@ fn collinear_lines_that_meet_end_to_end_keep_their_shared_point() {
     }
     assert!(ends.iter().any(|x| (x.abs() - 40.0).abs() < 1e-9), "no line ends at the shared corner: {:?}", p.visible);
 }
+
+#[test]
+fn a_through_hole_seen_down_its_bore_is_one_path_per_rim_arc() {
+    // A 60 x 30 x 6 plate with a 5.5 mm through hole, from above. The top
+    // rim is two arcs and the bottom rim projects exactly onto it; looking
+    // straight down the bore, the bottom rim flickers between visible and
+    // hidden along the grazing wall. The hole must still come out as the two
+    // arcs of its top rim, drawn once, with no slivers: a cutter following
+    // the file makes one pass round the hole, not a dozen.
+    let r = 2.75;
+    let s = Sketch::new(Plane::XY)
+        .with_loop(Loop::rect(P2::new(0.0, 0.0), 60.0, 30.0))
+        .with_loop(Loop::circle(P2::new(-22.0, 0.0), r));
+    let solids = kernel::extrude(&s, 6.0).expect("extrude");
+    let (mesh, topo) = tessellate(&solids[0], 0.05).expect("tessellate");
+    let p = project(&mesh, &topo, &ViewBasis::preset("top"), &ProjectOptions::default());
+    let near_hole = |poly: &Vec<P2>| poly.iter().all(|q| ((q.x + 22.0).powi(2) + q.y.powi(2)).sqrt() < r + 0.1);
+    let hole: Vec<&Vec<P2>> = p.visible.iter().filter(|l| near_hole(l)).collect();
+    assert!(
+        (1..=2).contains(&hole.len()),
+        "the hole is its two rim arcs, not {} pieces",
+        hole.len()
+    );
+    let ink: f64 = hole
+        .iter()
+        .flat_map(|l| l.windows(2))
+        .map(|w| ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt())
+        .sum();
+    let round = 2.0 * std::f64::consts::PI * r;
+    assert!((ink - round).abs() < 0.01 * round, "inked once round: {ink} vs {round}");
+    assert!(p.hidden.iter().all(|l| !near_hole(l)), "no hidden rim drawn under the visible one");
+    for l in p.visible.iter().chain(&p.hidden) {
+        for w in l.windows(2) {
+            let len = ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt();
+            assert!(len > 1e-3, "a {len} mm segment in {l:?}");
+        }
+    }
+}
