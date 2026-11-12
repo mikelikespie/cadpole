@@ -378,6 +378,30 @@ test.describe("a window", () => {
     await page.setViewportSize({ width: 1100, height: 720 });
     await expectDrawn(page, "resized after the context came back");
   });
+
+  // A dropped WebGPU device rejects the renderer's pending calls with nobody
+  // awaiting them, sometimes without its `lost` promise ever settling. Forced
+  // here with the rejection such a device leaves, on either backend: the
+  // viewport is brought back, and nothing is left uncaught.
+  test("whose device is dropped mid-frame brings the view back, with no uncaught error", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (e) => pageErrors.push(e.message));
+    await open(page);
+    const before = await expectDrawn(page, "at first");
+    const states = await page.evaluate(async () => {
+      const host = document.querySelector("canvas.viewport-canvas")!.parentElement!;
+      const seen: string[] = [];
+      new MutationObserver(() => seen.push(host.dataset["graphics"] ?? "")).observe(host, { attributes: true, attributeFilter: ["data-graphics"] });
+      void Promise.reject(new DOMException("Instance dropped in popErrorScope", "OperationError"));
+      for (let i = 0; i < 100 && seen.at(-1) !== "ok"; i++) await new Promise((r) => setTimeout(r, 50));
+      return seen;
+    });
+    expect(states).toEqual(["restoring", "ok"]);
+    await expect(page.locator(".viewport-notice")).toHaveCount(0);
+    const after = await expectDrawn(page, "after the device came back");
+    expect(after.buffer).toEqual(before.buffer);
+    expect(pageErrors).toEqual([]);
+  });
 });
 
 // The layout at every window a desktop browser can be given, an embedding

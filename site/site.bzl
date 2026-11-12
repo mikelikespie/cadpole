@@ -1,4 +1,4 @@
-"""`viewer_pages`: the site's full-viewer pages, published by the CLI.
+"""`viewer_page` and `print_project`: what the site gets from the CLI.
 
 One action per model runs `cadpole publish` on its script and writes the page
 into `<name>/<model name>/`; the target's output is those directories. The CLI
@@ -52,4 +52,41 @@ viewer_page = rule(
         ),
     },
     doc = "One model's viewer page, as `cadpole publish` writes it.",
+)
+
+def _print_project_impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name + ".3mf")
+    cadpole = ctx.attr.cadpole[0][DefaultInfo].files_to_run
+    args = ctx.actions.args()
+    args.add("plate")
+    args.add(ctx.file.script)
+    args.add_all(ctx.attr.plate_args)
+    args.add("--out", out.path)
+    ctx.actions.run(
+        executable = cadpole,
+        arguments = [args],
+        inputs = [ctx.file.script] + ctx.files.data,
+        outputs = [out],
+        mnemonic = "CadpolePlate",
+        progress_message = "Plating %{label}",
+        env = {"HOME": "/nonexistent", "XDG_CACHE_HOME": out.path + ".cache"},
+    )
+    return [DefaultInfo(files = depset([out]))]
+
+print_project = rule(
+    implementation = _print_project_impl,
+    attrs = {
+        "script": attr.label(allow_single_file = [".star"], mandatory = True),
+        "data": attr.label_list(allow_files = True, doc = "Scripts it loads and the assets it reads."),
+        "plate_args": attr.string_list(doc = "Further `cadpole plate` arguments: the printer, parameters, the layers to plate."),
+        "cadpole": attr.label(
+            default = "//src/rust/cadpole-cli:cadpole",
+            cfg = _opt_transition,
+            executable = True,
+        ),
+        "_allowlist_function_transition": attr.label(
+            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
+        ),
+    },
+    doc = "A model plated for printing, as `cadpole plate` writes it: a Bambu Studio project, every piece oriented and packed by the planner (docs/plating.md).",
 )

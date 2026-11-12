@@ -282,8 +282,15 @@ export class WasmEngine implements EngineLike {
   }
 }
 
-/** `cadpole_wasm.js` is served next to index.html by the CLI (not bundled). */
-export const WASM_MODULE_URL = new URL("./cadpole_wasm.js", import.meta.url).href;
+/**
+ * `cadpole_wasm.js` is served next to index.html by the CLI (not bundled).
+ * Pure, so a bundle that never loads the wasm on its own thread drops it.
+ */
+export const WASM_MODULE_URL = /* @__PURE__ */ besideThisModule("./cadpole_wasm.js");
+
+function besideThisModule(file: string): string {
+  return new URL(file, import.meta.url).href;
+}
 
 export interface LoadedEngine {
   engine: EngineLike;

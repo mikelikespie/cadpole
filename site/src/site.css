@@ -437,6 +437,12 @@ a[data-full] { position: relative; }
 .dwg .cad-sym { color: #8fb5aa; }
 .dwg .cad-text { color: var(--muted); }
 .dwg .cad-hatch { color: var(--brand-2); }
+/* Section hatch: its lines are a few screen pixels apart at the page's sizes, and a drawn width of
+   a tenth of a pixel beats against the pixel grid (moire). Each line is drawn about one device
+   pixel wide whatever the drawing's scale, and lighter, so the hatch reads as an even tone. */
+.dwg svg .seta3-hatch, .dwg svg .cad-hatch { vector-effect: non-scaling-stroke; stroke-width: 1px; stroke-opacity: .28; }
+@media (min-resolution: 1.5dppx) { .dwg svg .seta3-hatch, .dwg svg .cad-hatch { stroke-width: .6px; } }
+@media (min-resolution: 2.5dppx) { .dwg svg .seta3-hatch, .dwg svg .cad-hatch { stroke-width: .42px; } }
 .dwg .cad-cut { color: var(--fg); }
 .dwg text { fill: currentColor; stroke: none; }
 .dwg-open { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; cursor: zoom-in; border-radius: 12px; -webkit-tap-highlight-color: transparent; }

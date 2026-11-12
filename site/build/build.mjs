@@ -1,7 +1,8 @@
 // Builds the Cadpole site into one self-contained static directory.
 //
 //   node build.mjs --site <dir> --examples <dir> --web-dist <dir> \
-//       --embed <site3d.js> --pages <dir of published viewer pages> --repo <dir> --out <dir>
+//       --embed <site3d.js> --pages <dir of published viewer pages> --repo <dir> \
+//       --prints <dir of plated .3mf files> --out <dir>
 //
 // Everything on the page is generated from files in this repository: the
 // scripts under examples/ and site/features/, the viewer pages `cadpole
@@ -10,7 +11,8 @@
 // large and are not in the tree; the page is written for them all the same,
 // and tools/assemble.mjs adds them. --repo is the repository root, where the
 // files the page names (docs/*.md, examples/*.star, bin/install) are checked
-// before they are linked.
+// before they are linked. --prints holds the gallery's print files, one
+// `cadpole plate` project per model (views.bzl).
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -19,11 +21,11 @@ import { createHash } from "node:crypto";
 import { hl, hlLines, E, T } from "./highlight.mjs";
 import { CARDS, GALLERY, PLAY, SCENES } from "./models.mjs";
 import { slim } from "./slim.mjs";
-import { linkify } from "./linkify.mjs";
+import { linkify, repoUrl } from "./linkify.mjs";
 
 const args = {};
 for (let i = 2; i < process.argv.length; i += 2) args[process.argv[i].replace(/^--/, "")] = process.argv[i + 1];
-for (const k of ["site", "examples", "web-dist", "embed", "pages", "repo", "out"]) if (!args[k]) throw new Error(`missing --${k}`);
+for (const k of ["site", "examples", "web-dist", "embed", "pages", "repo", "prints", "out"]) if (!args[k]) throw new Error(`missing --${k}`);
 const SITE = args.site, EX = args.examples, WEB = args["web-dist"], OUT = args.out;
 const GH = "https://github.com/mikelikespie/cadpole";
 /** Where the site is published: link previews need absolute addresses for the page and its picture. */
@@ -58,7 +60,18 @@ const modelName = (m) => m.split("/")[1].split(".")[0];
 const dlPill = (href, type, bytes) => `<a class="pill" href="${href}" download><span class="pill-t">${type}</span><span class="pill-s">${kb(bytes)}</span></a>`;
 const open3d = (name, title, view) => `<button class="pill act" type="button" data-sheet3d="models/${name}.cpmesh" data-pic="media/${name}-1200.webp" data-title="${E(title)}" data-view="${view}">Open in 3D</button>`;
 const fullPill = (name) => fullLink(name, "Full viewer", "pill act");
-const scriptPill = (file) => `<a class="pill act" href="scripts/${file}" type="text/plain">Script</a>`;
+/** A script in examples/, read on GitHub: a static host serves a .star file as a download, not as text. */
+const scriptPill = (file) => {
+  const url = repoUrl(`examples/${file}`, { repo: GH, root: args.repo });
+  if (!url) throw new Error(`examples/${file} is not in the repository files the build was given`);
+  return `<a class="pill act" href="${url}">Script</a>`;
+};
+/** The plated print file of a gallery model, when views.bzl makes one: a Bambu Studio project. */
+const printPill = (name) => {
+  const f = join(args.prints, `${name}.3mf`);
+  if (!existsSync(f)) return [];
+  return [`<a class="pill" href="print/${name}.3mf" download title="A Bambu Studio project, plated for printing by cadpole plate"><span class="pill-t">Print it</span><span class="pill-s">3MF, ${kb(size(f))}</span></a>`];
+};
 const actGroup = (label, pills, cls = "") => (pills.length ? `<div class="acts-g" role="group" aria-label="${label}"><p class="acts-h" aria-hidden="true">${label}</p><div class="acts-p${pills.length === 3 ? " three" : ""}${cls}">${pills.join("")}</div></div>` : "");
 const actRow = ({ download = [], open = [] }) => `<div class="acts">${actGroup("Download", download, " short")}${actGroup("Open", open)}</div>`;
 
@@ -184,12 +197,12 @@ function outputs() {
 function gallery() {
   const cards = GALLERY.map(([k, t, b, v, script]) => card({
     img: k, alt: t, title: t, body: b, model: k, view: v,
-    btn: actRow({ open: [open3d(k, t, v), fullPill(k), scriptPill(script)] }),
+    btn: actRow({ download: printPill(k), open: [open3d(k, t, v), fullPill(k), scriptPill(script)] }),
   }));
   return `
 <section class="block wrap" id="gallery">
 <div class="head"><p class="eyebrow">Gallery</p><h2>Each of these is one script.</h2>
-<p class="lede">The scripts are published with this site. Open one and turn it round.</p></div>
+<p class="lede">Every script is in the repository. Open one and turn it round; where there is a print file, it was plated for the printer by <code>cadpole plate</code>.</p></div>
 <div class="rail" style="--cols:3">${cards.join("")}</div><div class="dots" aria-hidden="true"></div>
 </section>`;
 }
@@ -634,8 +647,8 @@ for (const f of ["engine-worker.js", "cadpole_wasm.js", "cadpole_wasm_bg.wasm"])
 cpSync(args.embed, join(OUT, "site3d.js"));
 cpSync(join(SITE, "src/site.css"), join(OUT, "site.css"));
 cpSync(join(SITE, "src/site.js"), join(OUT, "site.js"));
-mkdirSync(join(OUT, "scripts"));
-for (const fn of new Set([...PLAY.map((p) => p[1]), ...GALLERY.map((g) => g[4]), "cabin_plan.star", "house_set.star", ...BLD.sections.map((b) => b.script)])) cpSync(join(EX, fn), join(OUT, "scripts", fn));
+mkdirSync(join(OUT, "print"));
+for (const f of readdirSync(args.prints).filter((f) => f.endsWith(".3mf")).sort()) cpSync(join(args.prints, f), join(OUT, "print", f));
 writeFileSync(join(OUT, "site.webmanifest"), JSON.stringify({
   name: "Cadpole", short_name: "Cadpole", start_url: "./", display: "browser", background_color: "#060a09", theme_color: "#060a09",
   icons: [{ src: "icon-192.png", sizes: "192x192", type: "image/png" }, { src: "icon-512.png", sizes: "512x512", type: "image/png" }],

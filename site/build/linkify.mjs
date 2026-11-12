@@ -22,6 +22,16 @@ const RAW = /<(head|script|style|textarea|pre)\b[\s\S]*?<\/\1>/gi;
 const SKIP = new Set(["a", "button", "summary"]);
 
 /**
+ * A repository path's address on GitHub: `blob` for a file, `tree` for a
+ * directory, or null when `root` has no such path.
+ */
+export function repoUrl(path, { repo, root }) {
+  const p = join(root, path);
+  if (!existsSync(p)) return null;
+  return `${repo}/${statSync(p).isDirectory() ? "tree" : "blob"}/main/${path}`;
+}
+
+/**
  * The page with its repository mentions linked.
  * `repo` is the repository's address; `root` the directory that holds the
  * repository's files, to check a path names a file that is there. A path that
@@ -35,10 +45,9 @@ export function linkify(html, { repo, root }) {
     const t = trail ? text.slice(0, -trail.length) : text;
     if (/github\.com\//.test(t)) return `<a class="ref" href="${repo}">${t}</a>${trail}`;
     const path = t.replace(/^\.\//, "").replace(/\/$/, "");
-    const p = join(root, path);
-    if (!existsSync(p)) { missing.add(path); return text; }
-    const kind = statSync(p).isDirectory() ? "tree" : "blob";
-    return `<a class="ref" href="${repo}/${kind}/main/${path}">${t}</a>${trail}`;
+    const url = repoUrl(path, { repo, root });
+    if (!url) { missing.add(path); return text; }
+    return `<a class="ref" href="${url}">${t}</a>${trail}`;
   };
   let skip = 0;
   const prose = (seg) => seg.replace(/(<!--[\s\S]*?-->|<[^>]*>)|([^<]+)/g, (_, tag, text) => {

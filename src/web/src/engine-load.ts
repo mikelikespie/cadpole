@@ -9,7 +9,7 @@
 import type { LoadedEngine } from "./engine.js";
 import { loadWasmEngine } from "./engine.js";
 import { MockEngine } from "./mock.js";
-import { WorkerEngine } from "./worker-engine.js";
+import { ENGINE_WORKER_URL, WorkerEngine } from "./worker-engine.js";
 
 export type LocalEngineChoice = "worker" | "main" | "mock";
 
@@ -32,7 +32,7 @@ export async function loadLocalEngine(want: LocalEngineChoice): Promise<LoadedEn
 
   if (want === "worker") {
     try {
-      return { engine: await WorkerEngine.start(), notice: null, failure: null };
+      return { engine: await WorkerEngine.start(ENGINE_WORKER_URL), notice: null, failure: null };
     } catch (err) {
       const d = describe(err);
       console.warn("cadpole: the engine worker would not start, running the engine on this thread:", d.message);

@@ -31,8 +31,16 @@ import * as norm from "./normalize.js";
 import { span } from "./perf.js";
 import type { ApiDoc } from "./types.js";
 
-/** Where the worker script lives: next to `app.js` in `dist/`. */
-export const ENGINE_WORKER_URL = new URL("./engine-worker.js", import.meta.url).href;
+/**
+ * Where the worker script lives: next to `app.js` in `dist/`. Marked pure so a
+ * bundle that never starts this worker (the project site's 3D, which has its
+ * own) carries no address of a file it does not ship.
+ */
+export const ENGINE_WORKER_URL = /* @__PURE__ */ besideThisModule("./engine-worker.js");
+
+function besideThisModule(file: string): string {
+  return new URL(file, import.meta.url).href;
+}
 
 interface Waiter {
   resolve: (r: WorkerResponse) => void;
@@ -73,7 +81,7 @@ export class WorkerEngine implements EngineLike {
    * engine inside it will not initialise -- all three are "use something
    * else", and the caller falls back rather than leaving a dead UI.
    */
-  static async start(url: string = ENGINE_WORKER_URL, timeoutMs = 20_000): Promise<WorkerEngine> {
+  static async start(url: string, timeoutMs = 20_000): Promise<WorkerEngine> {
     if (typeof Worker === "undefined") throw new Error("this browser has no Worker");
     const spawn = (): Worker => new Worker(url, { type: "module", name: "cadpole-engine" });
     const first = spawn();

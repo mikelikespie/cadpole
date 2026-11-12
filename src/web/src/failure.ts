@@ -35,6 +35,7 @@
 // bucket and session cap and answers a refusal with a reason, which is logged
 // here rather than swallowed. See docs/security.md, "Client failure reports".
 
+import { isGraphicsDeviceLoss } from "./gpu-loss.js";
 import { authHeaders } from "./token.js";
 import type { ParamValue } from "./types.js";
 
@@ -371,6 +372,8 @@ export function installFailureReporting(opts: FailureReporterOptions): FailureRe
     });
   });
   window.addEventListener("unhandledrejection", (ev: PromiseRejectionEvent) => {
+    // The viewer brings a lost graphics device back itself (gpu-loss.ts).
+    if (isGraphicsDeviceLoss(ev.reason)) return;
     const d = describeThrown(ev.reason);
     r.report({ kind: "CLIENT_FAILURE_KIND_REJECTION", message: d.message, stack: d.stack });
   });

@@ -108,5 +108,8 @@ test("the words the page does not use", () => {
 test("the directory is the site and nothing else", () => {
   expect(existsSync(join(root, ".nojekyll"))).toBe(true);
   const top = readdirSync(root).filter((f) => f !== ".git" && f !== "CNAME").sort();
-  expect(top).toEqual([".nojekyll", "agent", "apple-touch-icon.png", "draw", "engine", "icon-192.png", "icon-32.png", "icon-512.png", "icon.svg", "index.html", "media", "models", "og.png", "scripts", "seq", "site.css", "site.js", "site.webmanifest", "site3d.js", "view"]);
+  expect(top).toEqual([".nojekyll", "agent", "apple-touch-icon.png", "draw", "engine", "icon-192.png", "icon-32.png", "icon-512.png", "icon.svg", "index.html", "media", "models", "og.png", "print", "seq", "site.css", "site.js", "site.webmanifest", "site3d.js", "view"]);
+  // The recording the page plays, and no other; the print files are plated projects.
+  expect(readdirSync(join(root, "agent")).filter((f) => !/^agent(-poster\.webp|\.mp4|\.webm)$/.test(f))).toEqual([]);
+  expect(readdirSync(join(root, "print")).filter((f) => !f.endsWith(".3mf"))).toEqual([]);
 });

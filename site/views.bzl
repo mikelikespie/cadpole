@@ -68,3 +68,19 @@ VIEWS = [
     _feature("section", "Section"),
     _feature("drawing", "Drawing"),
 ]
+
+# The gallery's print files: `cadpole plate` on the model as written, so
+# every piece is oriented, packed and coloured by the planner
+# (docs/plating.md). A gallery card whose name is here gets a download of
+# print/<name>.3mf. Laid out for the X1 Carbon's bed, which the P1 and A1
+# share; a slicer moves the plates to another printer.
+def _print(name, script, args = []):
+    return struct(name = name, script = "//examples:" + script, args = ["--printer", "bambu_x1c"] + args)
+
+PRINTS = [
+    _print("mascot", "desk_mascot.star"),
+    # The two printed parts; the board is the thing the case is for.
+    _print("enclosure", "enclosure.star", ["--layer", "base", "--layer", "lid"]),
+    # The thread form that prints standing up without support.
+    _print("thumbscrew", "thumbscrew.star", ["-p", "thread_form=print"]),
+]

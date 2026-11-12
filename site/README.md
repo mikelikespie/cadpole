@@ -20,7 +20,7 @@ kinds of work side by side:
 | --- | --- |
 | `build/` | The generator: `build.mjs` writes `index.html` and assembles the directory; `models.mjs` is what the page shows; `slim.mjs` packs a published model for the page's own 3D; `linkify.mjs` links the repository's address and the repository paths the text names (`docs/*.md`, `examples/*.star`, `./bin/install`) to GitHub, in prose and in the boxes to copy, and stops the build on a path the repository does not have |
 | `src/` | `site.css`, `site.js`, and the engine's worker wrapper |
-| `views.bzl`, `site.bzl` | The viewer pages: one `cadpole publish` per model |
+| `views.bzl`, `site.bzl` | The viewer pages, one `cadpole publish` per model, and the gallery's print files, one `cadpole plate` per model (`PRINTS`): a card whose model has one gets a "Print it" download of `print/<name>.3mf`. A card's "Script" link opens the script on GitHub, since a static host serves a `.star` file as a download |
 | `features/` | The script behind each gallery tile; the lines between `# snippet` and `# end snippet` are the ones its card shows. `content/features.json` and `content/drawings.json` give each card its `kind`: a `model` opens in 3D, a `drawing` opens its SVG |
 | `content/` | The cards' and captions' words; `layout.json` is the solver's answer, written by `render -- buildings` |
 | `static/` | Pictures and drawings that are in the tree: stills, vector drawings, icons, the social card, each scene's first frame |

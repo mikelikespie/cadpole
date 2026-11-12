@@ -10,8 +10,8 @@ load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//build_support/playwright:defs.bzl", "playwright_test")
-load(":site.bzl", "viewer_page")
-load(":views.bzl", "VIEWS")
+load(":site.bzl", "print_project", "viewer_page")
+load(":views.bzl", "PRINTS", "VIEWS")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -32,6 +32,20 @@ npm_link_all_packages(name = "node_modules")
         units = v.units,
     )
     for v in VIEWS
+]
+
+# ---- The gallery's print files: `cadpole plate`, once per model (views.bzl).
+[
+    print_project(
+        name = "prints/" + p.name,
+        data = [
+            "//examples:assets",
+            "//examples:star_files",
+        ],
+        plate_args = p.args,
+        script = p.script,
+    )
+    for p in PRINTS
 ]
 
 # The example scripts where rules_js can read them: a target's files must be
@@ -82,7 +96,8 @@ _SOURCES = glob([
 # The whole site but for the frame sets and the recording media.lock.json
 # names: the page, its scripts and styles, the embedded 3D and the engine from
 # //src/web, a viewer page and a packed model per entry of views.bzl, and the
-# pictures and drawings under static/.
+# pictures and drawings under static/, and a plated print file per entry of
+# PRINTS.
 js_run_binary(
     name = "dist",
     srcs = _SOURCES + [
@@ -90,7 +105,7 @@ js_run_binary(
         "//src/web:dist",
         "//src/web:site3d_bundle",
         ":repo_files",
-    ] + [":view_pages/" + v.name for v in VIEWS],
+    ] + [":view_pages/" + v.name for v in VIEWS] + [":prints/" + p.name for p in PRINTS],
     args = [
         "--site",
         package_name(),
@@ -104,6 +119,8 @@ js_run_binary(
         package_name() + "/view_pages",
         "--repo",
         package_name() + "/repo_files",
+        "--prints",
+        package_name() + "/prints",
         "--out",
         package_name() + "/dist",
     ],

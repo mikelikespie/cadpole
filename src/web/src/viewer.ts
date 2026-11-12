@@ -50,6 +50,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineSegments2 } from "three/examples/jsm/lines/webgpu/LineSegments2.js";
 import { CameraController, type ExactPose, type WheelMode } from "./controls.js";
 import { DrawingBuffer, type BufferSize } from "./drawing-buffer.js";
+import { isGraphicsDeviceLoss } from "./gpu-loss.js";
 import type { Evaluated, MeshData } from "./engine.js";
 import { count, record, span } from "./perf.js";
 import { Picker, type Pickable } from "./picking.js";
@@ -747,6 +748,7 @@ export class Viewer {
     await this.startRenderer();
     this.controls.onGesture = (active) => this.setGesture(active);
     this.canvas.addEventListener("webglcontextrestored", this.onContextRestored);
+    window.addEventListener("unhandledrejection", this.onRejection);
     this.watchPixelRatio();
   }
 
@@ -2878,6 +2880,8 @@ export class Viewer {
   private lostNotice: HTMLElement | null = null;
   /** When the device was last asked for again, to stop a loop of losses. */
   private recoveries: number[] = [];
+  /** When a new renderer last came up after a loss. */
+  private restoredAt = -Infinity;
 
   private deviceLost(api: "webgpu" | "webgl", message: string): void {
     if (this.disposed) return;
@@ -2887,6 +2891,23 @@ export class Viewer {
     if (api === "webgl") this.showLost("restoring");
     else void this.recover();
   }
+
+  /**
+   * A dropped WebGPU device rejects the renderer's pending calls before, or
+   * instead of, resolving its `lost` promise (gpu-loss.ts). Taken as a loss:
+   * once per renderer, and not while a new one is being brought up.
+   */
+  private readonly onRejection = (ev: PromiseRejectionEvent): void => {
+    if (this.disposed || !isGraphicsDeviceLoss(ev.reason)) return;
+    ev.preventDefault();
+    // The calls the old device left pending keep rejecting for a moment
+    // after a new one is drawing.
+    if (!this.ready || performance.now() - this.restoredAt < 2000) return;
+    const reason = ev.reason as { message?: unknown } | null;
+    this.ready = false;
+    console.warn(`viewer: graphics device lost: ${String(reason?.message ?? ev.reason)}`);
+    void this.recover();
+  };
 
   private readonly onContextRestored = (): void => {
     if (!this.disposed && !this.ready) void this.recover();
@@ -2909,6 +2930,7 @@ export class Viewer {
     } catch (err) {
       console.warn("viewer: the graphics device could not be restored", err);
     }
+    if (this.ready) this.restoredAt = performance.now();
     this.showLost(this.ready ? null : "failed");
   }
 
@@ -3083,6 +3105,7 @@ export class Viewer {
     this.ratioQuery?.removeEventListener("change", this.onPixelRatio);
     window.removeEventListener("resize", this.onPixelRatio);
     this.canvas.removeEventListener("webglcontextrestored", this.onContextRestored);
+    window.removeEventListener("unhandledrejection", this.onRejection);
     this.controls.dispose();
     this.clearModel();
     this.clearCap(0);
