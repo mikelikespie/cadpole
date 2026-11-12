@@ -357,13 +357,19 @@ pub fn explain(p: &Piece, opts: &Options) -> String {
     if !p.joints.is_empty() && p.kind == PieceKind::PrintInPlace {
         let gaps: Vec<f64> =
             p.joints.iter().filter_map(|j| if let super::JointKind::Captive(g) = j.kind { Some(g) } else { None }).collect();
-        let min = gaps.iter().copied().fold(f64::INFINITY, f64::min);
-        s.push_str(&format!(
-            "; {} captive joint{}, the tightest {} mm",
-            gaps.len(),
-            if gaps.len() == 1 { "" } else { "s" },
-            num(min)
-        ));
+        if !gaps.is_empty() {
+            let min = gaps.iter().copied().fold(f64::INFINITY, f64::min);
+            s.push_str(&format!(
+                "; {} captive joint{}, the tightest {} mm",
+                gaps.len(),
+                if gaps.len() == 1 { "" } else { "s" },
+                num(min)
+            ));
+        }
+        let resting = p.joints.iter().filter(|j| matches!(j.kind, super::JointKind::Resting(_))).count();
+        if resting > 0 {
+            s.push_str(&format!("; {resting} bod{} printed resting on another", if resting == 1 { "y" } else { "ies" }));
+        }
     }
     s
 }

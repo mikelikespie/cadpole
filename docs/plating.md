@@ -51,6 +51,7 @@ bounding boxes come within `joint_gap` (1 mm by default):
 | overlap | `clearance::distance` reports shared material | **fused**: one piece, printed as one multi-material object |
 | skin or inlay | they touch, at least 10% of the smaller body's surface lies on the other (a ray cast a hair along each triangle's normal finds the other body), and the smaller is *thin* there: its volume over the contact area under a quarter of its size | **fused** |
 | print-in-place | the gap is under `joint_gap`, at least half of `min_gap`, and the pair is **captive**: neither can be slid away from the other in any of 26 directions (the axes, face and corner diagonals) without colliding | **print-in-place**: one piece, never pulled apart or turned relative to each other |
+| resting | one is printed on the other across a gap of half `min_gap` to two layers, over at least a fifth of its underside: a stand one layer under a chassis, holding it up while it prints | **print-in-place**, kept as modelled |
 | held but tight | captive, but under half of `min_gap` clear: a nut on its screw, a lid snapped onto its base. The gap would fuse | separate pieces, with a note |
 | anything else | a lid resting on its base, a wheel beside a car | separate pieces |
 
@@ -103,8 +104,11 @@ Support area is the dominant unit because support material is what ruins
 a surface. Evaluating the full support rules (islands, ledges, holes,
 first layer) costs a weld and a sweep per candidate, so it is done in two
 stages: every candidate's raw overhang area first (a pass over the
-triangles), then the full rules on the best four and on "as modelled",
-which is always reported as the baseline.
+triangles), then the full rules on the best four, on "as modelled"
+(always reported as the baseline), and on upside down and the two largest
+flat faces, which raw overhang can rank wrongly because it does not see
+islands (a screw lying on its threads has little overhang and two dozen
+islands).
 
 **Strength.** A printed part is weakest across its layer lines, so a snap
 arm bent across them breaks at a fraction of the strain it takes along
@@ -209,7 +213,7 @@ Coupons are printed once, on "Test coupons", before either.
 Every decision is a line a person or an agent can act on:
 
 ```
-plate 1 "Colour 1" (bambu_h2c, 300 x 320 mm reach): 3 pieces, 2 filaments, ~410 colour changes
+plate 1 "Parts": 4 pieces, 2 filaments, ~410 colour changes
   base: as modelled; 0 mm² support (best of 7)
   lid: upside down (on the 2140 mm² flat face): 0 mm² support vs 340 mm² as modelled
   clip coupon: turned so the clip arm runs along the layers (along= (1, 0, 0))
@@ -232,6 +236,12 @@ reaches the output (`a_template_brings_its_settings_and_none_of_its_objects_or_p
 
 ## Follow-ups
 
+* A per-piece "held but tight" choice: a lid snapped onto its base is
+  printed apart today; a script that wants it printed closed says so with
+  a list.
+* Faster evaluation of very large field bodies before planning (the
+  planner itself takes well under a second; a fine organic body's
+  evaluation dominates).
 * Automatic detection of snap arms (a cantilever whose root is much
   thinner than its body) to set `along=` without the script saying so.
 * Packing by true outline at finer resolution near tight fits, and

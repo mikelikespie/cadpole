@@ -15,6 +15,10 @@
 //!   when no ray from A's sample points along `d` meets B and no ray from
 //!   B's along `-d` meets A.
 //!
+//! * **resting**: one is printed on the other across one or two layers (a
+//!   stand one layer under a chassis): at least [`RESTING_SHARE`] of the
+//!   upper one's underside is over the lower within that gap.
+//!
 //! Anything else -- a lid resting on its base, which lifts off along +z --
 //! stays apart. Vertex rays can miss an edge-on-edge collision, so the
 //! captive test leans towards "free"; a script joins such a pair by giving
@@ -35,6 +39,10 @@ pub const SKIN_FRACTION: f64 = 0.10;
 /// A skin's mean thickness over its contact, at most this share of its
 /// bounding-box diagonal.
 pub const SKIN_THICKNESS: f64 = 0.25;
+
+/// The share of one body's underside that must rest on the other, across
+/// one or two layers, for the two to print together as modelled.
+pub const RESTING_SHARE: f64 = 0.2;
 
 /// A captive pair prints in place only across a gap of at least this share
 /// of `min_gap`: tighter, its faces fuse. Half, because a modelled gap
@@ -59,6 +67,9 @@ pub enum JointKind {
     Skin(f64),
     /// The gap across which they are held, in mm.
     Captive(f64),
+    /// One is printed resting on the other across one or two layers -- a
+    /// stand under a chassis, a support interface: the gap, in mm.
+    Resting(f64),
 }
 
 /// One joint between two bodies (indices into the plan's bodies).
@@ -76,6 +87,7 @@ impl Joint {
             JointKind::Overlap => format!("{a} overlaps {b}"),
             JointKind::Skin(f) => format!("{a} and {b} touch over {}% of the smaller", (f * 100.0).round()),
             JointKind::Captive(g) => format!("{a} is captive in {b} across {} mm", num(g)),
+            JointKind::Resting(g) => format!("{a} and {b} print one on the other, {} mm apart", num(g)),
         }
     }
 }
@@ -118,6 +130,9 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
     let mut trees: Vec<Option<Tree>> = (0..bodies.len()).map(|_| None).collect();
     let mut parent: Vec<usize> = (0..items.len()).collect();
     let mut joints: Vec<Joint> = Vec::new();
+    // Held pairs too tight to print in place: said only when they do end
+    // up in different pieces.
+    let mut tight: Vec<(usize, usize, f64, f64)> = Vec::new();
     let reach = opts.joint_gap.max(TOUCH);
     for i in 0..bodies.len() {
         let Some(ii) = item_of[i] else { continue };
@@ -150,8 +165,14 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
             } else {
                 let (share, thin) =
                     if c.distance <= TOUCH && !both_declared { skin(bodies[i].mesh, bodies[j].mesh) } else { (0.0, false) };
+                let resting_gap = crate::overhang::resting_gap(&opts.profile);
                 if share >= SKIN_FRACTION && thin {
                     Some(JointKind::Skin(share))
+                } else if c.distance >= PRINTABLE_GAP_SHARE * opts.profile.min_gap
+                    && c.distance <= resting_gap + 1e-6
+                    && resting_share(bodies[i].mesh, bodies[j].mesh, resting_gap) >= RESTING_SHARE
+                {
+                    Some(JointKind::Resting(c.distance))
                 } else if captive(bodies[i].mesh, bodies[j].mesh) {
                     // Held, but a gap this tight fuses on the printer: an
                     // assembly made after printing (a nut on its screw, a
@@ -160,13 +181,7 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
                     if c.distance >= need {
                         Some(JointKind::Captive(c.distance))
                     } else {
-                        notes.push(format!(
-                            "{} is held in {} but only {} mm clear, under the {} mm a print-in-place gap needs (half of min_gap): printed apart, to be assembled",
-                            bodies[i].name,
-                            bodies[j].name,
-                            num(c.distance),
-                            num(need)
-                        ));
+                        tight.push((i, j, c.distance, need));
                         None
                     }
                 } else {
@@ -184,6 +199,19 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
         }
     }
 
+    for (i, j, gap, need) in tight {
+        let (ri, rj) = (find(&mut parent, item_of[i].unwrap()), find(&mut parent, item_of[j].unwrap()));
+        if ri != rj {
+            notes.push(format!(
+                "{} is held in {} but only {} mm clear, under the {} mm a print-in-place gap needs (half of min_gap): \
+                 printed apart, to be assembled",
+                bodies[i].name,
+                bodies[j].name,
+                num(gap),
+                num(need)
+            ));
+        }
+    }
     let mut out: Vec<Group> = Vec::new();
     let mut root_group: Vec<Option<usize>> = vec![None; items.len()];
     for (i, it) in items.iter().enumerate() {
@@ -221,7 +249,7 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
     }
     for g in out.iter_mut() {
         g.bodies.sort_unstable();
-        if g.joints.iter().any(|j| matches!(j.kind, JointKind::Captive(_))) {
+        if g.joints.iter().any(|j| matches!(j.kind, JointKind::Captive(_) | JointKind::Resting(_))) {
             g.kind = PieceKind::PrintInPlace;
         } else if !g.joints.is_empty() {
             g.kind = PieceKind::Fused;
@@ -410,4 +438,30 @@ pub fn without_contacts(meshes: &[&Mesh]) -> Mesh {
     }
     out.normals = vec![0.0; out.positions.len()];
     out
+}
+
+/// The larger, of the two ways round, of the share of a body's underside
+/// (its triangles facing more than 45° down) from which a ray straight down
+/// meets the other body within `gap`: how much of it is printed resting on
+/// the other.
+pub fn resting_share(a: &Mesh, b: &Mesh, gap: f64) -> f64 {
+    let one = |upper: &Mesh, lower: &Mesh| {
+        let bvh = Bvh::from_mesh(lower);
+        let n = upper.triangle_count();
+        let stride = n.div_ceil(CONTACT_SAMPLES).max(1);
+        let (mut on, mut down) = (0.0, 0.0);
+        for t in (0..n).step_by(stride) {
+            let v = tri(upper, t);
+            let (nrm, area) = tri_normal_area(&v);
+            if area <= 0.0 || nrm.z > -std::f64::consts::FRAC_1_SQRT_2 {
+                continue;
+            }
+            down += area;
+            if bvh.intersect(f3(centroid(&v)), [0.0, 0.0, -1.0], 1e-4, (gap + TOUCH) as f32).is_some() {
+                on += area;
+            }
+        }
+        if down > 0.0 { on / down } else { 0.0 }
+    };
+    one(a, b).max(one(b, a))
 }

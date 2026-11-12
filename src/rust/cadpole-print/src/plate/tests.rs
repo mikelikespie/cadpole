@@ -388,3 +388,22 @@ fn a_nut_held_tight_on_its_screw_is_printed_apart() {
     assert_eq!(plan.pieces.len(), 2);
     assert!(plan.notes.iter().any(|n| n.contains("printed apart")), "{:?}", plan.notes);
 }
+
+#[test]
+fn a_chassis_printed_on_its_stand_stays_on_it() {
+    // A slab one layer over a stand that holds it up: printed together, as
+    // modelled, or the slab's underside needs support.
+    let stand = box_mesh(40.0, 20.0, 10.0);
+    let chassis = translated(&box_mesh(40.0, 20.0, 5.0), Vec3::new(0.0, 0.0, 10.2));
+    let bodies = [body("stand", &stand, "#000000"), body("chassis", &chassis, "#ff0000")];
+    let plan = plan(&bodies, &loose(2), &Options::default());
+    assert_eq!(plan.pieces.len(), 1, "{}", plan.report(&Options::default()));
+    assert_eq!(plan.pieces[0].kind, PieceKind::PrintInPlace);
+    assert!(matches!(plan.pieces[0].joints[0].kind, JointKind::Resting(g) if (g - 0.2).abs() < 1e-3));
+    assert!(plan.pieces[0].reason.contains("resting on another"), "{}", plan.pieces[0].reason);
+    // A lid sitting right on its box (no gap) is not that: it lifts off.
+    let lidded = translated(&lid(40.0, 20.0), Vec3::new(0.0, 0.0, 10.0));
+    let bodies = [body("box", &stand, "#000000"), body("lid", &lidded, "#ff0000")];
+    let plan = super::plan(&bodies, &loose(2), &Options::default());
+    assert_eq!(plan.pieces.len(), 2);
+}

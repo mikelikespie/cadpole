@@ -4697,8 +4697,9 @@ Instances or Assemblies (their bodies, loose). Returns a dict: `report`
 (the text above), `printer`, `plates` (per plate `name`, `variant`,
 `pieces`, `filaments`, `colour_changes`, `layers`), `pieces` (per placed
 piece `name`, `plate`, `kind`, `orientation`, `support_area`,
-`modelled_support_area`, `spin`, `reason`, `bodies`) and `bodies` (every
-placed copy). The report is also an info diagnostic. With `path` (a
+`modelled_support_area`, `spin`, `reason`, `considered` -- every
+orientation fully scored with its cost, support area and islands -- and
+`bodies`) and `bodies` (every placed copy). The report is also an info diagnostic. With `path` (a
 `.3mf`) the plates are recorded as Bambu exports, exactly as
 `export(..., flavor=flavor.bambu, plate=, name=)` calls would be, and
 `cadpole export --run-exports` writes them; `plate_images(path)` after it
@@ -4712,6 +4713,7 @@ joined where the analysis finds they belong together:
 | overlap | they share material | one multi-material piece |
 | skin | they touch, at least 10% of the smaller one's surface lies on the other, and it is thin there (its volume over the contact under a quarter of its size): a stripe, a spot, an inlaid eye, a hub in its tyre | one multi-material piece |
 | print-in-place | within `joint_gap`, at least half of `min_gap` clear, and neither can be slid away from the other in any of 26 directions: a wheel on an axle between caps, a planet between carrier plates | one piece, kept as modelled, never pulled apart or turned relative to each other |
+| resting | one is printed on the other across one or two layers (at least half of `min_gap`, at most two layer heights), over at least a fifth of its underside: a stand one layer under a chassis that holds it up | one piece, kept as modelled |
 | anything else | a lid resting on its box lifts off; a nut 0.11 mm clear on its screw would fuse | separate pieces (the report says when a held pair is printed apart) |
 
 **Orientation.** The candidates are: as modelled, upside down, the four
