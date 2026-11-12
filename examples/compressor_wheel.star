@@ -17,7 +17,8 @@
 #     against itself -- physically the ribbon between the two flanks -- and
 #     the root, carried inside the hub, is closed the same way and swallowed
 #     by the union;
-#   * the hub as one loft through circles: rim band, bell, nose boss, no
+#   * the hub as one loft through circles: seal land, back boss, the
+#     concave sweep of the back face, rim band, bell, nose boss, no
 #     boolean. It stays a *ruled* loft through three dozen sections rather
 #     than a `ruled=False` skin, because its profile has a chamfer, and a
 #     global interpolant is not shape-preserving -- a chamfer in the sections
@@ -31,6 +32,12 @@
 #     law along the root generated as solid geometry, so within
 #     `root_fillet` of the hub the sections widen by a rolling-ball law. A
 #     flare in the sections, exact and STEP-exportable, not a blend;
+#   * the rim scalloped between the trailing edges by a ring of cylinders
+#     placed from the blade's own wrap angle, so they follow `blades`,
+#     `splitters` and the angles;
+#   * the clamp from `@cadpole/mechanical.star`: the shaft's threaded end,
+#     a washer and a chamfered hex nut, as separate steel bodies whose fit
+#     the tests measure with `distance`;
 #   * an `assert_solid` on the result, and a face-count assertion that
 #     catches a union that loses face provenance (one face per triangle).
 #
@@ -77,10 +84,11 @@ splitters = param("splitters", True, doc="A half-length splitter blade in every 
 r_tip = param("tip_radius", 44.0, unit="mm", min=15, max=150, doc="Exducer radius: the wheel's overall size")
 r_ind = param("inducer_radius", 30.0, unit="mm", min=8, max=120, doc="Blade tip radius at the inlet")
 r_nose = param("nose_radius", 10.0, unit="mm", min=4, max=40, doc="Hub radius at the inlet, where the blade roots begin")
-z_nose = param("nose_height", 42.0, unit="mm", min=42, max=60, doc="Height of the hub nose above the back face; its boss stands 2 mm higher and must clear the blade tips")
+z_nose = param("nose_height", 42.0, unit="mm", min=42, max=60, doc="Height above the rim's top face where the blade roots begin on the nose")
+boss_h = param("nose_boss", 6.0, unit="mm", min=2, max=20, doc="How far the nose boss stands above the blade roots; it must clear the blade tips")
 z_ind = param("inducer_height", 43.0, unit="mm", min=30, max=43, doc="Height of the blade tips at the inlet, below the nose boss")
 b2 = param("exit_height", 6.5, unit="mm", min=1.5, max=30, doc="Blade height at the exducer")
-back_t = param("backplate", 5.0, unit="mm", min=2, max=20)
+back_t = param("backplate", 3.0, unit="mm", min=1.5, max=20, doc="Thickness of the rim under the trailing edges; the back face thickens from it to the hub boss")
 beta1 = param("inlet_angle", 55.0, unit="deg", min=20, max=75, doc="Blade angle off the axis at the inducer tip")
 beta2 = param("exit_angle", 35.0, unit="deg", min=0, max=60, doc="Backsweep off radial at the exducer")
 lean = param("lean", 14.0, unit="deg", min=0, max=30, doc="How far the inducer tip leads the root, in the direction of rotation")
@@ -88,20 +96,26 @@ blade_t = param("blade_thickness", 1.8, unit="mm", min=0.6, max=5,
                 doc="At the root, measured normal to the camber surface (not in the tangential direction, which is larger by the secant of the lean); the tip is a little over half of it")
 root_fillet = param("root_fillet", 1.2, unit="mm", min=0.5, max=1.2,
                     doc="Root flare radius: within this height of the hub the blade sections widen by a rolling-ball law. A flare baked into the loft's sections, not a blend")
-chamfer = param("chamfer", 1.2, unit="mm", min=0, max=5, doc="On the rim's back edge")
+chamfer = param("chamfer", 0.8, unit="mm", min=0, max=5, doc="On the rim's back edge")
 nose_r = param("nose_fillet", 1.0, unit="mm", min=0.2, max=3, doc="Round on the nose boss's rim, exact")
 bore = param("bore", 10.0, unit="mm", min=3, max=30, doc="Shaft bore diameter")
-cbore = param("counterbore", 16.0, unit="mm", min=0, max=50, doc="Nut seat diameter in the nose; 0 for none")
+cbore = param("counterbore", 0.0, unit="mm", min=0, max=50, doc="Nut seat diameter in the nose; 0 for none, the default, where the nut clamps on the flat top")
 cbore_depth = param("counterbore_depth", 3.0, unit="mm", min=0, max=20)
+scallop = param("scallops", 2.5, unit="mm", min=0, max=10, doc="Depth of the scallops cut into the rim between the trailing edges, which take mass off the rim; 0 for a plain rim")
+with_nut = param("nut", True, doc="The shaft's threaded end, a washer and a hex nut clamping the wheel at the nose")
 split_at = param("splitter_start", 0.42, min=0.1, max=0.9, doc="Where along the passage the splitter's leading edge sits")
 stations = param("stations", 48, min=12, max=120, doc="Samples along each streamline: one spline point per station on each flank")
 
 assert_true(math.close(math.atan(1.0), 45.0), msg="math.atan answers in degrees")
+load("@cadpole/mechanical.star", "nut", "thread")
+
 assert_true(r_ind < r_tip - 5.0, msg="the inducer sits well inside the exducer")
 # Checked here, before any blade is built: a nose far below the blade tips
 # twists the blade into a self-crossing surface that takes minutes to mesh
 # and then fails, and the finished wheel would fail the same check below.
-assert_true(z_ind < z_nose + 2.0, msg="the blade tips stand above the nose boss: raise nose_height or lower inducer_height")
+z_top = z_nose + boss_h  # the nose boss's flat top, where the nut clamps
+assert_true(z_ind < z_nose + 2.0, msg="the blade tips stand above the nose: raise nose_height or lower inducer_height")
+assert_true(chamfer < back_t, msg="the rim chamfer must fit in the rim's thickness")
 assert_true(r_nose > bore / 2.0 + 2.0, msg="the nose needs a wall around the bore")
 assert_true(cbore / 2.0 < r_nose - 1.0 or cbore <= 0, msg="the counterbore must fit inside the nose")
 
@@ -393,13 +407,30 @@ coarse = [k * (stations - 1) // BANDS for k in range(1, BANDS + 1)]
 
 # --------------------------------------------------------------- the hub
 #
-# One loft: a chamfer and the rim band from the back face up to the exducer,
-# the bell along the hub streamline, and the nose boss up to its flat top.
-# The blade roots start 15% of the passage height inside it, so the union is
-# a crossing, never a touch.
-hub_profile = [(-back_t, r_tip - chamfer), (-back_t + chamfer, r_tip), (0.0, r_tip)]
+# One loft, bottom to top. The back face first: a stepped seal land on the
+# shaft axis, the hub boss around the bore, a concave sweep out of the boss
+# and a back face that thins gently to the rim, so the rim under the
+# trailing edges is `backplate` thick while the metal under the bell, where
+# the stress is, is several times that. Then a chamfer and the rim band up
+# to the exducer, the bell along the hub streamline, and the nose boss up to
+# its flat top. The blade roots start 15% of the passage height inside it,
+# so the union is a crossing, never a touch.
+R_BOSS = max(bore / 2.0 + 4.0, 0.28 * r_tip)  # the back boss under the bell
+R_LAND = max(bore / 2.0 + 2.5, 0.8 * bore)    # the seal land: 1.6 bores across
+SWEEP_R = 0.14 * r_tip                         # the concave sweep out of the boss,
+SWEEP_Z = 0.08 * r_tip                         # radially and axially
+DISH = 0.04 * r_tip                            # the back face's fall from rim to sweep
+assert_true(R_BOSS + SWEEP_R < r_tip - chamfer - 4.0, msg="the back boss and its sweep must fit inside the rim")
+z_sweep = -back_t - DISH - SWEEP_Z             # where the sweep meets the boss wall
+z_back = z_sweep - 0.8 - 0.6 - 2.0 - 0.4       # the land's end face, the lowest point
+hub_profile = [(z_back, R_LAND - 0.4), (z_back + 0.4, R_LAND), (z_back + 2.4, R_LAND), (z_back + 3.0, R_BOSS - 0.6), (z_back + 3.2, R_BOSS), (z_sweep, R_BOSS)]
+hub_profile += [(z_sweep + SWEEP_Z * math.sin(90.0 * k / 10), R_BOSS + SWEEP_R - SWEEP_R * math.cos(90.0 * k / 10)) for k in range(1, 11)]
+if chamfer > 0:
+    hub_profile += [(-back_t, r_tip - chamfer), (-back_t + chamfer, r_tip), (0.0, r_tip)]
+else:
+    hub_profile += [(-back_t, r_tip), (0.0, r_tip)]
 hub_profile += [(hub_curve[k][1], hub_curve[k][0]) for k in coarse]
-hub_profile += [(z_nose + 2.0, r_nose)]
+hub_profile += [(z_top, r_nose)]
 for i in range(1, len(hub_profile)):
     assert_true(hub_profile[i][0] > hub_profile[i - 1][0] + 1e-6, msg="hub sections must climb")
 hub = loft([sketch(XY.offset(z)).circle(r) for (z, r) in hub_profile], ruled=True, name="hub")
@@ -411,13 +442,41 @@ hub = loft([sketch(XY.offset(z)).circle(r) for (z, r) in hub_profile], ruled=Tru
 # on the disc sits at `r_nose - nose_r`; the counterbore's mouth must stay
 # inside it, or the fillet would reach the seat.
 assert_true(cbore <= 0 or cbore / 2.0 < r_nose - nose_r - 0.5, msg="the counterbore must stay inside the nose fillet's contact circle")
-hub = fillet(hub, nose_r, edges=hub.edges(on_plane=XY.offset(z_nose + 2.0)), name="hub_nose")
+hub = fillet(hub, nose_r, edges=hub.edges(on_plane=XY.offset(z_top)), name="hub_nose")
 
 wheel = union([hub, ring], name="wheel_solid")
-cuts = [extrude(sketch(XY.offset(-back_t - 1.0)).circle(bore / 2.0), back_t + z_nose + 8.0, name="bore_cut")]
+cuts = [extrude(sketch(XY.offset(z_back - 1.0)).circle(bore / 2.0), z_top - z_back + 2.0, name="bore_cut")]
 if cbore > 0 and cbore_depth > 0:
-    cuts.append(extrude(sketch(XY.offset(z_nose + 2.0 - cbore_depth)).circle(cbore / 2.0), cbore_depth + 1.0, name="counterbore_cut"))
-wheel = subtract(wheel, union(cuts, name="cuts") if len(cuts) > 1 else cuts[0], name="wheel")
+    cuts.append(extrude(sketch(XY.offset(z_top - cbore_depth)).circle(cbore / 2.0), cbore_depth + 1.0, name="counterbore_cut"))
+
+# The scallops: a vertical cylinder between each pair of neighbouring
+# trailing edges, cutting the rim back by `scallops` from the back face up
+# through the passage floor, so the rim is a scalloped web carrying only the
+# blades' exits. The blades and splitters leave the rim at the wrap angle,
+# spaced 360 / (blades or blades and splitters) apart; each scallop's chord
+# on the rim circle is held to 70% of that spacing, which keeps its edges
+# clear of the trailing edges and their flare.
+exits = blades * (2 if splitters else 1)
+pitch_angle = 360.0 / exits
+scallop_cuts = []
+if scallop > 0:
+    half_chord = 0.35 * r_tip * math.radians(pitch_angle)
+    r_s = (half_chord * half_chord + scallop * scallop) / (2.0 * scallop)
+    assert_true(scallop < 0.5 * half_chord + 2.0, msg="the scallops are deeper than the passage can carry")
+    # Up to just above the passage floor where the scallop reaches deepest.
+    z_floor = [p[1] for p in hub_curve if p[0] >= r_tip - scallop - 1.0][-1]
+    for k in range(exits):
+        c = polar(r_tip + r_s - scallop, wrap + (k + 0.5) * pitch_angle)
+        cut = cylinder(r_s, z_floor + 1.0 - z_back + 1.0, at=(c[0], c[1], z_back - 1.0), name="scallop_%s" % k)
+        # Finer than the document: each arc is short and in profile on the
+        # rim, where chords would show as flats.
+        cut.tessellation(tolerance=0.01)
+        scallop_cuts.append(cut)
+    cuts += scallop_cuts
+# The scallops are separate lumps, which only the mesh kernel holds as one
+# body; the bore and counterbore alone stay exact.
+cutter = union(cuts, name="cuts", kernel="mesh" if scallop_cuts else "auto") if len(cuts) > 1 else cuts[0]
+wheel = subtract(wheel, cutter, name="wheel")
 
 # ------------------------------------------------------------- material
 #
@@ -429,19 +488,50 @@ wheel = subtract(wheel, union(cuts, name="cuts") if len(cuts) > 1 else cuts[0], 
 # along the rulings on the blades, 0.15 mm apart, filtered by the pixel so
 # they hand over to the anisotropic sheen when the camera is too far to
 # resolve them (docs/starlark-api.md, "Materials").
-wheel.material(color="#f2f3f5", roughness=0.16, metallic=1.0, anisotropy=0.5, texture="machined")
+wheel.material(color="#d9dce0", roughness=0.16, metallic=1.0, anisotropy=0.5, texture="machined")
 
 assert_solid(wheel)
 lo, hi = wheel.bbox()
 assert_true(hi[0] <= r_tip + 0.01 and hi[0] > r_tip - 0.01, msg="the rim is the widest point, and nothing stands proud of it: %s" % hi[0])
-assert_true(math.close(lo[2], -back_t, tol=0.02), msg="the back face is the lowest")
-assert_true(math.close(hi[2], z_nose + 2.0, tol=0.02), msg="the nose boss is the highest point")
+assert_true(math.close(lo[2], z_back, tol=0.02), msg="the seal land is the lowest point")
+assert_true(math.close(hi[2], z_top, tol=0.02), msg="the nose boss is the highest point")
 # Fourteen blades of four bands (one without the flare), a hundred faces a
 # band, plus two ribbons each: some six thousand faces with the flare and
 # under three thousand without. One face per triangle would be a hundred
 # thousand.
 assert_true(len(wheel.faces()) < 10000,
             msg="the wheel has a few thousand faces, not one per triangle: %s" % len(wheel.faces()))
+
+# ------------------------------------------------------- shaft end and nut
+#
+# The wheel is clamped on its nose: the shaft's threaded end comes up the
+# bore, through a washer, into a hex nut with both faces chamfered at 30
+# degrees. A fine-pitch thread two millimetres under the bore, so the shaft
+# clears the bore wall by a millimetre all round; the nut and the washer are
+# hardened steel, darker than the aluminium so the clamp reads against it.
+STEEL = "#a9afb6"
+if with_nut:
+    thread_d = bore - 2.0
+    pitch = max(0.5, math.round(thread_d * 0.5) / 4.0)  # 1.0 on an M8
+    af = 1.5 * thread_d + 1.0                          # 13 on an M8
+    nut_h = 0.8 * thread_d
+    w_t = max(0.8, 0.15 * thread_d)
+    w_od = af + 2.0
+    assert_true(w_od / 2.0 <= r_nose - nose_r + 0.01, msg="the washer must sit on the nose's flat top, inside its fillet")
+    washer = extrude(sketch(XY.offset(z_top)).circle(w_od / 2.0).circle(thread_d / 2.0 + 0.2), w_t, name="washer")
+    washer.material(color=STEEL, roughness=0.32, metallic=1.0, texture="turned")
+    z_nut = z_top + w_t
+    hexagon = nut(thread_d, pitch, af, nut_h, clearance=0.1, start=(0, 0, z_nut), name="nut_blank")
+    r0 = 0.95 * af / 2.0
+    r_out = af / math.sqrt(3.0) + 0.3
+    rise = (r_out - r0) * math.tan(30.0)
+    crown = loft([sketch(XY.offset(z)).circle(r) for (z, r) in [(z_nut, r0), (z_nut + rise, r_out), (z_nut + nut_h - rise, r_out), (z_nut + nut_h, r0)]],
+                 ruled=True, name="nut_crown")
+    clamp_nut = intersect(hexagon, crown, name="nut")
+    clamp_nut.material(color=STEEL, roughness=0.28, metallic=1.0, texture="machined")
+    stub = 2.0 * pitch + 0.5  # thread standing proud of the nut
+    shaft = thread(thread_d, pitch, 12.0 + w_t + nut_h + stub, start=(0, 0, z_top - 12.0), name="shaft")
+    shaft.material(color="#b8bdc3", roughness=0.24, metallic=1.0)
 
 
 # The ends of the declared nose and inducer heights build, each in seconds:
@@ -453,3 +543,46 @@ def the_wheel_is_solid():
 
 test("the tallest nose", the_wheel_is_solid, sweep={"nose_height": [60]})
 test("the lowest inducer", the_wheel_is_solid, sweep={"inducer_height": [30]})
+
+
+def the_nose_stands_clear_of_the_inducer():
+    _, hi = wheel.bbox()
+    assert_true(hi[2] - z_ind >= 4.0, msg="the nose boss stands %s mm above the inducer tips" % format(hi[2] - z_ind, ".1f"))
+
+
+def the_back_is_contoured():
+    # The rim is thin and the boss deep: the lowest point is the seal land,
+    # well below the rim's back edge.
+    lo, _ = wheel.bbox()
+    assert_true(-back_t - lo[2] >= 5.0, msg="the hub boss stands %s mm proud of the rim's back" % format(-back_t - lo[2], ".1f"))
+
+
+def the_scallops_clear_the_blades():
+    if not scallop_cuts:
+        return
+    for k in [0, len(scallop_cuts) - 1]:
+        c = distance(scallop_cuts[k], ring)
+        assert_true(not c.overlap and c.distance >= 1.0, msg="scallop %s clears the blades by %s" % (k, c))
+
+
+def the_clamp_fits():
+    if not with_nut:
+        return
+    for a, b in [(washer, wheel), (clamp_nut, washer)]:
+        c = distance(a, b)
+        assert_true(not c.overlap, msg="%s crosses %s" % (a, b))
+        assert_true(c.distance <= 2.0 * c.tolerance, msg="%s should sit on %s: %s" % (a, b, c))
+    c = distance(shaft, wheel)
+    assert_true(not c.overlap and c.distance >= 0.9 - 2.0 * c.tolerance, msg="the shaft clears the bore: %s" % c)
+    c = distance(shaft, clamp_nut)
+    assert_true(not c.overlap and c.distance >= 0.1 - 2.0 * c.tolerance, msg="the thread clears the nut: %s" % c)
+    _, top = shaft.bbox()
+    _, nut_top = clamp_nut.bbox()
+    assert_true(top[2] > nut_top[2] + pitch, msg="the thread stands proud of the nut")
+
+
+test("the nose stands clear of the inducer", the_nose_stands_clear_of_the_inducer)
+test("the back is contoured", the_back_is_contoured)
+test("the scallops clear the blades", the_scallops_clear_the_blades)
+test("the nut clamps on the nose and clears the shaft", the_clamp_fits)
+test("the bare nose with a nut seat", the_wheel_is_solid, sweep={"nut": [False], "counterbore": [14]})

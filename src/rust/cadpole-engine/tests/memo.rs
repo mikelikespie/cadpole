@@ -234,6 +234,16 @@ fn every_example_three_ways(half: usize) {
     assert!(checked > 10, "only {checked} examples checked");
 }
 
+/// The compressor wheel's parameters for the memo tests: the counterbore
+/// on, and the rim scallops and the clamp nut off, so the op graph is the
+/// one these tests count (a counterbore cut downstream of nothing, and no
+/// cut that depends on the blade count).
+fn wheel(extra: &[(&'static str, ParamValue)]) -> Vec<(&'static str, ParamValue)> {
+    let mut v = vec![("counterbore", n(16.0)), ("scallops", n(0.0)), ("nut", ParamValue::Bool(false))];
+    v.extend(extra.iter().cloned());
+    v
+}
+
 /// The compressor wheel, by parameter: a parameter
 /// that reaches only the counterbore re-runs the counterbore, the union of
 /// the cuts and the final subtract, and nothing upstream of them — the
@@ -244,7 +254,7 @@ fn every_example_three_ways(half: usize) {
 fn the_wheel_reruns_exactly_the_ops_downstream_of_the_changed_parameter() {
     let scripts = example("compressor_wheel.star");
     let memo = Arc::new(Memo::new());
-    let cold = evaluate(&scripts, &[], Some(memo.clone()), false);
+    let cold = evaluate(&scripts, &wheel(&[]), Some(memo.clone()), false);
     assert!(errors(&cold).is_empty(), "{:?}", errors(&cold));
     let ran: Vec<String> = cold.memo_counts.runs.iter().map(|r| format!("{}:{}", r.feature, r.op)).collect();
     eprintln!("cold: {ran:?}");
@@ -252,7 +262,7 @@ fn the_wheel_reruns_exactly_the_ops_downstream_of_the_changed_parameter() {
         assert!(cold.memo_counts.runs.iter().any(|r| r.feature == f), "{f} did not run cold: {ran:?}");
     }
 
-    let deeper = evaluate(&scripts, &[("counterbore_depth", n(4.0))], Some(memo.clone()), false);
+    let deeper = evaluate(&scripts, &wheel(&[("counterbore_depth", n(4.0))]), Some(memo.clone()), false);
     assert!(errors(&deeper).is_empty(), "{:?}", errors(&deeper));
     assert_eq!(deeper.memo_counts.run_features(), ["counterbore_cut", "cuts", "wheel"]);
     let hits = deeper.memo_counts.hit_features();
@@ -261,7 +271,7 @@ fn the_wheel_reruns_exactly_the_ops_downstream_of_the_changed_parameter() {
     }
     assert!(deeper.memo_counts.deferred.is_empty());
 
-    let more = evaluate(&scripts, &[("blades", n(8.0))], Some(memo.clone()), false);
+    let more = evaluate(&scripts, &wheel(&[("blades", n(8.0))]), Some(memo.clone()), false);
     assert!(errors(&more).is_empty(), "{:?}", errors(&more));
     assert_eq!(more.memo_counts.run_features(), ["blade_pair", "blades", "wheel_solid", "wheel"]);
     let hits = more.memo_counts.hit_features();
@@ -270,9 +280,9 @@ fn the_wheel_reruns_exactly_the_ops_downstream_of_the_changed_parameter() {
     }
 
     // Back to the defaults: everything is in the memo already.
-    let mut again = evaluate(&scripts, &[], Some(memo.clone()), false);
+    let mut again = evaluate(&scripts, &wheel(&[]), Some(memo.clone()), false);
     assert!(again.memo_counts.runs.is_empty(), "{:?}", again.memo_counts.runs);
-    let mut plain = evaluate(&scripts, &[], None, false);
+    let mut plain = evaluate(&scripts, &wheel(&[]), None, false);
     let strip = |s: String| s.lines().map(|l| l.split(" key=").next().unwrap_or(l).to_owned()).collect::<Vec<_>>();
     assert_eq!(strip(projection(&mut again)), strip(projection(&mut plain)));
 }
@@ -287,11 +297,11 @@ fn the_wheel_reruns_exactly_the_ops_downstream_of_the_changed_parameter() {
 fn the_blades_drag_preview_defers_the_fuses_and_runs_nothing_then_the_release_runs_the_fuses() {
     let scripts = example("compressor_wheel.star");
     let memo = Arc::new(Memo::new());
-    let cold = evaluate(&scripts, &[], Some(memo.clone()), false);
+    let cold = evaluate(&scripts, &wheel(&[]), Some(memo.clone()), false);
     assert!(errors(&cold).is_empty(), "{:?}", errors(&cold));
     let cold_ops = cold.memo_counts.runs.len();
 
-    let preview = evaluate(&scripts, &[("blades", n(8.0))], Some(memo.clone()), true);
+    let preview = evaluate(&scripts, &wheel(&[("blades", n(8.0))]), Some(memo.clone()), true);
     assert!(errors(&preview).is_empty(), "{:?}", errors(&preview));
     assert!(preview.preview);
     // The operands are shown for the first time, so their display meshes
@@ -318,7 +328,7 @@ fn the_blades_drag_preview_defers_the_fuses_and_runs_nothing_then_the_release_ru
     }
     let stored_before = memo.stats().stores;
 
-    let release = evaluate(&scripts, &[("blades", n(8.0))], Some(memo.clone()), false);
+    let release = evaluate(&scripts, &wheel(&[("blades", n(8.0))]), Some(memo.clone()), false);
     assert!(errors(&release).is_empty(), "{:?}", errors(&release));
     assert_eq!(release.memo_counts.run_features(), ["blade_pair", "blades", "wheel_solid", "wheel"]);
     assert!(release.memo_counts.deferred.is_empty());
@@ -330,27 +340,41 @@ fn the_blades_drag_preview_defers_the_fuses_and_runs_nothing_then_the_release_ru
     // A preview never stored a stand-in: the same preview again is
     // every op a hit against the entries the release made, and nothing
     // deferred.
-    let again = evaluate(&scripts, &[("blades", n(8.0))], Some(memo.clone()), true);
+    let again = evaluate(&scripts, &wheel(&[("blades", n(8.0))]), Some(memo.clone()), true);
     assert!(again.memo_counts.deferred.is_empty(), "{:?}", again.memo_counts.deferred);
     assert!(again.memo_counts.runs.is_empty(), "{:?}", again.memo_counts.runs);
 }
 
 /// A memo too small for the model evicts, and what it hands back is still
-/// right: with a bound of a few hundred kilobytes the wheel's second run is
+/// right: with a bound well under the wheel's working set its second run is
 /// partly misses, the store never exceeds its bound, and the model is
-/// byte-identical to an unmemoised one.
+/// byte-identical to an unmemoised one. The bound is found from the model
+/// rather than fixed: half the unbounded working set, halved again while
+/// the entries that fit under it still fit without evicting (an entry
+/// larger than the bound is never stored, so one large entry can leave the
+/// rest under it).
 #[test]
 fn the_memory_bound_is_respected_and_a_partly_evicted_memo_is_still_correct() {
     let scripts = example("compressor_wheel.star");
-    let limit = 512 * 1024;
-    let memo = Arc::new(Memo::with_limit(limit));
-    let cold = evaluate(&scripts, &[], Some(memo.clone()), false);
-    assert!(errors(&cold).is_empty(), "{:?}", errors(&cold));
+    let unbounded = Arc::new(Memo::new());
+    let full = evaluate(&scripts, &wheel(&[]), Some(unbounded.clone()), false);
+    assert!(errors(&full).is_empty(), "{:?}", errors(&full));
+    let total = unbounded.stats().bytes;
+    let mut limit = total / 2;
+    let (memo, cold) = loop {
+        let memo = Arc::new(Memo::with_limit(limit));
+        let cold = evaluate(&scripts, &wheel(&[]), Some(memo.clone()), false);
+        assert!(errors(&cold).is_empty(), "{:?}", errors(&cold));
+        if memo.stats().evictions > 0 || limit < 64 * 1024 {
+            break (memo, cold);
+        }
+        limit /= 2;
+    };
     let s = memo.stats();
-    eprintln!("bounded: {s:?}");
+    eprintln!("bounded: {s:?} (unbounded {total} bytes)");
     assert!(s.bytes <= limit, "{s:?}");
     assert!(s.evictions > 0, "the wheel does not fit in {limit} bytes: {s:?}");
-    let mut warm = evaluate(&scripts, &[], Some(memo.clone()), false);
+    let mut warm = evaluate(&scripts, &wheel(&[]), Some(memo.clone()), false);
     assert!(!warm.memo_counts.runs.is_empty(), "something was evicted, so something re-ran");
     // Every op is either a hit or a run; with a bound this far under the
     // working set the LRU may thrash (the hub's entry evicts the cuts'
@@ -359,7 +383,7 @@ fn the_memory_bound_is_respected_and_a_partly_evicted_memo_is_still_correct() {
     assert_eq!(warm.memo_counts.hits.len() + warm.memo_counts.runs.len(), cold.memo_counts.runs.len());
     assert!(memo.stats().bytes <= limit);
     assert!(memo.stats().evictions > s.evictions, "the warm run evicted too");
-    let mut plain = evaluate(&scripts, &[], None, false);
+    let mut plain = evaluate(&scripts, &wheel(&[]), None, false);
     let strip = |s: String| s.lines().map(|l| l.split(" key=").next().unwrap_or(l).to_owned()).collect::<Vec<_>>();
     assert_eq!(strip(projection(&mut warm)), strip(projection(&mut plain)));
 }
