@@ -226,6 +226,32 @@ pub fn print_check(req: &pb::PrintCheckRequest) -> anyhow::Result<pb::PrintCheck
         if let Some(note) = fallback_notes.remove(&id) {
             r.issues.push(note);
         }
+        if req.optimal_orientation {
+            // As placed against the best orientation `print_plan` finds:
+            // a hand-placed print layer's wheel left standing on its tread.
+            let tol = if req.orientation_tolerance > 0.0 {
+                req.orientation_tolerance
+            } else {
+                cadpole_print::plate::score::DEFAULT_ORIENTATION_TOLERANCE
+            };
+            let plan = cadpole_script::plating::PlateRequest {
+                printer: cadpole_print::printer(&req.printer).map(|p| p.id.to_owned()).unwrap_or_default(),
+                max_bridge,
+                ..Default::default()
+            };
+            for j in cadpole_script::plating::judge_orientation(&mut ctx, &[id], &plan, None)? {
+                if j.worse(tol) {
+                    let i = j.verdict.issue(&name);
+                    r.issues.push(pb::PrintIssue {
+                        check: i.check.as_str().to_owned(),
+                        severity: i.severity.as_str().to_owned(),
+                        message: i.message,
+                        at: None,
+                        value: i.value,
+                    });
+                }
+            }
+        }
         bodies.push(r);
         meshed.push((id, name, mesh, topo));
     }
@@ -1488,22 +1514,7 @@ pub fn plate_plan(ctx: &mut Context, specs: &[cadpole_core::context::ExportSpec]
 /// area and height, the corner it cannot print, what each nozzle reaches,
 /// and its stock Bambu Studio presets.
 pub fn machine_of_printer(p: &cadpole_print::Printer) -> cadpole_export_3mf::bambu::Machine {
-    use cadpole_export_3mf::bambu::{Machine, Presets, Reach};
-    Machine {
-        name: p.display_name.to_owned(),
-        area: [0.0, 0.0, p.bed[0], p.bed[1]],
-        height: p.bed[2],
-        exclude: p.exclude.to_vec(),
-        nozzles: p.nozzles.iter().map(|n| Reach { area: n.area, height: n.height, hotends: n.hotends }).collect(),
-        nozzle_diameter: p.nozzle,
-        presets: p.bambu.map(|b| Presets {
-            model: b.model.to_owned(),
-            printer: b.printer.to_owned(),
-            process: b.process.to_owned(),
-            filament: b.filament.to_owned(),
-            filament_id: b.filament_id.to_owned(),
-        }),
-    }
+    cadpole_script::plating::machine_of_printer(p)
 }
 
 /// The printer a Bambu project is laid out for when no call names one: the

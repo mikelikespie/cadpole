@@ -83,6 +83,10 @@ pub const GRANTED: &[(&str, &str)] = &[
     ),
     ("PrintCheck", "read-only analysis over the tessellated bodies"),
     (
+        "Plate",
+        "read-only, the same shape as Export: a Bambu project of plates planned from a document the listener may already read, returned as bytes to the caller. It takes no path and writes no file",
+    ),
+    (
         "RunTests",
         "pure: evaluates a document the listener may already Evaluate, once per sweep point, each inside the same sandbox and deadline and capped at 256 points per test; it writes nothing and returns names, verdicts and messages",
     ),

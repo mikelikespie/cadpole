@@ -1476,3 +1476,78 @@ fn a_real_bambu_sample_satisfies_the_rules() {
         );
     }
 }
+
+/// A template is a settings source and nothing more: a saved project full
+/// of somebody else's objects, plate thumbnails, cut information, per-plate
+/// and per-filament side files gives a project holding the script's own
+/// objects and no byte of any of those.
+#[test]
+fn a_template_brings_its_settings_and_none_of_its_objects_or_pictures() {
+    let settings = serde_json::json!({
+        "from": "project",
+        "name": "project_settings",
+        "printer_model": "Twin C",
+        "printable_area": ["0x0", "330x0", "330x320", "0x320"],
+        "printable_height": "325",
+        "nozzle_diameter": ["0.4", "0.4"],
+        "filament_colour": ["#000000", "#FFFFFF"],
+        "wipe_tower_x": ["10"],
+        "wipe_tower_y": ["10"]
+    })
+    .to_string();
+    let foreign = "foreign kit frame v3.obj";
+    let root = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<model unit=\"millimeter\" \
+         xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\" \
+         xmlns:p=\"http://schemas.microsoft.com/3dmanufacturing/production/2015/06\">\n \
+         <metadata name=\"Application\">BambuStudio-02.04.00.70</metadata>\n <metadata name=\"Title\">{foreign}</metadata>\n \
+         <resources><object id=\"9\" type=\"model\"><components><component p:path=\"/3D/Objects/object_9.model\" \
+         objectid=\"1\"/></components></object></resources>\n <build><item objectid=\"9\"/></build>\n</model>\n"
+    );
+    let picture = b"\x89PNG foreign thumbnail".to_vec();
+    let mut z = crate::zip::ZipWriter::new();
+    z.add(crate::MODEL_PART, root.as_bytes());
+    z.add(crate::BAMBU_PROJECT_CONFIG, settings.as_bytes());
+    z.add("3D/Objects/object_9.model", format!("<model><!-- {foreign} --></model>").as_bytes());
+    z.add("Metadata/model_settings.config", format!("<config><object id=\"9\"><metadata key=\"name\" value=\"{foreign}\"/></object></config>").as_bytes());
+    z.add("Metadata/plate_1.png", &picture);
+    z.add("Metadata/plate_7.png", &picture);
+    z.add("Metadata/top_1.png", &picture);
+    z.add("Metadata/pick_1.png", &picture);
+    z.add("Metadata/cut_information.xml", format!("<objects><object id=\"9\" name=\"{foreign}\"/></objects>").as_bytes());
+    z.add("Metadata/filament_settings_1.config", b"{\"name\": \"foreign filament\"}");
+    z.add("Metadata/plate_1.json", format!("{{\"bbox_objects\": [{{\"name\": \"{foreign}\"}}]}}").as_bytes());
+    z.add("Metadata/slice_info.config", format!("<config><object name=\"{foreign}\"/></config>").as_bytes());
+    let t = Template::from_3mf(&z.finish()).expect("a template");
+
+    let part = box_mesh(Vec3::ZERO, Vec3::new(20.0, 20.0, 10.0));
+    let project = Project {
+        plates: vec![Plate {
+            name: "Bracket".into(),
+            objects: vec![ProjectObject { name: "bracket".into(), parts: vec![ProjectPart::new("bracket", &part, 1)] }],
+            ..Default::default()
+        }],
+        palette: palette(),
+        machine: t.machine(),
+        template: Some((t, "saved.3mf".into())),
+        ..Project::default()
+    };
+    let w = write_project(&project).unwrap();
+    let z = crate::zip::read(&w.bytes).unwrap();
+    for name in &z.names {
+        let bytes = z.get(name).unwrap();
+        assert!(
+            !String::from_utf8_lossy(bytes).contains(foreign),
+            "{name} carries the template's own object: nothing but settings may come from a template"
+        );
+        assert_ne!(bytes, &picture[..], "{name} is the template's picture");
+    }
+    for gone in ["Metadata/cut_information.xml", "Metadata/filament_settings_1.config", "Metadata/plate_1.json", "Metadata/plate_7.png", "Metadata/top_1.png", "Metadata/pick_1.png", "3D/Objects/object_9.model"] {
+        assert!(!z.names.iter().any(|n| n == gone), "{gone} came over from the template: {:?}", z.names);
+    }
+    let s = read_structure(&w.bytes);
+    assert_eq!(s.settings.objects.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["bracket"], "only the script's object");
+    assert_eq!(s.root.objects.len(), 1, "{:?}", s.root.objects);
+    let ps = s.settings_json.as_ref().unwrap();
+    assert_ne!(ps["wipe_tower_x"], serde_json::json!(["10"]), "the template's tower spot is its own model's, not ours");
+}

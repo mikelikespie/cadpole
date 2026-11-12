@@ -2394,6 +2394,242 @@ public struct Cadpole_V1_TestResult {
   fileprivate var _value: Double? = nil
 }
 
+public struct Cadpole_V1_PlateRequest {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// The document to plate. Supplied by the front-end.
+  public var document: Cadpole_V1_Document {
+    get {return _storage._document ?? Cadpole_V1_Document()}
+    set {_uniqueStorage()._document = newValue}
+  }
+  /// Returns true if `document` has been explicitly set.
+  public var hasDocument: Bool {return _storage._document != nil}
+  /// Clears the value of `document`. Subsequent reads from it will return its default value.
+  public mutating func clearDocument() {_uniqueStorage()._document = nil}
+
+  /// Which bodies to plate, by id (`feature#n`) or by name. Empty (with
+  /// `layer_names` empty too) means every visible body that is not on a
+  /// hidden display layer: the model as it is shown.
+  public var bodyIds: [String] {
+    get {return _storage._bodyIds}
+    set {_uniqueStorage()._bodyIds = newValue}
+  }
+
+  /// Plate only the visible bodies on these display layers, by the name
+  /// `layer(...)` declared; "other" is the bodies on no layer. Adds to
+  /// `body_ids`. A hidden layer named here is plated.
+  public var layerNames: [String] {
+    get {return _storage._layerNames}
+    set {_uniqueStorage()._layerNames = newValue}
+  }
+
+  /// Also plate the bodies on display layers the script declares hidden.
+  public var includeHiddenLayers: Bool {
+    get {return _storage._includeHiddenLayers}
+    set {_uniqueStorage()._includeHiddenLayers = newValue}
+  }
+
+  /// The printer the plates are laid out for: "bambu_h2d", "bambu_h2c",
+  /// "bambu_h2s", "bambu_x1c", "bambu_x1e", "bambu_p1s", "bambu_p2s",
+  /// "bambu_a1", "bambu_a1_mini" (short forms such as "h2c" work too). Empty
+  /// is the X1 Carbon.
+  public var printer: String {
+    get {return _storage._printer}
+    set {_uniqueStorage()._printer = newValue}
+  }
+
+  /// Filaments one plate may use: the AMS slots. 0 means 4.
+  public var ams: UInt32 {
+    get {return _storage._ams}
+    set {_uniqueStorage()._ams = newValue}
+  }
+
+  /// Sets of plates to make, in order: "colour" (each body in its own
+  /// filaments) and "mono" (every body in filament 1). Empty means
+  /// "colour" alone.
+  public var variants: [String] {
+    get {return _storage._variants}
+    set {_uniqueStorage()._variants = newValue}
+  }
+
+  /// Clear space between pieces on a plate, in mm. 0 means 4.
+  public var spacing: Double {
+    get {return _storage._spacing}
+    set {_uniqueStorage()._spacing = newValue}
+  }
+
+  /// The widest gap, in mm, across which two bodies held captive in each
+  /// other are one print-in-place piece. 0 means 1.
+  public var jointGap: Double {
+    get {return _storage._jointGap}
+    set {_uniqueStorage()._jointGap = newValue}
+  }
+
+  /// The longest bridge in mm a flat downward face may span without
+  /// support, as PrintCheck's. 0 means 10; a negative number turns
+  /// bridging off.
+  public var maxBridge: Double {
+    get {return _storage._maxBridge}
+    set {_uniqueStorage()._maxBridge = newValue}
+  }
+
+  /// Bodies on these display layers are test coupons: printed first, on a
+  /// plate of their own, whether or not the layer is hidden.
+  public var couponLayers: [String] {
+    get {return _storage._couponLayers}
+    set {_uniqueStorage()._couponLayers = newValue}
+  }
+
+  /// Keep each object the script's own `export(..., name=)` calls make as
+  /// one piece, as the script grouped it, instead of finding the pieces.
+  public var scriptObjects: Bool {
+    get {return _storage._scriptObjects}
+    set {_uniqueStorage()._scriptObjects = newValue}
+  }
+
+  /// Optional: a Bambu Studio project to take printer, process and filament
+  /// settings from, named as one of the document's assets (`cadpole plate
+  /// --template FILE` adds the file). Only its settings are used, never its
+  /// objects or pictures. Without it the project carries Cadpole's own
+  /// settings for `printer`.
+  public var template: String {
+    get {return _storage._template}
+    set {_uniqueStorage()._template = newValue}
+  }
+
+  /// Tessellation tolerance in mm (0 = engine default).
+  public var tolerance: Double {
+    get {return _storage._tolerance}
+    set {_uniqueStorage()._tolerance = newValue}
+  }
+
+  /// Boolean (kernel) tolerance in mm (0 = engine default).
+  public var booleanTolerance: Double {
+    get {return _storage._booleanTolerance}
+    set {_uniqueStorage()._booleanTolerance = newValue}
+  }
+
+  /// Also render an image of every plate and a contact sheet of them, which
+  /// comes back in `plate_sheet`.
+  public var plateImages: Bool {
+    get {return _storage._plateImages}
+    set {_uniqueStorage()._plateImages = newValue}
+  }
+
+  /// The project's title, which names the plate images; empty is "plates".
+  public var title: String {
+    get {return _storage._title}
+    set {_uniqueStorage()._title = newValue}
+  }
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public struct Cadpole_V1_PlateResponse {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// The Bambu Studio project, .3mf bytes. Empty when the document has an
+  /// error or no plan could be written.
+  public var data: Data = Data()
+
+  /// Every decision, a line each, as `cadpole plate` prints it.
+  public var report: String = String()
+
+  public var plates: [Cadpole_V1_PlannedPlate] = []
+
+  public var pieces: [Cadpole_V1_PlannedPiece] = []
+
+  /// Diagnostics from evaluating the document and from writing the project
+  /// (its warnings).
+  public var diagnostics: [Cadpole_V1_Diagnostic] = []
+
+  /// One image per plate when `plate_images` asked for them.
+  public var plateImages: [Cadpole_V1_PlateImage] = []
+
+  /// The contact sheet of `plate_images`, PNG.
+  public var plateSheet: Data = Data()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// One plate of a plan.
+public struct Cadpole_V1_PlannedPlate {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Its name in the project: "Parts", "Colour 2", "Test coupons".
+  public var name: String = String()
+
+  /// "colour", "mono" or "coupons".
+  public var variant: String = String()
+
+  /// The pieces on it, by name.
+  public var pieces: [String] = []
+
+  /// Its filaments, `#rrggbb`; empty for a mono plate.
+  public var filaments: [String] = []
+
+  /// An estimate of its colour changes: per layer, one fewer than its
+  /// filaments, plus one where it starts on another filament than the last
+  /// layer ended on.
+  public var colourChanges: UInt32 = 0
+
+  public var layers: UInt32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// One piece of a plan, as placed.
+public struct Cadpole_V1_PlannedPiece {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var name: String = String()
+
+  /// The plate it is on, by name.
+  public var plate: String = String()
+
+  /// "single", "fused", "print-in-place" or "declared".
+  public var kind: String = String()
+
+  /// How it is turned: "as modelled", "upside down", "on the 3500 mm2 flat
+  /// face", ...
+  public var orientation: String = String()
+
+  /// What still needs support in that orientation, in mm2.
+  public var supportArea: Double = 0
+
+  /// The same as modelled.
+  public var modelledSupportArea: Double = 0
+
+  /// The turn about z, in degrees.
+  public var spin: Double = 0
+
+  /// The sentence about it.
+  public var reason: String = String()
+
+  /// The bodies it is made of, by name.
+  public var bodies: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public struct Cadpole_V1_PrintCheckRequest {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -2599,6 +2835,23 @@ public struct Cadpole_V1_PrintCheckRequest {
   public var supportFree: Bool {
     get {return _storage._supportFree}
     set {_uniqueStorage()._supportFree = newValue}
+  }
+
+  /// Also judge each body's orientation as placed against the best one
+  /// `Plate` finds for it, and warn (check "print_orientation") when it costs
+  /// more than `orientation_tolerance` mm2 of support equivalent more: a
+  /// hand-placed print layer's wheel standing on its tread, a lid the right
+  /// way up.
+  public var optimalOrientation: Bool {
+    get {return _storage._optimalOrientation}
+    set {_uniqueStorage()._optimalOrientation = newValue}
+  }
+
+  /// How much worse than the best a placement may be, in mm2 of support
+  /// equivalent, before `optimal_orientation` warns. 0 means 5.
+  public var orientationTolerance: Double {
+    get {return _storage._orientationTolerance}
+    set {_uniqueStorage()._orientationTolerance = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -4620,6 +4873,10 @@ extension Cadpole_V1_SaveResponse: @unchecked Sendable {}
 extension Cadpole_V1_RunTestsRequest: @unchecked Sendable {}
 extension Cadpole_V1_RunTestsResponse: @unchecked Sendable {}
 extension Cadpole_V1_TestResult: @unchecked Sendable {}
+extension Cadpole_V1_PlateRequest: @unchecked Sendable {}
+extension Cadpole_V1_PlateResponse: @unchecked Sendable {}
+extension Cadpole_V1_PlannedPlate: @unchecked Sendable {}
+extension Cadpole_V1_PlannedPiece: @unchecked Sendable {}
 extension Cadpole_V1_PrintCheckRequest: @unchecked Sendable {}
 extension Cadpole_V1_PrintCheckResponse: @unchecked Sendable {}
 extension Cadpole_V1_BodyPrintReport: @unchecked Sendable {}
@@ -8151,6 +8408,412 @@ extension Cadpole_V1_TestResult: SwiftProtobuf.Message, SwiftProtobuf._MessageIm
   }
 }
 
+extension Cadpole_V1_PlateRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PlateRequest"
+  public static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "document"),
+    2: .standard(proto: "body_ids"),
+    3: .standard(proto: "layer_names"),
+    4: .standard(proto: "include_hidden_layers"),
+    5: .same(proto: "printer"),
+    6: .same(proto: "ams"),
+    7: .same(proto: "variants"),
+    8: .same(proto: "spacing"),
+    9: .standard(proto: "joint_gap"),
+    10: .standard(proto: "max_bridge"),
+    11: .standard(proto: "coupon_layers"),
+    12: .standard(proto: "script_objects"),
+    13: .same(proto: "template"),
+    14: .same(proto: "tolerance"),
+    15: .standard(proto: "boolean_tolerance"),
+    16: .standard(proto: "plate_images"),
+    17: .same(proto: "title"),
+  ]
+
+  fileprivate class _StorageClass {
+    var _document: Cadpole_V1_Document? = nil
+    var _bodyIds: [String] = []
+    var _layerNames: [String] = []
+    var _includeHiddenLayers: Bool = false
+    var _printer: String = String()
+    var _ams: UInt32 = 0
+    var _variants: [String] = []
+    var _spacing: Double = 0
+    var _jointGap: Double = 0
+    var _maxBridge: Double = 0
+    var _couponLayers: [String] = []
+    var _scriptObjects: Bool = false
+    var _template: String = String()
+    var _tolerance: Double = 0
+    var _booleanTolerance: Double = 0
+    var _plateImages: Bool = false
+    var _title: String = String()
+
+    static let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _document = source._document
+      _bodyIds = source._bodyIds
+      _layerNames = source._layerNames
+      _includeHiddenLayers = source._includeHiddenLayers
+      _printer = source._printer
+      _ams = source._ams
+      _variants = source._variants
+      _spacing = source._spacing
+      _jointGap = source._jointGap
+      _maxBridge = source._maxBridge
+      _couponLayers = source._couponLayers
+      _scriptObjects = source._scriptObjects
+      _template = source._template
+      _tolerance = source._tolerance
+      _booleanTolerance = source._booleanTolerance
+      _plateImages = source._plateImages
+      _title = source._title
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._document) }()
+        case 2: try { try decoder.decodeRepeatedStringField(value: &_storage._bodyIds) }()
+        case 3: try { try decoder.decodeRepeatedStringField(value: &_storage._layerNames) }()
+        case 4: try { try decoder.decodeSingularBoolField(value: &_storage._includeHiddenLayers) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._printer) }()
+        case 6: try { try decoder.decodeSingularUInt32Field(value: &_storage._ams) }()
+        case 7: try { try decoder.decodeRepeatedStringField(value: &_storage._variants) }()
+        case 8: try { try decoder.decodeSingularDoubleField(value: &_storage._spacing) }()
+        case 9: try { try decoder.decodeSingularDoubleField(value: &_storage._jointGap) }()
+        case 10: try { try decoder.decodeSingularDoubleField(value: &_storage._maxBridge) }()
+        case 11: try { try decoder.decodeRepeatedStringField(value: &_storage._couponLayers) }()
+        case 12: try { try decoder.decodeSingularBoolField(value: &_storage._scriptObjects) }()
+        case 13: try { try decoder.decodeSingularStringField(value: &_storage._template) }()
+        case 14: try { try decoder.decodeSingularDoubleField(value: &_storage._tolerance) }()
+        case 15: try { try decoder.decodeSingularDoubleField(value: &_storage._booleanTolerance) }()
+        case 16: try { try decoder.decodeSingularBoolField(value: &_storage._plateImages) }()
+        case 17: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._document {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      if !_storage._bodyIds.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._bodyIds, fieldNumber: 2)
+      }
+      if !_storage._layerNames.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._layerNames, fieldNumber: 3)
+      }
+      if _storage._includeHiddenLayers != false {
+        try visitor.visitSingularBoolField(value: _storage._includeHiddenLayers, fieldNumber: 4)
+      }
+      if !_storage._printer.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._printer, fieldNumber: 5)
+      }
+      if _storage._ams != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._ams, fieldNumber: 6)
+      }
+      if !_storage._variants.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._variants, fieldNumber: 7)
+      }
+      if _storage._spacing != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._spacing, fieldNumber: 8)
+      }
+      if _storage._jointGap != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._jointGap, fieldNumber: 9)
+      }
+      if _storage._maxBridge != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._maxBridge, fieldNumber: 10)
+      }
+      if !_storage._couponLayers.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._couponLayers, fieldNumber: 11)
+      }
+      if _storage._scriptObjects != false {
+        try visitor.visitSingularBoolField(value: _storage._scriptObjects, fieldNumber: 12)
+      }
+      if !_storage._template.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._template, fieldNumber: 13)
+      }
+      if _storage._tolerance != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._tolerance, fieldNumber: 14)
+      }
+      if _storage._booleanTolerance != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._booleanTolerance, fieldNumber: 15)
+      }
+      if _storage._plateImages != false {
+        try visitor.visitSingularBoolField(value: _storage._plateImages, fieldNumber: 16)
+      }
+      if !_storage._title.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._title, fieldNumber: 17)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Cadpole_V1_PlateRequest, rhs: Cadpole_V1_PlateRequest) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._document != rhs_storage._document {return false}
+        if _storage._bodyIds != rhs_storage._bodyIds {return false}
+        if _storage._layerNames != rhs_storage._layerNames {return false}
+        if _storage._includeHiddenLayers != rhs_storage._includeHiddenLayers {return false}
+        if _storage._printer != rhs_storage._printer {return false}
+        if _storage._ams != rhs_storage._ams {return false}
+        if _storage._variants != rhs_storage._variants {return false}
+        if _storage._spacing != rhs_storage._spacing {return false}
+        if _storage._jointGap != rhs_storage._jointGap {return false}
+        if _storage._maxBridge != rhs_storage._maxBridge {return false}
+        if _storage._couponLayers != rhs_storage._couponLayers {return false}
+        if _storage._scriptObjects != rhs_storage._scriptObjects {return false}
+        if _storage._template != rhs_storage._template {return false}
+        if _storage._tolerance != rhs_storage._tolerance {return false}
+        if _storage._booleanTolerance != rhs_storage._booleanTolerance {return false}
+        if _storage._plateImages != rhs_storage._plateImages {return false}
+        if _storage._title != rhs_storage._title {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Cadpole_V1_PlateResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PlateResponse"
+  public static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "data"),
+    2: .same(proto: "report"),
+    3: .same(proto: "plates"),
+    4: .same(proto: "pieces"),
+    5: .same(proto: "diagnostics"),
+    6: .standard(proto: "plate_images"),
+    7: .standard(proto: "plate_sheet"),
+  ]
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBytesField(value: &self.data) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.report) }()
+      case 3: try { try decoder.decodeRepeatedMessageField(value: &self.plates) }()
+      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.pieces) }()
+      case 5: try { try decoder.decodeRepeatedMessageField(value: &self.diagnostics) }()
+      case 6: try { try decoder.decodeRepeatedMessageField(value: &self.plateImages) }()
+      case 7: try { try decoder.decodeSingularBytesField(value: &self.plateSheet) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.data.isEmpty {
+      try visitor.visitSingularBytesField(value: self.data, fieldNumber: 1)
+    }
+    if !self.report.isEmpty {
+      try visitor.visitSingularStringField(value: self.report, fieldNumber: 2)
+    }
+    if !self.plates.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.plates, fieldNumber: 3)
+    }
+    if !self.pieces.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.pieces, fieldNumber: 4)
+    }
+    if !self.diagnostics.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.diagnostics, fieldNumber: 5)
+    }
+    if !self.plateImages.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.plateImages, fieldNumber: 6)
+    }
+    if !self.plateSheet.isEmpty {
+      try visitor.visitSingularBytesField(value: self.plateSheet, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Cadpole_V1_PlateResponse, rhs: Cadpole_V1_PlateResponse) -> Bool {
+    if lhs.data != rhs.data {return false}
+    if lhs.report != rhs.report {return false}
+    if lhs.plates != rhs.plates {return false}
+    if lhs.pieces != rhs.pieces {return false}
+    if lhs.diagnostics != rhs.diagnostics {return false}
+    if lhs.plateImages != rhs.plateImages {return false}
+    if lhs.plateSheet != rhs.plateSheet {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Cadpole_V1_PlannedPlate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PlannedPlate"
+  public static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "name"),
+    2: .same(proto: "variant"),
+    3: .same(proto: "pieces"),
+    4: .same(proto: "filaments"),
+    5: .standard(proto: "colour_changes"),
+    6: .same(proto: "layers"),
+  ]
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.variant) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.pieces) }()
+      case 4: try { try decoder.decodeRepeatedStringField(value: &self.filaments) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.colourChanges) }()
+      case 6: try { try decoder.decodeSingularUInt32Field(value: &self.layers) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if !self.variant.isEmpty {
+      try visitor.visitSingularStringField(value: self.variant, fieldNumber: 2)
+    }
+    if !self.pieces.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.pieces, fieldNumber: 3)
+    }
+    if !self.filaments.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.filaments, fieldNumber: 4)
+    }
+    if self.colourChanges != 0 {
+      try visitor.visitSingularUInt32Field(value: self.colourChanges, fieldNumber: 5)
+    }
+    if self.layers != 0 {
+      try visitor.visitSingularUInt32Field(value: self.layers, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Cadpole_V1_PlannedPlate, rhs: Cadpole_V1_PlannedPlate) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.variant != rhs.variant {return false}
+    if lhs.pieces != rhs.pieces {return false}
+    if lhs.filaments != rhs.filaments {return false}
+    if lhs.colourChanges != rhs.colourChanges {return false}
+    if lhs.layers != rhs.layers {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Cadpole_V1_PlannedPiece: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PlannedPiece"
+  public static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "name"),
+    2: .same(proto: "plate"),
+    3: .same(proto: "kind"),
+    4: .same(proto: "orientation"),
+    5: .standard(proto: "support_area"),
+    6: .standard(proto: "modelled_support_area"),
+    7: .same(proto: "spin"),
+    8: .same(proto: "reason"),
+    9: .same(proto: "bodies"),
+  ]
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.plate) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.kind) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.orientation) }()
+      case 5: try { try decoder.decodeSingularDoubleField(value: &self.supportArea) }()
+      case 6: try { try decoder.decodeSingularDoubleField(value: &self.modelledSupportArea) }()
+      case 7: try { try decoder.decodeSingularDoubleField(value: &self.spin) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      case 9: try { try decoder.decodeRepeatedStringField(value: &self.bodies) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if !self.plate.isEmpty {
+      try visitor.visitSingularStringField(value: self.plate, fieldNumber: 2)
+    }
+    if !self.kind.isEmpty {
+      try visitor.visitSingularStringField(value: self.kind, fieldNumber: 3)
+    }
+    if !self.orientation.isEmpty {
+      try visitor.visitSingularStringField(value: self.orientation, fieldNumber: 4)
+    }
+    if self.supportArea != 0 {
+      try visitor.visitSingularDoubleField(value: self.supportArea, fieldNumber: 5)
+    }
+    if self.modelledSupportArea != 0 {
+      try visitor.visitSingularDoubleField(value: self.modelledSupportArea, fieldNumber: 6)
+    }
+    if self.spin != 0 {
+      try visitor.visitSingularDoubleField(value: self.spin, fieldNumber: 7)
+    }
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 8)
+    }
+    if !self.bodies.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.bodies, fieldNumber: 9)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Cadpole_V1_PlannedPiece, rhs: Cadpole_V1_PlannedPiece) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.plate != rhs.plate {return false}
+    if lhs.kind != rhs.kind {return false}
+    if lhs.orientation != rhs.orientation {return false}
+    if lhs.supportArea != rhs.supportArea {return false}
+    if lhs.modelledSupportArea != rhs.modelledSupportArea {return false}
+    if lhs.spin != rhs.spin {return false}
+    if lhs.reason != rhs.reason {return false}
+    if lhs.bodies != rhs.bodies {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".PrintCheckRequest"
   public static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
@@ -8180,6 +8843,8 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
     24: .standard(proto: "slender_width"),
     25: .standard(proto: "max_height_to_base"),
     26: .standard(proto: "support_free"),
+    27: .standard(proto: "optimal_orientation"),
+    28: .standard(proto: "orientation_tolerance"),
   ]
 
   fileprivate class _StorageClass {
@@ -8209,6 +8874,8 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
     var _slenderWidth: Double = 0
     var _maxHeightToBase: Double = 0
     var _supportFree: Bool = false
+    var _optimalOrientation: Bool = false
+    var _orientationTolerance: Double = 0
 
     static let defaultInstance = _StorageClass()
 
@@ -8241,6 +8908,8 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
       _slenderWidth = source._slenderWidth
       _maxHeightToBase = source._maxHeightToBase
       _supportFree = source._supportFree
+      _optimalOrientation = source._optimalOrientation
+      _orientationTolerance = source._orientationTolerance
     }
   }
 
@@ -8285,6 +8954,8 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
         case 24: try { try decoder.decodeSingularDoubleField(value: &_storage._slenderWidth) }()
         case 25: try { try decoder.decodeSingularDoubleField(value: &_storage._maxHeightToBase) }()
         case 26: try { try decoder.decodeSingularBoolField(value: &_storage._supportFree) }()
+        case 27: try { try decoder.decodeSingularBoolField(value: &_storage._optimalOrientation) }()
+        case 28: try { try decoder.decodeSingularDoubleField(value: &_storage._orientationTolerance) }()
         default: break
         }
       }
@@ -8375,6 +9046,12 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
       if _storage._supportFree != false {
         try visitor.visitSingularBoolField(value: _storage._supportFree, fieldNumber: 26)
       }
+      if _storage._optimalOrientation != false {
+        try visitor.visitSingularBoolField(value: _storage._optimalOrientation, fieldNumber: 27)
+      }
+      if _storage._orientationTolerance != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._orientationTolerance, fieldNumber: 28)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -8410,6 +9087,8 @@ extension Cadpole_V1_PrintCheckRequest: SwiftProtobuf.Message, SwiftProtobuf._Me
         if _storage._slenderWidth != rhs_storage._slenderWidth {return false}
         if _storage._maxHeightToBase != rhs_storage._maxHeightToBase {return false}
         if _storage._supportFree != rhs_storage._supportFree {return false}
+        if _storage._optimalOrientation != rhs_storage._optimalOrientation {return false}
+        if _storage._orientationTolerance != rhs_storage._orientationTolerance {return false}
         return true
       }
       if !storagesAreEqual {return false}

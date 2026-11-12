@@ -69,6 +69,9 @@ planetary.star	volume	carrier#23: 40d0c2dda0641741 vs 40d0c2dda13b528b -- the ca
 planetary.star	topology	carrier#23: 486420edc46c5ffc vs c8587d8d91faa8a9 -- as order
 planetary.star	mesh	carrier#23: 00d5863757e82197 vs 475ae418e13aae7e -- as order
 planetary.star	inspect	carrier#23: volume_mm3 17163.462914488515 vs 17163.462965803727 -- as volume
+print_plan.star	order	box_body#2 edges[11]: "box_1/top|box_2/left" vs "box_1/top|box_2/back" -- the trinket box is an exact subtract of its cavity: the exact kernel lists the rim's intersection edges in another order on the two targets, as bracket.star's order row; the plan, its placements and every placed copy agree
+print_plan.star	topology	box_body#2: 55d889902c68a077 vs 20f101db1fef2feb -- as order
+print_plan.star	mesh	box_body#2: 2fd549587382a7bd vs b154be55b139f76c -- as order
 print_ready.star	order	tray#2 edges[11]: "pocket/left|shell/top" vs "pocket/back|shell/top" -- an exact subtract of the pocket from the shell: the exact kernel's intersection edges, as bracket.star's order row
 print_ready.star	topology	tray#2: 13c72b61722c21da vs 61f54ea2117638bc -- as order
 print_ready.star	mesh	tray#2: 0d9de5ee277e1686 vs cd795618dc9a61ac -- as order

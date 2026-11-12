@@ -182,7 +182,7 @@ fn explain(chosen: &Candidate, baseline: Option<&Candidate>, changed: bool, prof
     )
 }
 
-fn push_unique(out: &mut Vec<(Vec3, String)>, d: Vec3, label: String) {
+pub(crate) fn push_unique(out: &mut Vec<(Vec3, String)>, d: Vec3, label: String) {
     let d = d.normalized();
     if d.length() < 0.5 || out.iter().any(|(e, _)| e.dot(d) > 0.999_999) {
         return;
@@ -194,8 +194,8 @@ fn push_unique(out: &mut Vec<(Vec3, String)>, d: Vec3, label: String) {
 /// [`FLAT_DEGREES`], biggest first. The normal returned points *out* of the
 /// model, so it is exactly the direction that would face the bed if that face
 /// were laid down.
-fn flat_regions(mesh: &Mesh) -> Vec<(Vec3, f64)> {
-    let cos = FLAT_DEGREES.to_radians().cos();
+pub(crate) fn flat_regions(mesh: &Mesh) -> Vec<(Vec3, f64)> {
+    let cos = cadpole_core::fmath::cos(FLAT_DEGREES.to_radians());
     let mut groups: Vec<(Vec3, f64)> = Vec::new();
     for t in 0..mesh.triangle_count() {
         let (n, area) = tri_normal_area(&tri(mesh, t));
@@ -217,7 +217,7 @@ fn flat_regions(mesh: &Mesh) -> Vec<(Vec3, f64)> {
 
 /// The rigid rotation, about the model's bounding-box centre, that turns
 /// `down` into `-up`.
-fn rotation_putting_down(mesh: &Mesh, down: Vec3, up: Vec3) -> Transform {
+pub(crate) fn rotation_putting_down(mesh: &Mesh, down: Vec3, up: Vec3) -> Transform {
     let centre = match mesh.bbox() {
         Some((lo, hi)) => (lo + hi) * 0.5,
         None => Vec3::ZERO,
@@ -233,10 +233,10 @@ fn rotation_putting_down(mesh: &Mesh, down: Vec3, up: Vec3) -> Transform {
         let a = if d.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
         return Transform::rotation(centre, d.cross(a).normalized(), std::f64::consts::PI);
     }
-    Transform::rotation(centre, d.cross(target).normalized(), dot.acos())
+    Transform::rotation(centre, d.cross(target).normalized(), cadpole_core::fmath::acos(dot))
 }
 
-fn footprint_and_height(mesh: &Mesh, up: Vec3) -> ((f64, f64), f64) {
+pub(crate) fn footprint_and_height(mesh: &Mesh, up: Vec3) -> ((f64, f64), f64) {
     let (e1, e2) = if (up - Vec3::Z).length() < 1e-9 {
         (Vec3::X, Vec3::Y)
     } else {

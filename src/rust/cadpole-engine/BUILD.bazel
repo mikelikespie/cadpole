@@ -62,6 +62,26 @@ rust_test(
     ],
 )
 
+# Plating against the examples' own print layouts, and a planned project
+# read back from its bytes. Its own binary: it evaluates four examples in a
+# debug build.
+rust_test(
+    name = "plate_golden_test",
+    size = "large",
+    timeout = "eternal",
+    srcs = ["tests/plate_golden.rs"],
+    data = [
+        "//examples:assets",
+        "//examples:star_files",
+    ],
+    env = {"CADPOLE_EXAMPLES": "examples"},
+    deps = [
+        ":cadpole_engine",
+        "@crates//:roxmltree",
+        "@crates//:serde_json",
+    ],
+)
+
 rust_test(
     name = "cadpole_engine_test",
     version = CADPOLE_VERSION,

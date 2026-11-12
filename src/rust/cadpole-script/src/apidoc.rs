@@ -195,6 +195,8 @@ pub fn api_doc() -> pb::ApiDocResponse {
         ("Asset", <crate::values::KAsset as starlark::values::StarlarkValue>::get_methods()),
         ("Printer", <crate::values::KPrinter as starlark::values::StarlarkValue>::get_methods()),
         ("PrintReport", <crate::values::KPrintReport as starlark::values::StarlarkValue>::get_methods()),
+        // `print_part(...)`, read by `print_plan`.
+        ("PrintPart", <crate::values::KPrintPart as starlark::values::StarlarkValue>::get_methods()),
         // `import_report(...)`.
         ("ImportReport", <crate::values::KImportReport as starlark::values::StarlarkValue>::get_methods()),
         // `import_dxf(...)` returns a Drawing2D.
