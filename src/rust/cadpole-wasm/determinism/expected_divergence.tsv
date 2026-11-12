@@ -99,6 +99,7 @@ wing.star	inspect	s2_r#55: triangles 7578 vs 7582, as counts
 stdlib/gears_test.star	topology	mini_carrier#90: 4be1db604ea2045c vs 487e518841ac28fa -- as order
 spring_and_bolt.star	topology	tube#13: 9541533bef7288fe vs bc7a0598519895c2 -- the bend is two exact NURBS torus patches, and the tube's f64 digest differs in its last bits (truck's own arithmetic on the patches) while names, counts, volume, mesh and every other category agree
 gear_toy.star	order	carrier#38 edges[54]: "pin_0/side[0.0]#0|plate/end" vs "pin_0/side[0.1]#0|plate/end" -- the pin-in-plate union edge, as the planetary's order row: the exact kernel's intersection edges
+gear_toy.star	counts	lid_print#72: {"faces":105,"edges":268,"vertices":165,"triangles":13902,"mesh_vertices":14096} vs {"faces":105,"edges":268,"vertices":165,"triangles":13906,"mesh_vertices":14100} -- the lid's mesh booleans take its operands at their own `tessellation(tolerance=0.01)`, and at that chord manifold's triangulation of the result differs by a few triangles between the targets, as gridfinity_baselid.star's counts row
 gear_toy.star	volume	carrier#38: 40d250c3c7ba56ff vs 40d250c3ca189635 -- the carrier, as order
 gear_toy.star	topology	carrier#38: dbf01858fdcb5ff2 vs 636f08bf813298f3 -- as order
 gear_toy.star	mesh	carrier#38: 92b75dd979b21a84 vs 2f2b568f338de3bb -- as order
@@ -149,11 +150,15 @@ gridfinity_showcase.star	names	parts_3x2_seated#22 faces[14]: "parts_3x2_socket/
 gridfinity_showcase.star	order	parts_3x2_seated#22 edges[31]: "parts_3x2_body/end|parts_3x2_socket/side[0.7]#1" vs "parts_3x2_body/end|parts_3x2_socket/side[0.6]#1" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
 gridfinity_showcase.star	topology	parts_3x2_seated#22: 01b03808d2f8d427 vs baabfdc680a5239f -- as the body's other rows: its f64 digest in the last bits
 gridfinity_showcase.star	mesh	parts_3x2_seated#22: 847d5b5ce73662d0 vs 50fef244962d33f4 -- the f32 positions differ in their last bits
-import_demo.star	order	block_finished#26 edges[52]: "oil_hole/side#1|spot_face/bottom" vs "oil_hole/side#0|spot_face/bottom" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
-import_demo.star	volume	block_finished#26: 40e01678141fe44e vs 40e0167865cec349 -- the mesh volume in its last bits
-import_demo.star	topology	block_finished#26: 14f596f1478791d0 vs 420a2442aeb02537 -- as the body's other rows: its f64 digest in the last bits
-import_demo.star	mesh	block_finished#26: 1d85e89703f356c5 vs 5cf765cc5230c1f0 -- the f32 positions differ in their last bits
-import_demo.star	inspect	block_finished#26 at char 324: …12.0, z: 45.0 }) }), volume_mm3: 32947.75245661345, area_mm2: 9025.263368889824, solid: Some(SolidVe vs …12.0, z: 45.0... -- as volume
+import_demo.star	diagnostics	diagnostic[38]: {"severity":"info","feature":"gear_hubbed","message":"mesh union: snapped 1 face group (1 face: `gear_plate/side[1.2]`) onto 1 shared plane, 2 vertices moved, the furthest by 0.03 µm — -- the gear hub's mesh union snaps a face group on one target and not the other, so the info notes differ in count and order
+import_demo.star	names	step_plinth_edged#64 faces[12]: "step_plinth_edged/blend[step_plinth_block/end|side[0.3]]" vs "step_plinth_block/side[0.1]" -- the plinth's top-edge blend: which of a rounded rectangle's tangent sides the exact fillet names its blend after differs between the targets, as filleted_bracket.star's names row
+import_demo.star	order	block_finished#57 edges[52]: "oil_hole/side#1|spot_face/bottom" vs "oil_hole/side#0|spot_face/bottom" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
+import_demo.star	counts	gear#113: {"faces":682,"edges":2011,"vertices":1339,"triangles":4374,"mesh_vertices":5698} vs {"faces":682,"edges":2011,"vertices":1339,"triangles":4180,"mesh_vertices":5504} -- the gear is a mesh union of an outline of several hundred flank segments and its hub; manifold's triangulation of the result differs by a few triangles between the targets
+import_demo.star	volume	block_finished#57: 40e01678141fe44e vs 40e0167865cec349 -- the mesh volume in its last bits
+import_demo.star	bbox	stl_plinth_edged#9: bbox bits differ -- the plinth's box is read off its mesh, whose positions differ in their last bits (the `mesh` row)
+import_demo.star	topology	stl_plinth_edged#9: cabd32ddc66f0805 vs ac2490b5052c2436 -- as the body's other rows: its f64 digest in the last bits
+import_demo.star	mesh	stl_plinth_edged#9: 23bbe9261ce8068a vs 6a42de6dec1bc1dc -- the f32 positions differ in their last bits
+import_demo.star	inspect	stl_plinth_edged#9 at char 281: … max: Some(Vec3 { x: -42.0, y: 28.0, z: 3.1166628116198816e-15 }) }), volume_mm3: 45192.26898596584, vs … max: Some(Vec3 { x: -42.0, y: 28.0, z: 2.156193518003391e-15  -- as volume
 iris.star	order	blade_0#42 edges[32]: "blade_plate_0/end|drive_pin_collar_0/side#1" vs "...side#0" -- the exact union of a blade plate and its drive pin collar splits the collar's side at points that differ in the last bits, so the two halves sort the other way round
 iris.star	volume	blade_0#42: 4086e773358b5b25 vs 4086e773358b5b28 -- the same exact union: its f64 volume in the last bits
 iris.star	topology	blade_0#42: 18a215f21a941acf vs 292aada9209cbb61 -- the same exact union: its f64 digest in the last bits

@@ -21,7 +21,9 @@ STILLS = {
     "thumbscrew": ("examples/thumbscrew.star", []),
     "planetary": ("examples/planetary.star", ["-p", "explode=14", "--view", "az=-30,el=32"]),
     "wheel": ("examples/compressor_wheel.star", ["--view", "az=-30,el=30"]),
-    "imports": ("examples/import_demo.star", []),
+    # The lightbox's direction (az -35, el 30, 24 degrees), aimed at the row's middle
+    # so the long, low scene sits centred in the square.
+    "imports": ("examples/import_demo.star", ["--eye=-258,-369,272", "--target", "0,0,12", "--fov", "24"]),
 }
 STILLS.update({"feat-" + k: ("site/features/%s.star" % k, ["--view", "az=%d,el=%d" % v]) for k, v in FEATURES.items()})
 

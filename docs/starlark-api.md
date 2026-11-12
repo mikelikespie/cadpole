@@ -1958,7 +1958,7 @@ the two bodies actually share rather than their total size.
 | --- | --- |
 | `"auto"` (default) | B-rep first, mesh kernel when the B-rep kernel fails or the pair is over budget. The result is a `"brep"` body when truck did the work and a `"mesh"` body otherwise. |
 | `"brep"` | Exact kernel only. A failure is an error, never a demotion — this is what a part that must export STEP asks for. |
-| `"mesh"` | Mesh kernel only. B-rep operands are tessellated at the document's mesh tolerance first, so the result is approximate to that; the result is always a `"mesh"` body. |
+| `"mesh"` | Mesh kernel only. B-rep operands are tessellated first, each at its own `tessellation(tolerance=)` when it has one and at the document's mesh tolerance otherwise, so the result is approximate to that; the result is always a `"mesh"` body. |
 
 The `"auto"` rule, decided *before* each pairwise call because the B-rep
 kernel cannot be interrupted:

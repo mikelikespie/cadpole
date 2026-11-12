@@ -2340,6 +2340,14 @@ impl Context {
         }
         key.put(&kernel_choice);
         self.routing_key(&mut key);
+        // An operand's own `tessellation(tolerance=)` is the chord it crosses
+        // into the mesh kernel at, so it is an input; keyed only where one is
+        // set, so every other boolean's key is what it was.
+        for (i, id) in std::iter::once(&a).chain(others).enumerate() {
+            if let Some(t) = self.body(*id)?.tessellation.tolerance {
+                key.tag("operand_chord").u64(i as u64).f64(t);
+            }
+        }
         let key = key.finish();
         if self.deferred(&key) {
             // The drag preview: a union shows its operands side by
@@ -2759,6 +2767,11 @@ impl Context {
     ) -> Result<(Body, NameSource)> {
         let mut acc = self.body(a)?.body.clone();
         let mut acc_names = self.body(a)?.names.clone();
+        // The chord each B-rep operand is tessellated at if the mesh kernel
+        // takes it: its own setting, else the document's. A step's result
+        // has no setting of its own, so the accumulator falls back to the
+        // document's after the first step.
+        let mut acc_tol = self.operand_tolerance(a)?;
         let mut rest: &[BodyId] = others;
         while let Some((first, tail)) = rest.split_first() {
             // A run of tools that cannot touch each other is one boolean
@@ -2768,21 +2781,40 @@ impl Context {
             let tools = self.batched_run(op, &acc, rest, kernel_choice, fid, span.clone())?;
             if tools.len() > 1 {
                 let n = tools.len();
-                let (body, names) = self.mesh_boolean_many(op, acc, &acc_names, &tools)?;
+                let (body, names) = self.mesh_boolean_many(op, acc, &acc_names, acc_tol, &tools)?;
                 acc = body;
                 acc_names = names;
+                acc_tol = self.tolerance;
                 rest = &rest[n..];
                 continue;
             }
             let b = self.body(*first)?.body.clone();
             let b_names = self.body(*first)?.names.clone();
-            let (body, names) =
-                self.boolean_pair(op, acc, &acc_names, &b, &b_names, kernel_choice, fid, span.clone())?;
+            let chords = (acc_tol, self.operand_tolerance(*first)?);
+            let (body, names) = self.boolean_pair_at(
+                op,
+                acc,
+                &acc_names,
+                &b,
+                &b_names,
+                kernel_choice,
+                fid,
+                span.clone(),
+                chords,
+            )?;
             acc = body;
             acc_names = names;
+            acc_tol = self.tolerance;
             rest = tail;
         }
         Ok((acc, acc_names))
+    }
+
+    /// The chord a body is tessellated at when a boolean hands it to the
+    /// mesh kernel: its own `tessellation(tolerance=)` when it has one, as
+    /// for every other reader of its triangles, else the document's.
+    fn operand_tolerance(&self, id: BodyId) -> Result<f64> {
+        Ok(self.body(id)?.tessellation.tolerance.unwrap_or(self.tolerance))
     }
 
     /// Join bodies that **touch** on coincident faces, by merging those faces
@@ -2900,9 +2932,9 @@ impl Context {
         if rest.len() < 2 || op == BoolOp::Intersect || !self.run_is_all_mesh(acc, rest, choice)? {
             return Ok(Vec::new());
         }
-        let tol = self.tolerance;
         let mut tools: Vec<mesh_kernel::MeshBody> = Vec::new();
         for id in rest {
+            let tol = self.operand_tolerance(*id)?;
             let (mb, _, _) = {
                 let rec = self.body(*id)?;
                 realise(&rec.body, &rec.names, tol)?
@@ -2972,10 +3004,11 @@ impl Context {
         op: BoolOp,
         a: Body,
         a_names: &NameSource,
+        a_tol: f64,
         tools: &[mesh_kernel::MeshBody],
     ) -> Result<(Body, NameSource)> {
         let tol = self.tolerance;
-        let (am, _) = realise_owned(a, a_names, tol)?;
+        let (am, _) = realise_owned(a, a_names, a_tol)?;
         let refs: Vec<&mesh_kernel::MeshBody> = tools.iter().collect();
         // The cleanup pass wants the tolerance; the exit gate wants the result.
         let out = mesh_kernel::boolean_many_with(op, &am, &refs, tol, self.mesh_engine())?;
@@ -3001,6 +3034,27 @@ impl Context {
         choice: KernelChoice,
         feature: &FeatureId,
         span: Option<Span>,
+    ) -> Result<(Body, NameSource)> {
+        let chords = (self.tolerance, self.tolerance);
+        self.boolean_pair_at(op, a, a_names, b, b_names, choice, feature, span, chords)
+    }
+
+    /// [`Context::boolean_pair`] with the chord each B-rep operand is
+    /// tessellated at should the mesh kernel take the pair (`chords`, for
+    /// `a` and `b`): [`Context::operand_tolerance`] for a script's own
+    /// bodies.
+    #[allow(clippy::too_many_arguments)]
+    fn boolean_pair_at(
+        &mut self,
+        op: BoolOp,
+        a: Body,
+        a_names: &NameSource,
+        b: &Body,
+        b_names: &NameSource,
+        choice: KernelChoice,
+        feature: &FeatureId,
+        span: Option<Span>,
+        chords: (f64, f64),
     ) -> Result<(Body, NameSource)> {
         let pair_faces = a.face_count() + b.face_count();
         let budget = self.brep_face_budget;
@@ -3029,10 +3083,10 @@ impl Context {
         };
         if let Some(why) = mesh_reason {
             self.info(why, feature, span);
-            return self.mesh_boolean(op, a, a_names, b, b_names);
+            return self.mesh_boolean(op, a, a_names, b, b_names, chords);
         }
         if choice == KernelChoice::Mesh {
-            return self.mesh_boolean(op, a, a_names, b, b_names);
+            return self.mesh_boolean(op, a, a_names, b, b_names, chords);
         }
 
         let tol = self.boolean_tolerance;
@@ -3059,9 +3113,8 @@ impl Context {
                 // the operands are realised here anyway for the retry, and
                 // they carry the names, so the diagnostic says the case in
                 // the script's own vocabulary too.
-                let mesh_tol = self.tolerance;
-                let (am, _) = realise_owned(a, a_names, mesh_tol)?;
-                let (bm, _, _) = realise(b, b_names, mesh_tol)?;
+                let (am, _) = realise_owned(a, a_names, chords.0)?;
+                let (bm, _, _) = realise(b, b_names, chords.1)?;
                 let named = cadpole_tangent_summary(op, &am, &bm, tol, crate::tangent::Path::Mesh);
                 let why = e.to_string();
                 self.info(
@@ -3108,10 +3161,10 @@ impl Context {
         a_names: &NameSource,
         b: &Body,
         b_names: &NameSource,
+        chords: (f64, f64),
     ) -> Result<(Body, NameSource)> {
-        let tol = self.tolerance;
-        let (am, _) = realise_owned(a, a_names, tol)?;
-        let (bm, _, _) = realise(b, b_names, tol)?;
+        let (am, _) = realise_owned(a, a_names, chords.0)?;
+        let (bm, _, _) = realise(b, b_names, chords.1)?;
         self.mesh_boolean_prepared(op, am, &bm)
     }
 
@@ -4357,6 +4410,42 @@ mod tests {
             .map(|d| d.message.as_str())
             .collect();
         assert!(routed.is_empty(), "no fallback expected, got {routed:?}");
+    }
+
+    /// A B-rep operand crosses into the mesh kernel at its own
+    /// `tessellation(tolerance=)`, as every other reader of its triangles
+    /// does, not at the document's: a bore that was set fine stays round
+    /// through `kernel="mesh"`. Without one, the document's applies, and the
+    /// setting is part of the boolean's memo key.
+    #[test]
+    fn a_mesh_boolean_tessellates_each_operand_at_its_own_tolerance() {
+        fn hub_union(fine: Option<f64>) -> (usize, Vec<f32>) {
+            let mut ctx = Context::new();
+            let plate = block(&mut ctx, P2::new(0.0, 0.0), 60.0, 60.0, 0.0, 6.0, "plate");
+            let hub_sketch = Sketch::new(Plane::XY.offset(5.5)).with_loop(Loop::circle(P2::new(30.0, 30.0), 12.0));
+            let hub =
+                ctx.extrude("cylinder", &hub_sketch, None, 4.0, BTreeMap::new(), Some("hub".into()), None).unwrap()[0];
+            ctx.body_mut(hub).unwrap().tessellation.tolerance = fine;
+            let u = ctx.boolean(BoolOp::Union, plate, &[hub], KernelChoice::Mesh, None, None).unwrap();
+            let Body::Mesh((mesh, _)) = &ctx.body(u).unwrap().body else { panic!("kernel=\"mesh\" makes a mesh body") };
+            (mesh.triangle_count(), mesh.positions.clone())
+        }
+        let (coarse, _) = hub_union(None);
+        let (fine, positions) = hub_union(Some(0.005));
+        assert!(2 * fine > 3 * coarse, "the hub's own 0.005 mm chord reaches the result: {fine} vs {coarse} triangles");
+        // Every vertex on the hub's rim lies on the true circle, and the
+        // rim's chords sag no more than the hub asked for.
+        let mut rim: Vec<f64> = positions
+            .chunks(3)
+            .filter(|p| (p[2] as f64 - 9.5).abs() < 1e-3)
+            .map(|p| (p[1] as f64 - 30.0).atan2(p[0] as f64 - 30.0))
+            .collect();
+        rim.sort_by(f64::total_cmp);
+        rim.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+        assert!(rim.len() > 16, "the rim is sampled: {} vertices", rim.len());
+        let widest = rim.windows(2).map(|w| w[1] - w[0]).fold(0.0, f64::max);
+        let sag = 12.0 * (1.0 - (widest / 2.0).cos());
+        assert!(sag <= 0.005 + 1e-4, "the rim's widest chord sags {sag} mm, over the hub's 0.005 mm");
     }
 
     /// The route is decided by the document, never by the clock.

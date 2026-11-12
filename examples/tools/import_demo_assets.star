@@ -1,7 +1,7 @@
 # The files import_demo.star reads, made by Cadpole itself so every byte is
 # invented: an organic owl figurine (fields, meshed) written as STL, a
-# pillow block (exact B-rep) written as STEP, and a spur-gear profile with
-# a keyed bore and lightening holes written as DXF.
+# pillow block (exact B-rep) written as STEP, and an involute spur-gear profile
+# with a keyed bore and lightening windows written as DXF.
 #
 #   cadpole export examples/tools/import_demo_assets.star --run-exports --out-dir examples/assets
 #
@@ -9,11 +9,11 @@
 # download), the block for "a part from another CAD tool", and the gear for
 # "a profile from a laser-cutter or a 2D drafting package".
 #
-# The owl's numbers are tuned so the field mesher returns a clean solid
-# (cadpole check: "solid"): close concave creases -- an eyeball in its socket,
-# toes side by side, a two-sphere head -- left hair-thin crossings in the
-# mesh, so the face is kept simple and every blend is generous. `owl_res`
-# and `owl_noise` are there to explore that; 0.4 / 0.35 is the clean pair.
+# The owl's numbers are tuned so the field mesher returns a clean solid with
+# no folds (cadpole check: "solid"): close concave creases -- an eyeball sunk
+# in a socket, toes side by side -- leave hair-thin crossings in the mesh, so
+# every feature stands proud of the surface and the toes splay apart.
+# `owl_res` and `owl_noise` are there to explore that.
 
 # The same block import_demo.star's tests rebuild natively: keep the two alike.
 
@@ -35,28 +35,69 @@ def pillow_block(name = "pillow_block"):
     return subtract(slab, bolts, name = name, kernel = "brep")
 
 # ---- STL: an owl, sculpted with fields --------------------------------------
+#
+# A perched owl about 50 mm tall facing -y: an egg of a body, a broad head,
+# raised eye discs with pupils, a hooked beak, swept ear tufts, folded wings
+# standing proud of the flanks and two clawed feet on the perch line. Every
+# feature is added (raised), not carved: a smooth blend over a convex bump
+# meshes cleanly where a close concave crease would not.
 
-body = field.capsule((0, 0, 11), (0, 0, 20), 13.0)
-head = field.sphere(10.5).translate((0, 0, 34))
-tuft_l = field.capsule((-6, 0, 40), (-9.5, 0.5, 47.0), 3.0)
-tuft_r = field.capsule((6, 0, 40), (9.5, 0.5, 47.0), 3.0)
-wing_l = field.capsule((-12.5, 2, 25), (-11.0, 4, 7), 3.8)
-wing_r = field.capsule((12.5, 2, 25), (11.0, 4, 7), 3.8)
-feet = field.capsule((-4.2, -11.0, 2.8), (4.2, -11.0, 2.8), 2.6)
-owl = (body.smooth_union(head, 6.0)
-           .smooth_union(tuft_l, 3.5).smooth_union(tuft_r, 3.5)
-           .smooth_union(wing_l, 3.5).smooth_union(wing_r, 3.5)
-           .smooth_union(feet, 4.0))
-# Eye sockets and a beak.
-for sx in [-5.3, 5.3]:
-    owl = owl.smooth_subtract(field.sphere(3.9).translate((sx, -9.9, 35.5)), 2.0)
-beak = field.cone(2.4, 0.6, 4.5).rotate(90, axis=(1, 0, 0)).translate((0, -9.3, 31.5))
-owl = owl.smooth_union(beak, 1.4)
+body = field.sphere(14.0).translate((0, 0.5, 13.6)).smooth_union(field.capsule((0, 0.8, 18.0), (0, 0.4, 27.0), 11.8), 6.0)
+head = field.sphere(11.5).translate((0, 0.5, 37.0))
+owl = body.smooth_union(head, 5.0)
+
+# The facial disc: a shallow raised dish the eyes sit in.
+disc = field.cylinder(7.0, 2.4, round = 1.1).rotate(90, axis = (1, 0, 0))
+owl = owl.smooth_union(disc.translate((-4.6, -9.6, 37.2)), 3.0).smooth_union(disc.translate((4.6, -9.6, 37.2)), 3.0)
+# Eye rings proud of the disc, then the pupils proud of the rings.
+for sx in [-4.9, 4.9]:
+    owl = owl.smooth_union(field.cylinder(3.9, 1.6, round = 0.7).rotate(90, axis = (1, 0, 0)).translate((sx, -11.0, 37.6)), 0.9)
+    owl = owl.smooth_union(field.sphere(2.1).translate((sx, -11.6, 37.6)), 0.5)
+# A hooked beak between and below the eyes.
+beak = field.cone(2.7, 0.35, 6.5).rotate(150, axis = (1, 0, 0)).translate((0, -11.6, 33.6))
+owl = owl.smooth_union(beak, 1.2)
+
+# Breast feathers: rows of shallow chevrons laid on the body's surface,
+# each arm a thin capsule standing about half a millimetre proud.
+def breast_y(x, z):
+    # The front of the body at (x, z): the nearer of the sphere and the capsule.
+    ys = 0.5 - math.sqrt(max(196.0 - x * x - (z - 13.6) * (z - 13.6), 0.0))
+    yc = 0.6 - math.sqrt(max(139.2 - x * x, 0.0)) if z > 18.0 else 99.0
+    return min(ys, yc)
+
+# `lift` makes up for the blend between the sphere and the capsule, which
+# stands proud of both.
+for row, (z, lift) in enumerate([(11.0, 0.25), (15.5, -0.3), (20.0, -0.7), (24.5, -0.4)]):
+    for cx in ([-5.2, 0.0, 5.2] if row % 2 == 0 else [-2.6, 2.6]):
+        for side in [-1.0, 1.0]:
+            a = (cx, breast_y(cx, z) + lift, z)
+            b = (cx + 2.4 * side, breast_y(cx + 2.4 * side, z + 1.6) + lift, z + 1.6)
+            owl = owl.smooth_union(field.capsule(a, b, 0.75), 0.6)
+# Ear tufts: tapered cones swept up and out.
+for sgn in [-1, 1]:
+    # The cone is centred on its axis's midpoint: tilt it, then stand its
+    # base on the crown.
+    tuft = field.cone(3.8, 0.45, 11.0).rotate(30 * sgn, axis = (0, 1, 0)).translate(((6.0 + 5.5 * math.sin(30.0)) * sgn, 0.8, 43.0 + 5.5 * math.cos(30.0)))
+    owl = owl.smooth_union(tuft, 2.2)
+# Folded wings: a long flattened capsule on each flank, blended lightly so
+# their leading edge stays a ridge, and a second, shorter primary-feather
+# capsule below it.
+for sgn in [-1, 1]:
+    wing = field.capsule((12.0 * sgn, 2.8, 28.0), (10.6 * sgn, 7.0, 7.0), 4.0)
+    owl = owl.smooth_union(wing, 1.6)
+    prim = field.capsule((13.2 * sgn, 6.0, 17.0), (10.0 * sgn, 10.5, 4.5), 2.4)
+    owl = owl.smooth_union(prim, 1.0)
+# Two feet, each three toes splayed apart so no two toes form a crease.
+for sx in [-5.0, 5.0]:
+    for da in [-30.0, 0.0, 30.0]:
+        a = -90.0 + da
+        owl = owl.smooth_union(field.capsule((sx, -8.0, 2.0), (sx + 6.0 * math.cos(a), -8.0 + 6.0 * math.sin(a), 1.3), 1.3), 1.0)
+
 # A whisper of noise so it reads as sculpted, then a flat bottom at z = 0.
-owl = owl.displace(field.noise(scale=6.0, amplitude=1.0, seed=7), strength=param("owl_noise", 0.35, doc="Sculpted-surface noise on the owl"))
-owl = owl.intersect(field.half_space(origin=(0, 0, 0.6), normal=(0, 0, -1)))
+owl = owl.displace(field.noise(scale = 5.0, amplitude = 1.0, seed = 7), strength = param("owl_noise", 0.18, doc = "Sculpted-surface noise on the owl"))
+owl = owl.intersect(field.half_space(origin = (0, 0, 0.6), normal = (0, 0, -1)))
 owl = owl.translate((0, 0, -0.6))
-owl_body = mesh(owl, resolution=param("owl_res", 0.4, unit="mm", doc="Mesher cell size for the owl"), simplify=False, name="owl")
+owl_body = mesh(owl, resolution = param("owl_res", 0.35, unit = "mm", doc = "Mesher cell size for the owl"), simplify = False, name = "owl")
 export(owl_body, "owl.stl")
 
 # ---- STEP: a pillow block, exact surfaces ----------------------------------
@@ -65,23 +106,28 @@ block = pillow_block()
 export(block, "pillow_block.step")
 report("block_volume", block.volume())
 
-# ---- DXF: a spur-gear outline with a keyed bore and four windows -----------
+# ---- DXF: a spur-gear outline with a keyed bore and six windows -----------
+#
+# The library's involute outline (true involute flanks and the trochoid root
+# fillet, module 2.5, 24 teeth), a keyed bore for a 12 mm shaft and six round
+# lightening windows that leave a full rim under the roots and a full web
+# round the hub.
 
-teeth = 18
-r_root = 27.0
-r_tip = 32.0
-pts = []
-for i in range(teeth):
-    a0 = 360.0 * i / teeth
-    step = 360.0 / teeth
-    for (da, r) in [(0.00, r_root), (0.18, r_root), (0.32, r_tip), (0.62, r_tip), (0.76, r_root)]:
-        a = a0 + da * step  # Cadpole's math.cos/sin take degrees
-        pts.append((r * math.cos(a), r * math.sin(a)))
-gear = sketch(XY, name="gear").polygon(pts)
-bore2d = sketch(XY, name="gear_bore").circle(6.0).union(sketch(XY, name="key").rect(3.0, 4.0, center=(0, 7.0)), name="keyed_bore")
-windows = sketch(XY, name="window").slot(13.0, 7.0, center=(17.0, 0)).pattern2d_circular(4, merge=True, name="windows")
-gear_profile = gear.subtract(bore2d, name="gear_bored").subtract(windows, name="gear_profile")
+load("@cadpole/gears.star", "involute_profile", "layout")
+
+GEAR_MODULE = 2.5
+GEAR_TEETH = 24
+lay = layout(GEAR_MODULE, GEAR_TEETH)
+# Tooth 0 points along +x; with an even count a tooth space, not a tooth,
+# then lies on -y, so the gear stands in its cradle on two teeth.
+gear = involute_profile(GEAR_MODULE, GEAR_TEETH, name = "gear")
+bore2d = sketch(XY, name = "gear_bore").circle(6.0).union(sketch(XY, name = "key").rect(3.0, 4.0, center = (0, 7.0)), name = "keyed_bore")
+# The windows sit between the spokes' directions, clear of the keyway at +y.
+windows = sketch(XY, name = "window").circle(4.0, center = (19.5 * math.cos(30.0), 19.5 * math.sin(30.0))).pattern2d_circular(6, merge = True, name = "windows")
+gear_profile = gear.subtract(bore2d, name = "gear_bored").subtract(windows, name = "gear_profile")
 export_dxf(gear_profile, "gear.dxf")
 report("gear_area", gear_profile.area())
-print("gear profile area: %s mm2" % gear_profile.area())
+report("gear_r_root", lay["r_root"])
+report("gear_r_tip", lay["r_tip"])
+print("gear profile area: %s mm2 (root r %s, tip r %s)" % (gear_profile.area(), lay["r_root"], lay["r_tip"]))
 print("pillow block volume: %s mm3" % block.volume())
