@@ -40,9 +40,11 @@
 use std::collections::{HashMap, HashSet};
 
 use cadpole_core::geom::Vec3;
-use cadpole_core::tessellate::Mesh;
+use cadpole_core::tessellate::{Mesh, Topology};
 
-use crate::{Check, Issue, Profile, Severity, centroid, cluster, fmt_at, num, scale_of, tri, tri_normal_area};
+use crate::{
+    Adjacency, Check, Issue, Profile, Severity, centroid, cluster, face_name, fmt_at, num, scale_of, tri, tri_normal_area,
+};
 
 /// How close to level a downward face has to be to be bridged: within this
 /// many degrees of flat. A bridge is printed in one layer, and a face tilted
@@ -54,6 +56,18 @@ pub const BRIDGE_FLAT_DEGREES: f64 = 2.0;
 /// "max bridge length" setting, at its default. A
 /// profile-independent Cadpole number, like the 45° overhang threshold.
 pub const DEFAULT_MAX_BRIDGE: f64 = 10.0;
+
+/// How close to level a downward face held up on one side has to be to be
+/// judged as a ledge ([`crate::SupportRules::max_cantilever`]): within this
+/// many degrees of flat. Steeper faces are slopes, which the overhang angle
+/// and area judge; a ledge is the near-level case, where every layer of it
+/// is printed out over air at once.
+pub const CANTILEVER_DEGREES: f64 = 70.0;
+
+/// How far past the overhang angle a face has to be to count, in degrees:
+/// a face drawn at exactly 45° (a teardrop's top, a chamfer) comes back
+/// from f32 positions a few millionths of a degree either side of it.
+pub const ANGLE_SLACK: f64 = 1e-3;
 
 #[derive(Clone, Debug, Default)]
 pub struct OverhangReport {
@@ -89,6 +103,22 @@ pub struct OverhangReport {
     pub shortest_long_span: f64,
     /// The `max_bridge` this was judged against, in mm (0 or less: off).
     pub max_bridge: f64,
+    /// What still needs support once every allowance is taken: the area in
+    /// mm² of the connected overhang patches larger than
+    /// `max_overhang_area`, after bridges, short ledges and the tops of
+    /// small horizontal holes are left out. 0 means the overhang rule is
+    /// satisfied.
+    pub support_area: f64,
+    /// The largest connected overhang patch after those allowances, in mm²,
+    /// whether or not it is over the limit.
+    pub largest_patch: f64,
+    /// Area in mm² of near-level ledges held up on one side and sticking out
+    /// no further than `max_cantilever`: printed off their perimeters, and
+    /// not counted as overhang.
+    pub ledge_area: f64,
+    /// How far the longest ledge held up on one side sticks out past what
+    /// holds it, in mm; 0 when there is none.
+    pub longest_cantilever: f64,
 }
 
 /// Check one mesh as if it were alone on the plate: the bed is its own lowest
@@ -117,10 +147,33 @@ pub fn check_bridged(
     max_bridge: f64,
     issues: &mut Vec<Issue>,
 ) -> OverhangReport {
+    let adj = Adjacency::new(mesh);
+    check_support(mesh, &adj, None, profile, bed_at, max_bridge, &[], issues)
+}
+
+/// The whole overhang rule, as `print_check` runs it: the angle, bridges up
+/// to `max_bridge`, ledges up to `profile.support.max_cantilever`, and the
+/// largest connected patch against `profile.support.max_overhang_area`.
+/// `skip` marks triangles another check has already judged -- the tops of
+/// round horizontal holes ([`crate::support::horizontal_holes`]) -- which
+/// count in `unsupported_area` but not in a patch. `topo` names the faces
+/// in the findings.
+#[allow(clippy::too_many_arguments)]
+pub fn check_support(
+    mesh: &Mesh,
+    adj: &Adjacency,
+    topo: Option<&Topology>,
+    profile: &Profile,
+    bed_at: Option<f64>,
+    max_bridge: f64,
+    skip: &[bool],
+    issues: &mut Vec<Issue>,
+) -> OverhangReport {
     let mut r = OverhangReport { per_triangle: vec![0.0; mesh.triangle_count()], max_bridge, ..Default::default() };
     if mesh.triangle_count() == 0 {
         return r;
     }
+    let rules = profile.support;
     let up = profile.up();
     let scale = scale_of(mesh);
     let floor = bed_at.unwrap_or_else(|| lowest(mesh, up));
@@ -151,7 +204,7 @@ pub fn check_bridged(
             continue;
         }
         r.per_triangle[t] = deg as f32;
-        if deg > threshold {
+        if deg > threshold + ANGLE_SLACK {
             over.push((t, deg, area));
             if deg >= flat {
                 candidates.push(t);
@@ -159,12 +212,13 @@ pub fn check_bridged(
         }
     }
     let spans = if max_bridge > 0.0 && !candidates.is_empty() {
-        bridge_spans(mesh, up, &candidates, scale)
+        bridge_spans(adj, up, &candidates, scale)
     } else {
         HashMap::new()
     };
 
-    let mut spots = Vec::new();
+    // What is left once the bridges are out: (triangle, degrees, area).
+    let mut left: Vec<(usize, f64, f64)> = Vec::new();
     let mut bridged_regions: HashSet<usize> = HashSet::new();
     let mut long_at: Option<(Vec3, f64)> = None;
     for (t, deg, area) in over {
@@ -186,15 +240,90 @@ pub fn check_bridged(
             None => {}
         }
         r.unsupported_area += area;
-        spots.push((centroid(&tri(mesh, t)), deg));
+        if !skip.get(t).copied().unwrap_or(false) {
+            left.push((t, deg, area));
+        }
     }
     r.bridges = bridged_regions.len();
     r.shortest_long_span = long_at.map(|(_, s)| s).unwrap_or(0.0);
     // The steepest face that is not resting on anything, bridges left out.
     r.max_degrees = r.per_triangle.iter().fold(0.0f64, |m, d| m.max(*d as f64));
 
+    // Ledges: near-level patches held up along one side. Within
+    // `max_cantilever` they print off their perimeters; past it they are a
+    // finding of their own.
+    // A flat face held up at both ends is a bridge, too long or not, and
+    // `max_bridge` judges it; a ledge is held up on one side only.
+    let ledge: Vec<usize> = left
+        .iter()
+        .filter(|(t, d, _)| *d >= CANTILEVER_DEGREES && !spans.contains_key(t))
+        .map(|(t, _, _)| *t)
+        .collect();
+    let mut exempt: HashSet<usize> = HashSet::new();
+    let mut cantilevers: Vec<(Vec3, f64, usize)> = Vec::new();
+    for reg in regions(adj, &ledge) {
+        let spacing = (rules.max_cantilever / 4.0).max(scale * 1e-3);
+        let Some((reach, at, t)) = cantilever_reach(adj, up, &reg, floor, bed_eps, scale, spacing) else { continue };
+        r.longest_cantilever = r.longest_cantilever.max(reach);
+        if reach <= rules.max_cantilever {
+            for &t in &reg {
+                exempt.insert(t);
+                r.ledge_area += tri_normal_area(&tri(mesh, t)).1;
+            }
+        } else {
+            cantilevers.push((at, reach, t));
+        }
+    }
+    cantilevers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    for (at, reach, t) in cantilevers.iter().take(4) {
+        issues.push(Issue::new(
+            Check::Cantilever,
+            Severity::Warning,
+            format!(
+                "a ledge held up on one side only sticks out {} mm at {} on {}, past max_cantilever {} mm: its far \
+                 edge is printed over air and droops; prop it with a 45° slope underneath, shorten it, or support it",
+                num(*reach),
+                fmt_at(*at),
+                face_name(mesh, topo, *t),
+                num(rules.max_cantilever)
+            ),
+            Some(*at),
+            *reach,
+        ));
+    }
+
+    // Patches: what is left, joined across shared edges. A patch no
+    // larger than `max_overhang_area` prints on the perimeters round it.
+    let rest: Vec<usize> = left.iter().map(|(t, _, _)| *t).filter(|t| !exempt.contains(t)).collect();
+    let deg_of: HashMap<usize, f64> = left.iter().map(|(t, d, _)| (*t, *d)).collect();
+    let mut spots = Vec::new();
+    let mut largest: Option<(f64, usize)> = None;
+    let mut big = 0usize;
+    let mut small_area = 0.0;
+    for reg in regions(adj, &rest) {
+        let area: f64 = reg.iter().map(|&t| tri_normal_area(&tri(mesh, t)).1).sum();
+        // The patch's steepest triangle is where it is.
+        let steepest = *reg
+            .iter()
+            .max_by(|a, b| deg_of[a].partial_cmp(&deg_of[b]).unwrap_or(std::cmp::Ordering::Equal))
+            .expect("a region has a triangle");
+        if area > r.largest_patch {
+            r.largest_patch = area;
+            largest = Some((area, steepest));
+        }
+        if area > rules.max_overhang_area {
+            r.support_area += area;
+            big += 1;
+            for &t in &reg {
+                spots.push((centroid(&tri(mesh, t)), deg_of[&t]));
+            }
+        } else {
+            small_area += area;
+        }
+    }
+
     r.spots = cluster(spots, 8, scale * 0.05, false);
-    if r.unsupported_area > 0.0 {
+    if r.support_area > 0.0 {
         let (p, d) = r.spots.first().copied().unwrap_or((Vec3::ZERO, r.max_degrees));
         let spans_note = match long_at {
             Some((at, span)) if max_bridge > 0.0 => format!(
@@ -207,18 +336,25 @@ pub fn check_bridged(
             ),
             _ => String::new(),
         };
+        let (la, lt) = largest.expect("a patch over the limit is a patch");
         issues.push(Issue::new(
             Check::Overhang,
             Severity::Warning,
             format!(
-                "{} mm² of overhang past {}° needs support; the steepest is {}° from vertical at {}{spans_note}",
-                num(r.unsupported_area),
+                "{} mm² of overhang past {}° needs support; the steepest is {}° from vertical at {}; the largest \
+                 connected patch is {} mm² on {} at {}{}, over max_overhang_area {} mm²{spans_note}",
+                num(r.support_area),
                 num(threshold),
                 num(d),
-                fmt_at(p)
+                fmt_at(p),
+                num(la),
+                face_name(mesh, topo, lt),
+                fmt_at(centroid(&tri(mesh, lt))),
+                if big > 1 { format!(" (one of {big})") } else { String::new() },
+                num(rules.max_overhang_area)
             ),
             Some(p),
-            r.unsupported_area,
+            la,
         ));
     }
     if r.bridges > 0 {
@@ -239,7 +375,143 @@ pub fn check_bridged(
             r.longest_bridge,
         ));
     }
+    if r.support_area == 0.0 && small_area + r.ledge_area > 0.0 {
+        issues.push(Issue::new(
+            Check::Overhang,
+            Severity::Info,
+            format!(
+                "{} mm² past {}° prints without support: patches no larger than max_overhang_area {} mm² (the \
+                 largest {} mm²), ledges sticking out no more than max_cantilever {} mm{}",
+                num(small_area + r.ledge_area),
+                num(threshold),
+                num(rules.max_overhang_area),
+                num(r.largest_patch),
+                num(rules.max_cantilever),
+                if r.longest_cantilever > 0.0 { format!(" (the longest {} mm)", num(r.longest_cantilever)) } else { String::new() }
+            ),
+            None,
+            r.largest_patch,
+        ));
+    }
     r
+}
+
+/// The connected pieces of a set of triangles (indices into the input
+/// mesh), joined across the edges they share once welded.
+pub(crate) fn regions(adj: &Adjacency, tris: &[usize]) -> Vec<Vec<usize>> {
+    let index: HashMap<usize, usize> = tris.iter().enumerate().map(|(i, &t)| (t, i)).collect();
+    let mut parent: Vec<usize> = (0..tris.len()).collect();
+    for (i, &t) in tris.iter().enumerate() {
+        let Some(w) = adj.welded_of(t) else { continue };
+        let wt = adj.wtri(w);
+        for k in 0..3 {
+            for &x in adj.across(wt[k], wt[(k + 1) % 3]) {
+                if let Some(&j) = index.get(&(adj.origin[x] as usize)) {
+                    let (a, b) = (find(&mut parent, i), find(&mut parent, j));
+                    if a != b {
+                        parent[a] = b;
+                    }
+                }
+            }
+        }
+    }
+    let mut out: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (i, &t) in tris.iter().enumerate() {
+        let root = find(&mut parent, i);
+        out.entry(root).or_default().push(t);
+    }
+    let mut v: Vec<Vec<usize>> = out.into_values().collect();
+    v.sort_by_key(|r| r[0]);
+    v
+}
+
+fn find(p: &mut [usize], mut x: usize) -> usize {
+    while p[x] != x {
+        p[x] = p[p[x]];
+        x = p[x];
+    }
+    x
+}
+
+/// How far a ledge sticks out: the largest distance, across the plane
+/// square to `up`, from any point of the region (sampled `spacing` apart
+/// over each triangle) to its nearest **supported** boundary edge -- an edge where the surface across goes
+/// down (the wall it stands on), or that lies on the bed. With the
+/// position of that corner and a triangle that has it. `None` when no
+/// edge of the region is held up: a ceiling over air is not a ledge.
+fn cantilever_reach(
+    adj: &Adjacency,
+    up: Vec3,
+    region: &[usize],
+    floor: f64,
+    bed_eps: f64,
+    scale: f64,
+    spacing: f64,
+) -> Option<(f64, Vec3, usize)> {
+    let eps = scale * 1e-7;
+    let (e1, e2) = plane_axes(up);
+    let flat2 = |p: Vec3| [p.dot(e1), p.dot(e2)];
+    let in_region: HashSet<usize> = region.iter().filter_map(|&t| adj.welded_of(t)).collect();
+    let mut held: Vec<([f64; 2], [f64; 2])> = Vec::new();
+    for &w in &in_region {
+        let t = adj.wtri(w);
+        for k in 0..3 {
+            let (a, b) = (t[k], t[(k + 1) % 3]);
+            let on = adj.across(a, b);
+            if on.iter().filter(|x| in_region.contains(x)).count() != 1 {
+                continue;
+            }
+            let (pa, pb) = (adj.wpos(a), adj.wpos(b));
+            let h = (pa.dot(up) + pb.dot(up)) / 2.0;
+            let on_bed = h - floor <= bed_eps;
+            let down = on.iter().filter(|x| !in_region.contains(x)).any(|&x| {
+                adj.wtri(x).iter().any(|&v| v != a && v != b && adj.wpos(v).dot(up) < h - eps)
+            });
+            if on_bed || down {
+                held.push((flat2(pa), flat2(pb)));
+            }
+        }
+    }
+    if held.is_empty() {
+        return None;
+    }
+    let mut best: Option<(f64, Vec3, usize)> = None;
+    let mut ws: Vec<usize> = in_region.iter().copied().collect();
+    ws.sort_unstable();
+    for w in ws {
+        let t = adj.wtri(w);
+        let [a, b, c] = [adj.wpos(t[0]), adj.wpos(t[1]), adj.wpos(t[2])];
+        let longest = (b - a).length().max((c - b).length()).max((a - c).length());
+        let k = ((longest / spacing).ceil() as usize).clamp(1, 24);
+        for i in 0..=k {
+            for j in 0..=(k - i) {
+                let (u, v) = (i as f64 / k as f64, j as f64 / k as f64);
+                let p = a + (b - a) * u + (c - a) * v;
+                let q = flat2(p);
+                let d = held.iter().map(|(x, y)| seg_dist(q, *x, *y)).fold(f64::INFINITY, f64::min);
+                if best.as_ref().is_none_or(|(bd, _, _)| d > *bd) {
+                    best = Some((d, p, adj.origin[w] as usize));
+                }
+            }
+        }
+    }
+    best
+}
+
+fn seg_dist(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+    let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
+    let l2 = dx * dx + dy * dy;
+    let t = if l2 > 0.0 { (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2).clamp(0.0, 1.0) } else { 0.0 };
+    let (x, y) = (a[0] + t * dx - p[0], a[1] + t * dy - p[1]);
+    (x * x + y * y).sqrt()
+}
+
+/// Two unit axes spanning the plane square to `up`.
+pub(crate) fn plane_axes(up: Vec3) -> (Vec3, Vec3) {
+    let a = if up.z.abs() < 0.9 { Vec3::Z } else { Vec3::X };
+    let e1 = up.cross(a).normalized();
+    let e2 = up.cross(e1).normalized();
+    (e1, e2)
 }
 
 /// The span of every bridge candidate: for each flat downward triangle in
@@ -253,79 +525,29 @@ pub fn check_bridged(
 /// the plane square to `up`, across each supported edge's direction and
 /// along the plane's two axes, so a rectangular head's span between its two
 /// jambs is found exactly.
-fn bridge_spans(mesh: &Mesh, up: Vec3, candidates: &[usize], scale: f64) -> HashMap<usize, (f64, usize)> {
-    let (welded, origin) = mesh.welded_with_map(crate::WELD_EPS);
-    let wpos = |v: u32| {
-        let i = v as usize * 3;
-        Vec3::new(welded.positions[i] as f64, welded.positions[i + 1] as f64, welded.positions[i + 2] as f64)
-    };
-    let wtri = |w: usize| [welded.indices[3 * w], welded.indices[3 * w + 1], welded.indices[3 * w + 2]];
-    let mut welded_of: HashMap<usize, usize> = HashMap::with_capacity(origin.len());
-    for (w, &t) in origin.iter().enumerate() {
-        welded_of.insert(t as usize, w);
-    }
-    let cand: Vec<usize> = candidates.iter().filter_map(|t| welded_of.get(t).copied()).collect();
-    let mut edges: HashMap<(u32, u32), Vec<usize>> = HashMap::with_capacity(welded.triangle_count() * 2);
-    for w in 0..welded.triangle_count() {
-        let t = wtri(w);
-        for k in 0..3 {
-            let (a, b) = (t[k], t[(k + 1) % 3]);
-            edges.entry(if a < b { (a, b) } else { (b, a) }).or_default().push(w);
-        }
-    }
-    // Regions: candidates joined across shared edges.
-    let index: HashMap<usize, usize> = cand.iter().enumerate().map(|(i, &w)| (w, i)).collect();
-    let mut parent: Vec<usize> = (0..cand.len()).collect();
-    fn find(p: &mut [usize], mut x: usize) -> usize {
-        while p[x] != x {
-            p[x] = p[p[x]];
-            x = p[x];
-        }
-        x
-    }
-    for tris in edges.values() {
-        let cs: Vec<usize> = tris.iter().filter_map(|w| index.get(w).copied()).collect();
-        for pair in cs.windows(2) {
-            let (a, b) = (find(&mut parent, pair[0]), find(&mut parent, pair[1]));
-            if a != b {
-                parent[a] = b;
-            }
-        }
-    }
-    let mut regions: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (i, &w) in cand.iter().enumerate() {
-        let root = find(&mut parent, i);
-        regions.entry(root).or_default().push(w);
-    }
-    // The plane square to `up`.
-    let e1 = {
-        let a = if up.z.abs() < 0.9 { Vec3::Z } else { Vec3::X };
-        up.cross(a).normalized()
-    };
-    let e2 = up.cross(e1).normalized();
+fn bridge_spans(adj: &Adjacency, up: Vec3, candidates: &[usize], scale: f64) -> HashMap<usize, (f64, usize)> {
+    let regions = regions(adj, candidates);
+    let (e1, e2) = plane_axes(up);
     let flat2 = |p: Vec3| [p.dot(e1), p.dot(e2)];
     let eps = scale * 1e-7;
     let mut out = HashMap::new();
-    let mut roots: Vec<usize> = regions.keys().copied().collect();
-    roots.sort_unstable();
-    for (rid, root) in roots.iter().enumerate() {
-        let members = &regions[root];
+    for (rid, region) in regions.iter().enumerate() {
+        let members: Vec<usize> = region.iter().filter_map(|&t| adj.welded_of(t)).collect();
         let in_region: HashSet<usize> = members.iter().copied().collect();
         // Boundary edges, each with whether it is held up from below.
         let mut boundary: Vec<([f64; 2], [f64; 2], bool)> = Vec::new();
-        for &w in members {
-            let t = wtri(w);
+        for &w in &members {
+            let t = adj.wtri(w);
             for k in 0..3 {
                 let (a, b) = (t[k], t[(k + 1) % 3]);
-                let key = if a < b { (a, b) } else { (b, a) };
-                let on = &edges[&key];
+                let on = adj.across(a, b);
                 if on.iter().filter(|x| in_region.contains(x)).count() != 1 {
                     continue;
                 }
-                let (pa, pb) = (wpos(a), wpos(b));
+                let (pa, pb) = (adj.wpos(a), adj.wpos(b));
                 let h = (pa.dot(up) + pb.dot(up)) / 2.0;
                 let supported = on.iter().filter(|x| !in_region.contains(x)).any(|&x| {
-                    wtri(x).iter().any(|&v| v != a && v != b && wpos(v).dot(up) < h - eps)
+                    adj.wtri(x).iter().any(|&v| v != a && v != b && adj.wpos(v).dot(up) < h - eps)
                 });
                 boundary.push((flat2(pa), flat2(pb), supported));
             }
@@ -350,9 +572,9 @@ fn bridge_spans(mesh: &Mesh, up: Vec3, candidates: &[usize], scale: f64) -> Hash
                 dirs.push(d);
             }
         }
-        for &w in members {
-            let t = wtri(w);
-            let c = flat2((wpos(t[0]) + wpos(t[1]) + wpos(t[2])) * (1.0 / 3.0));
+        for &w in &members {
+            let t = adj.wtri(w);
+            let c = flat2((adj.wpos(t[0]) + adj.wpos(t[1]) + adj.wpos(t[2])) * (1.0 / 3.0));
             let mut best = f64::INFINITY;
             for d in &dirs {
                 let fwd = cast(c, *d, &boundary, eps);
@@ -362,7 +584,7 @@ fn bridge_spans(mesh: &Mesh, up: Vec3, candidates: &[usize], scale: f64) -> Hash
                 }
             }
             if best.is_finite() {
-                out.insert(origin[w] as usize, (best, rid));
+                out.insert(adj.origin[w] as usize, (best, rid));
             }
         }
     }
@@ -532,26 +754,6 @@ mod tests {
     }
 
     // ---- bridges ---------------------------------------------------
-
-    /// Boxes joined exactly (`cadpole_core::gridjoin`), as one closed mesh with
-    /// shared edges -- the shape a story of a box-built model has.
-    fn joined(boxes: &[([f64; 3], [f64; 3])]) -> Mesh {
-        let gb: Vec<cadpole_core::gridjoin::GridBox> = boxes
-            .iter()
-            .map(|(lo, hi)| cadpole_core::gridjoin::GridBox { lo: *lo, hi: *hi, sides: [0, 1, 2, 3, 4, 5] })
-            .collect();
-        let g = cadpole_core::gridjoin::union_boxes(&gb, 1e-3, 6).expect("a union of boxes");
-        let mut m = Mesh::default();
-        for p in &g.positions {
-            m.positions.extend_from_slice(&[p.x as f32, p.y as f32, p.z as f32]);
-            m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
-        }
-        for t in &g.triangles {
-            m.indices.extend_from_slice(t);
-        }
-        m.face_ids = g.provenance.clone();
-        m
-    }
 
     /// A wall 1 thick with a window `w` wide: two piers, a sill and a head.
     fn wall_with_window(w: f64) -> Mesh {
