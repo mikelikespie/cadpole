@@ -38,8 +38,9 @@
 //! surface Cadpole constructed exactly satisfies with six orders of magnitude to
 //! spare, and it is what the tessellation stamps into every
 //! [`FaceInfo`](crate::tessellate::FaceInfo). A looser `tol` recognises a
-//! surface that is a cylinder *to within* that distance, which is what an
-//! exporter writing at a document tolerance wants.
+//! surface that is a cylinder *to within* that distance; the STEP writer does
+//! not use one for surfaces, because it writes the face's edges exactly and a
+//! surface that is only near the patch leaves them off the face.
 //!
 //! **Sign conventions.** A plane's `normal` is the surface's own parametric
 //! normal (`du × dv`), so a face and its inverse report opposite normals —

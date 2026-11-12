@@ -324,3 +324,39 @@ fn a_nonsense_tolerance_is_refused() {
         .unwrap_err();
     assert!(e.to_string().contains("tolerance"), "{e}");
 }
+
+/// A ring of `n` equal arcs of radius `r` on `plane`, as a loft section.
+fn arc_ring(plane: Plane, r: f64, n: usize) -> Sketch {
+    let at = |t: f64| P2::new(r * t.cos(), r * t.sin());
+    let step = std::f64::consts::TAU / n as f64;
+    let segments = (0..n)
+        .map(|i| {
+            let (t0, t1) = (step * i as f64, step * (i + 1) as f64);
+            cadpole_core::sketch::Segment::Arc { a: at(t0), b: at(t1), via: at(0.5 * (t0 + t1)) }
+        })
+        .collect();
+    Sketch::new(plane).with_loop(Loop { segments })
+}
+
+/// A shallow cone cut into narrow bands -- a loft between two rings of short
+/// coaxial arcs, the shoulder of a knob -- is within the document tolerance
+/// of a plane band by band, but its edges are exact arcs that leave any such
+/// plane by about ten microns. Written as `PLANE`, the file's edges do not lie
+/// on their faces and a reader cannot trim them; each band must stay the
+/// exact patch.
+#[test]
+fn a_narrow_band_of_a_shallow_cone_is_not_written_as_a_plane() {
+    use cadpole_core::loft::{LoftPlan, Section, SectionMatch};
+    let sections = [
+        Section::Profile(arc_ring(Plane::XY, 15.34, 100)),
+        Section::Profile(arc_ring(Plane::XY.offset(0.4), 14.0, 100)),
+    ];
+    let solid = kernel::loft(&LoftPlan::new(&sections, true, SectionMatch::Index).unwrap()).unwrap().remove(0);
+    let (text, stats) = write_with_stats(&[Part { name: "shoulder", solid: &solid }], &Options::default()).unwrap();
+    validate::check(&text).expect("structurally valid");
+    assert_eq!(stats.planes, 2, "only the two caps are planes: {stats:?}");
+    let meshes = read_back(&text);
+    let v = mesh_volume(&meshes[0]);
+    let want = original_mesh(&solid).volume();
+    assert!((v - want).abs() / want.abs() < 0.02, "the shoulder round-trips: {v} vs {want}");
+}

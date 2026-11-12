@@ -1318,14 +1318,17 @@ if f.face("mouth/bottom").name != "mouth/bottom":
     /// the same faces.
     ///
     /// Set `CADPOLE_LOFT_FINGERPRINTS=print` to print the current lines instead
-    /// of comparing them (for re-recording after a *deliberate* change).
+    /// of comparing them (for re-recording after a *deliberate* change). An
+    /// example whose script is redesigned is re-recorded from the new script,
+    /// still through planar sections only.
     #[test]
     fn existing_lofts_are_unchanged_by_the_curve_section_path() {
         let recorded: &[(&str, &[&str])] = &[
             (
                 "knurled_knob.star",
                 &[
-                    "knob#0 faces=1719 names=b21da0739264afa9 geom=0111f5dd9cab6a76 volume=11377.518163",
+                    "knob#0 faces=2486 names=9058ea4dda1cab3c geom=c3d1027845211fdd volume=11085.035817",
+                    "cap_disc#1 faces=6 names=5f0082f0ab12606e geom=d04b8604ce2dc5f1 volume=474.826012",
                 ],
             ),
             (

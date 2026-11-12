@@ -299,7 +299,11 @@ impl Writer {
                         // than guess.
                     }
                 }
-            } else if let Some(r) = analytic::recognise_surface(s, self.options.tolerance) {
+            } else if let Some(r) = analytic::recognise_surface(s, cadpole_core::surface_class::EXACT_TOL) {
+                // Exact, not the document tolerance: the face's edges are
+                // written exactly, so a surface that is only *near* the patch
+                // (a narrow band of a shallow cone is within 0.05 mm of a
+                // plane) leaves them off their own face.
                 let id = self.analytic_surface(&r.surface)?;
                 return Ok((id, !r.flipped));
             }
