@@ -376,6 +376,9 @@ a[data-full] { position: relative; }
 /* portrait phones and tablets: the hero words lie over the foot of the picture, which fades out under them */
 @media (max-width: 999.9px) and (orientation: portrait), (max-width: 999.9px) and (min-height: 540.1px) {
   .step.hero { position: absolute; left: 0; right: 0; bottom: calc(var(--bar) + var(--sab)); padding: 72px max(calc(var(--pad) + var(--sal)), calc((100% - 640px) / 2)) 14px; background: linear-gradient(to bottom, rgba(6, 10, 9, 0), var(--bg) 72px); z-index: 3; }
+  /* while the hero is on, the picture comes down to the words (site.js sets --hero-dy) */
+  .scene.first .vis { transition: translate .25s; }
+  .scene.first .pin:has(.step.hero.on) .vis { translate: 0 var(--hero-dy, 0px); }
 }
 @media (max-width: 699.9px) and (orientation: portrait) {
   .step.hero .facts li { font-size: 12px; padding: 7px 10px; }
@@ -538,8 +541,13 @@ a[data-full] { position: relative; }
 .agent-main { display: grid; gap: 10px; min-width: 0; }
 /* Play and pause sit under the recording, beside its caption, so nothing covers the frame. */
 .agent-ctl { display: flex; align-items: flex-start; gap: 12px; }
-.agent-ctl [data-vplay] { flex: none; min-width: 84px; }
-.agent-ctl .agent-cap { flex: 1; text-align: left; padding-top: 10px; }
+.vplay { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 0; background: var(--brand); color: var(--ink); display: grid; place-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.vplay:active { transform: scale(.96); }
+.vplay:focus-visible { outline: 2px solid var(--brand-2); outline-offset: 3px; }
+.vplay svg { width: 20px; height: 20px; fill: currentColor; }
+.vplay .i-pause, .vplay.on .i-play { display: none; }
+.vplay.on .i-pause { display: block; }
+.agent-ctl .agent-cap { flex: 1; text-align: left; padding-top: 11px; }
 .agent-cap { margin: 0; min-height: 2.7em; padding: 0 4px; color: var(--fg); font: 500 15px/1.35 var(--sans); text-align: center; }
 .agent-steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: grid; gap: 2px; }
 .agent-steps li { counter-increment: s; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 9px 10px; border-radius: 10px; color: var(--muted); font-size: 15.5px; line-height: 1.4; transition: background .2s, color .2s; }
@@ -610,6 +618,8 @@ input, select, textarea { font-size: 16px; }
 .group > .cmd-note { margin: 0; }
 .group + .block, .group + .scene { margin-top: 0; }
 .group + .block { padding-top: 28px; }
+/* after a section, its own bottom padding is the room above the rule: the part's eyebrow sits as far below the last words as any section's */
+.block + .group { padding-top: 8px; }
 /* A pinned scene already ends on the room it keeps for the bar; the next section need not add much. */
 .scene + .block { padding-top: max(12px, calc(40px - var(--bar) - var(--sab))); }
 .bld-pic { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--bg2); }
@@ -622,7 +632,7 @@ input, select, textarea { font-size: 16px; }
 .facts-t td { text-align: right; font-family: var(--mono); font-size: 13.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (min-width: 700px) { .modes { grid-template-columns: 1fr 1fr; gap: 20px; } }
 @media (min-width: 1000px) {
-  .group { padding-top: 64px; }
+  .group, .block + .group { padding-top: 64px; }
   .group + .block { padding-top: 40px; }
   .bld { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 36px; align-items: start; }
 }

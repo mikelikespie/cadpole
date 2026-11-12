@@ -285,7 +285,24 @@ function setupScenes() {
   });
   for (const s of scenes) { s.el._scene = s; near.observe(s.el); soon.observe(s.el); on.observe(s.el); wireScene3d(s); }
   let rz = 0;
-  addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => scenes.forEach((s) => { s.measure(); s.update(true); }), 120); });
+  addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { scenes.forEach((s) => { s.measure(); s.update(true); }); heroDrop(); }, 120); });
+  heroDrop();
+}
+
+// On a portrait phone the hero words sit at the foot of the screen and the picture is
+// centred in what the later steps leave, so the frame's empty lower part and the gap
+// under it lie between the model and the words. While the hero is on, the picture moves
+// down (CSS: --hero-dy) until the model's foot sits just above the eyebrow; the empty
+// foot of the frame goes under the words' fade. Offsets, not rects: they ignore the move.
+function heroDrop() {
+  const pin = $(".scene.first .pin"), vis = $(".vis", pin || undefined), hero = $(".step.hero", pin || undefined);
+  const eb = hero && $(".eyebrow", hero);
+  if (!vis || !eb) return;
+  const top = (e) => { let y = 0; for (; e && e !== pin; e = e.offsetParent) y += e.offsetTop; return y; };
+  // the model's foot in the phone frame, as a share of the frame's height
+  const foot = 0.76, air = 36;
+  const dy = top(eb) - air - (top(vis) + foot * vis.offsetHeight);
+  pin.style.setProperty("--hero-dy", `${Math.max(0, Math.round(dy))}px`);
 }
 
 function wireScene3d(s) {
@@ -608,15 +625,19 @@ document.addEventListener("click", (e) => {
   t.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" });
 });
 
-// ---- agent recording: made only when wanted, plays only while it is on screen ----
+// ---- agent recording: made when it comes into view, plays only while it is on screen ----
 {
   const box = $(".agent-vid");
   if (box) {
     const btn = $("[data-vplay]", box.parentElement), cap = $(".agent-cap", box.parentElement);
     const dots = $$(".agent-prog [data-seek]", box.parentElement), count = $(".agent-n", box.parentElement);
-    let video = null, list = [], wanted = false;
+    // stopped: the visitor paused it, so coming back into view does not start it again
+    let video = null, list = [], wanted = false, stopped = false;
+    const auto = () => !reduced() && !saveData() && q.get("noauto") !== "1";
+    const show = (on) => { box.classList.toggle("playing", on); btn.classList.toggle("on", on); btn.setAttribute("aria-label", on ? "Pause recording" : "Play recording"); };
     const sync = () => {
-      let cur = null;
+      // before the first step's moment (and as it loops round) the first step stays named
+      let cur = list[0] ?? null;
       for (const li of list) if (+li.dataset.t <= video.currentTime + 0.05) cur = li;
       for (const li of list) li.classList.toggle("on", li === cur);
       cap.textContent = cur ? cur.textContent : "";
@@ -637,14 +658,15 @@ document.addEventListener("click", (e) => {
       video.innerHTML = `<source src="${base}.webm?v=${v}" type="video/webm"><source src="${base}.mp4?v=${v}" type="video/mp4">`;
       video.addEventListener("timeupdate", sync);
       video.addEventListener("seeked", sync);
-      video.addEventListener("play", () => { box.classList.add("playing"); btn.textContent = "Pause"; btn.setAttribute("aria-pressed", "true"); });
-      video.addEventListener("pause", () => { box.classList.remove("playing"); btn.textContent = "Play"; btn.setAttribute("aria-pressed", "false"); });
-      video.addEventListener("click", () => { if (video.paused) { wanted = true; video.play().catch(() => {}); } else { wanted = false; video.pause(); } });
+      video.addEventListener("play", () => show(true));
+      video.addEventListener("pause", () => show(false));
+      video.addEventListener("click", () => toggle());
       box.prepend(video);
       $("picture", box).hidden = true;
     };
-    const play = () => { if (!video) make(); wanted = true; video.play().catch(() => {}); };
-    btn.addEventListener("click", () => { if (video && !video.paused) { wanted = false; video.pause(); } else play(); });
+    const play = () => { if (!video) make(); wanted = true; stopped = false; video.play().catch(() => {}); };
+    const toggle = () => { if (video && !video.paused) { wanted = false; stopped = true; video.pause(); } else play(); };
+    btn.addEventListener("click", toggle);
     // A segment goes to its step and plays from there.
     for (const d of dots) d.addEventListener("click", () => {
       if (!video) make();
@@ -655,9 +677,9 @@ document.addEventListener("click", (e) => {
     new IntersectionObserver((es) => {
       const vis = es[es.length - 1].isIntersecting;
       if (!vis) { video?.pause(); return; }
-      // a wide screen starts it by itself; a phone, or a visitor who asked for less motion, taps
-      if (wanted || (!phone() && !reduced() && !saveData())) play();
-    }, { threshold: 0.6 }).observe(box);
+      // it starts by itself, muted, unless the visitor asked for less motion or less data, or paused it
+      if (!stopped && (wanted || auto())) play();
+    }, { threshold: 0.5 }).observe(box);
   }
 }
 
