@@ -187,7 +187,7 @@ mid-dark ground (albedo 0.17).
 
 ```
 cadpole render street.star -o street.png --backend path --samples 256 --denoise --size 1600x1000 \
-    --backdrop sky --sun 34.05,-84.40,2026-12-05,15:36,-8 --haze 300m --level \
+    --backdrop sky --sun 34.05,-84.40,2026-12-05,15:36,-5 --haze 300m --level \
     --eye=-1500,25000,1600 --target=9000,10000,2400 --fov 46
 ```
 
