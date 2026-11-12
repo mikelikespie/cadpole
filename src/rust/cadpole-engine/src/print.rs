@@ -61,6 +61,8 @@ pub fn profile(
     }
     if layer_height > 0.0 {
         p.layer_height = layer_height;
+        // A tip within one layer is not an island, whatever the layer.
+        p.support.min_island = layer_height;
     }
     if !material.trim().is_empty() {
         p.material = cadpole_print::Material::parse(material).ok_or_else(|| {
@@ -115,6 +117,9 @@ pub fn print_check(req: &pb::PrintCheckRequest) -> anyhow::Result<pb::PrintCheck
     } else {
         cadpole_print::overhang::DEFAULT_MAX_BRIDGE
     };
+    let mut p = p;
+    support_rules(req, &mut p.support);
+    p.validate().map_err(|e| anyhow::anyhow!("print check: {e}"))?;
     // What a whole-document export would write, narrowed by
     // `body_ids` and `layer_names`.
     let picked = ctx
@@ -211,7 +216,7 @@ pub fn print_check(req: &pb::PrintCheckRequest) -> anyhow::Result<pb::PrintCheck
             continue;
         }
         let (mesh, topo) = ctx.body_mesh(id)?.clone();
-        let mut report = cadpole_print::check_with(&mesh, &p, max_bridge);
+        let mut report = cadpole_print::check_named(&mesh, Some(&topo), &p, max_bridge);
         for (_, issue) in chord.iter().filter(|(b, _)| *b == id) {
             report.push_issue(issue.clone());
         }
@@ -260,6 +265,9 @@ pub fn print_check(req: &pb::PrintCheckRequest) -> anyhow::Result<pb::PrintCheck
         for f in cadpole_print::assembly::check(&refs, &p, ctx.tolerance) {
             let i = &f.issue;
             let b = &mut bodies[checked[&set[f.body]]];
+            if i.check.is_support() {
+                b.support_free = false;
+            }
             b.issues.push(pb::PrintIssue {
                 check: i.check.as_str().to_owned(),
                 severity: cadpole_print::Severity::Warning.as_str().to_owned(),
@@ -269,7 +277,50 @@ pub fn print_check(req: &pb::PrintCheckRequest) -> anyhow::Result<pb::PrintCheck
             });
         }
     }
+    if req.support_free {
+        // Only what says it needs support, and the verdict on that alone.
+        let support: std::collections::BTreeSet<&str> = [
+            cadpole_print::Check::Overhang,
+            cadpole_print::Check::Island,
+            cadpole_print::Check::Cantilever,
+            cadpole_print::Check::HorizontalHole,
+            cadpole_print::Check::Bridge,
+        ]
+        .iter()
+        .map(|c| c.as_str())
+        .collect();
+        ok = true;
+        for b in &mut bodies {
+            b.issues.retain(|i| support.contains(i.check.as_str()) && i.severity != "info");
+            b.support_free = b.issues.is_empty();
+            b.ok = b.support_free;
+            ok &= b.ok;
+        }
+    }
     Ok(pb::PrintCheckResponse { bodies, diagnostics, ok })
+}
+
+/// The request's support rules over the profile's: 0 keeps the profile's
+/// (Cadpole's default, or the printer's), a negative number is the rule's
+/// strictest setting -- every patch, ledge, hole and tip judged -- or, for
+/// the two ratios, the check off.
+fn support_rules(req: &pb::PrintCheckRequest, r: &mut cadpole_print::SupportRules) {
+    let set = |v: f64, slot: &mut f64| {
+        if v > 0.0 {
+            *slot = v;
+        } else if v < 0.0 {
+            *slot = 0.0;
+        }
+    };
+    set(req.max_overhang_area, &mut r.max_overhang_area);
+    set(req.max_cantilever, &mut r.max_cantilever);
+    set(req.max_horizontal_hole, &mut r.max_horizontal_hole);
+    set(req.min_island, &mut r.min_island);
+    set(req.max_slenderness, &mut r.max_slenderness);
+    set(req.max_height_to_base, &mut r.max_height_to_base);
+    if req.slender_width > 0.0 {
+        r.slender_width = req.slender_width;
+    }
 }
 
 /// The weld the fused check joins parts at, at most: as close as two parts
@@ -419,6 +470,20 @@ pub fn report_to_proto(
         longest_bridge_mm: r.overhang.longest_bridge,
         bridges: r.overhang.bridges as u32,
         max_bridge_mm: r.overhang.max_bridge.max(0.0),
+        support_area_mm2: r.overhang.support_area,
+        largest_overhang_mm2: r.overhang.largest_patch,
+        longest_cantilever_mm: r.overhang.longest_cantilever,
+        islands: r.support.islands as u32,
+        deepest_island_mm: r.support.deepest_island,
+        horizontal_holes: r.support.horizontal_holes as u32,
+        wide_holes: r.support.wide_holes as u32,
+        slender: r.support.slender as u32,
+        slenderness: r.support.slenderness,
+        first_layer_area_mm2: r.support.first_layer_area,
+        // A part with no first layer reports a large number rather than inf,
+        // which JSON cannot carry.
+        height_to_base: if r.support.height_to_base.is_finite() { r.support.height_to_base } else { 1e9 },
+        support_free: r.support_findings().next().is_none(),
         size_mm: v3(r.bed.size),
         fits_bed: r.bed.fits,
         fits_bed_rotated: r.bed.fits_rotated,
@@ -2048,6 +2113,38 @@ mod tests {
         assert!(w.solid, "{:?}", w.issues);
         assert!((o.volume_mm3 - w.volume_mm3).abs() < 1e-3 * w.volume_mm3, "fused {} whole {}", o.volume_mm3, w.volume_mm3);
         assert!((o.unsupported_area_mm2 - w.unsupported_area_mm2).abs() < 0.05, "{} vs {}", o.unsupported_area_mm2, w.unsupported_area_mm2);
+    }
+
+    /// `support_free` keeps only the findings that mean "needs support",
+    /// and the request's rules move them.
+    #[test]
+    fn support_free_keeps_only_what_needs_support() {
+        let src = "post = box(4, 4, 30, name=\"post\")\n\
+                   arm = box(14, 4, 4, at=(4, 0, 26), name=\"arm\")\n\
+                   finger = box(2, 4, 8, at=(14, 0, 18), name=\"finger\")\n\
+                   hook = union(post, arm, finger, name=\"hook\")\n";
+        let ask = |area: f64, island: f64| {
+            print_check(&pb::PrintCheckRequest {
+                document: Some(doc(src)),
+                support_free: true,
+                max_overhang_area: area,
+                min_island: island,
+                ..Default::default()
+            })
+            .unwrap()
+        };
+        let r = ask(0.0, 0.0);
+        assert!(!r.ok);
+        let b = &r.bodies[0];
+        assert!(!b.support_free);
+        assert_eq!(b.islands, 1);
+        assert!((b.deepest_island_mm - 8.0).abs() < 1e-6, "{}", b.deepest_island_mm);
+        let support = ["overhang", "island", "cantilever", "horizontal_hole", "bridge"];
+        assert!(b.issues.iter().all(|i| support.contains(&i.check.as_str())), "{:?}", b.issues);
+        assert!(b.issues.iter().any(|i| i.check == "island" && i.message.contains("8 mm below")), "{:?}", b.issues);
+        let r = ask(10.0, 9.0);
+        assert!(r.ok, "{:?}", r.bodies[0].issues);
+        assert!(r.bodies[0].support_free && r.bodies[0].issues.is_empty());
     }
 
     #[test]

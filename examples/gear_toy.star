@@ -106,9 +106,18 @@
 #   * The crank rests along the lid's bar, arm to the back (`ARM_REST`), so
 #     a picture from the front looks past the hub into both windows; the
 #     sun's hex post is turned 30 deg to match.
+#   * `cadpole check --support-free` passes the lid and the crank prints
+#     and finds one thing in the core: the ring gear's tooth spaces. The
+#     ring stands two layers over the carrier plate on its collar, so the
+#     underside of each tooth space is a flat ledge held up by the collar
+#     alone and reaching 3.7 mm in over the moat round the plate, past the
+#     3 mm `max_cantilever` -- about 62 mm2 in all. The gears' undersides,
+#     two layers over the plate, rest on it and are not counted;
+#     `--max-cantilever 4` passes it.
 #
 #   cadpole test examples/gear_toy.star
 #   cadpole check examples/gear_toy.star
+#   cadpole check examples/gear_toy.star --support-free
 #   cadpole export examples/gear_toy.star --run-exports --out-dir /tmp
 #   cadpole render examples/gear_toy.star --backend path --samples 256 --size 1600x1200 --view az=30,el=36 --lighting product --backdrop studio --floor gloss --tonemap neutral --denoise -o docs/demo/gear_toy.png
 #   cadpole render examples/gear_toy.star --param explode=40 --backend path --samples 256 --size 1600x1200 --view az=30,el=40 --lighting product --backdrop studio --floor gloss --tonemap neutral --denoise -o docs/demo/gear_toy_open.png

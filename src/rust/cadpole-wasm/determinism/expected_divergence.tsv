@@ -139,11 +139,11 @@ embossed_mug.star	volume	translate_1#44: 40fa0446b8ea1048 vs 40fa0446bb5175bb --
 embossed_mug.star	topology	translate_1#44: d27471b9fbb5cb1a vs 233f13d42f6a7efb -- as the body's other rows: its f64 digest in the last bits
 embossed_mug.star	mesh	translate_1#44: 040fdbedbc2620d6 vs 1023c94a47dc1122 -- the f32 positions differ in their last bits
 embossed_mug.star	inspect	translate_1#44 at char 375: …3, z: 96.0 }) }), volume_mm3: 106564.42014509544, area_mm2: 59626.556119413646, solid: Some(SolidVer vs …3, z: 96.0 }) }), volume_mm3: 106564.42073198307, area_mm2: 59626.55608197914, solid: Some(SolidVerd -- as volume
-enclosure.star	order	board_i#193 edges[7]: "box_1/front|box_2/right" vs "box_1/front|box_2/top" -- a connector is an exact subtract of its mouth from its shell, and the exact boolean's intersection edges come out in another order, as bracket.star's
-enclosure.star	volume	board_i#193: 405a3f61a8c9ec6b vs 405a3f61a8c9ec65 -- the same connector's mesh volume in its last bits, as order
-enclosure.star	topology	board_i#164: 2a9083b38862212b vs 4dc6c8bea5f9b773 -- as order: a connector's f64 digest in the last bits
-enclosure.star	mesh	board_i#193: 7bd5cf8981a0bdaf vs 7e571955a52b2400 -- as order
-enclosure.star	inspect	board_i#193: volume_mm3 104.99033565253346 vs 104.99033565253337 -- as volume
+enclosure.star	order	board_i#271 edges[7]: "box_1/front|box_2/right" vs "box_1/front|box_2/top" -- a connector is an exact subtract of its mouth from its shell, and the exact boolean's intersection edges come out in another order, as bracket.star's
+enclosure.star	volume	board_i#271: 405a3f61a8c9ec6b vs 405a3f61a8c9ec65 -- the same connector's mesh volume in its last bits, as order
+enclosure.star	topology	board_i#242: 2a9083b38862212b vs 4dc6c8bea5f9b773 -- as order: a connector's f64 digest in the last bits
+enclosure.star	mesh	board_i#271: 7bd5cf8981a0bdaf vs 7e571955a52b2400 -- as order
+enclosure.star	inspect	board_i#271: volume_mm3 104.99033565253346 vs 104.99033565253337 -- as volume
 gridfinity_showcase.star	names	parts_3x2_placed#23 faces[14]: "parts_3x2_socket/side[0.7]#1" vs "parts_3x2_socket/side[0.6]#1" -- a mesh body's face ids follow its triangulation, as gridfinity_baselid.star's names row
 gridfinity_showcase.star	order	parts_3x2_placed#23 edges[31]: "parts_3x2_body/end|parts_3x2_socket/side[0.7]#1" vs "parts_3x2_body/end|parts_3x2_socket/side[0.6]#1" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
 gridfinity_showcase.star	volume	tray_2x1#176: 40d93d1d20dea140 vs 40d93d1d20dea13d -- the bin laid out on its 3MF plate, moved by a non-whole offset: its mesh volume in the last bit
@@ -182,12 +182,17 @@ radial_engine.star	volume	head_0#127: 40a702acab30c2e3 vs 40a702acab30c2f0 -- th
 radial_engine.star	topology	crankcase_i#81: 97b68bb8287f7d72 vs 7246aa6ce3898a92 -- as the body's other rows: its f64 digest in the last bits
 radial_engine.star	mesh	head_0#127: 745612b0b9772b74 vs 39a7f338bcfd5c6f -- the f32 positions differ in their last bits
 radial_engine.star	inspect	head_0#127 at char 369: …96094 }) }), volume_mm3: 2945.337243579664, area_mm2: 3249.0371020597727, solid: Some(SolidVerdict { vs …96094 }) }), volume_mm3: 2945.33724357967, area_mm2: 3249.0371020597736, solid: Some(SolidVerdict {  -- as volume
-desk_mascot.star	order	plinth_round#17 edges[10]: "plinth/end|slot/back" vs "plinth/end|slot/left" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
-desk_mascot.star	topology	silhouette_prism#0: 282b92d58589f545 vs 864bf5d5860cad11 -- as the body's other rows: its f64 digest in the last bits
-desk_mascot.star	mesh	plinth_round#17: a57dfc335ae1a505 vs cfc7b464a9795b6a -- the f32 positions differ in their last bits
+desk_mascot.star	order	plinth_round#17 edges[10]: "plinth/end|slot/back" vs "plinth/end|slot/left" -- the plinth is an exact subtract of the tab's slot: the exact kernel's intersection edges, as nightstand.star's order row
+desk_mascot.star	topology	silhouette_prism#0: 282b92d58589f545 vs 864bf5d5860cad11 -- the prism of the mark's SVG silhouette (curves flattened to a polyline), its f64 digest in the last bits, as svg_badge.star's topology row; the figure meshed from its field agrees
+desk_mascot.star	mesh	plinth_round#17: a57dfc335ae1a505 vs cfc7b464a9795b6a -- as order
 knurled_knob.star	topology	knob#0: cba695251825b965 vs 05effe71f8c21964 -- as the body's other rows: its f64 digest in the last bits
 knurled_knob.star	mesh	knob#0: c3d1027845211fdd vs 838d9c0c33d5f4f1 -- the f32 positions differ in their last bits
 planter.star	volume	pot#8: 40fb73f8cc80ea8f vs 40fb73f8cc588964 -- the volume in its last bits
 planter.star	topology	pot#8: 25aa25bc0a257284 vs 5f1f064bd57847ad -- as the body's other rows: its f64 digest in the last bits
 planter.star	mesh	pot#8: 5c435bf01a21549c vs c5b358570be63c6a -- the f32 positions differ in their last bits
 planter.star	inspect	pot#8 at char 327: …, z: 100.0 }) }), volume_mm3: 112447.54992763161, area_mm2: 67981.60540479634, solid: Some(SolidVerd vs …, z: 100.0 }) }), volume_mm3: 112447.54988912266, area_mm2: 67981.6054118739, solid: Some(SolidVerdi -- as volume
+stdlib/print_test.star	order	sf_round#4 edges[7]: "sf_round_blk/front|sf_round_cyl/side#0" vs "sf_round_blk/front|sf_round_cyl/side#1" -- a block with a lying cylinder subtracted: the exact kernel's intersection edges, as bracket.star's order row
+stdlib/print_test.star	volume	sf_tear#8: 40bdd246cddde893 vs 40bdd246cddde890 -- the teardropped block's mesh volume, the last bits of an f64
+stdlib/print_test.star	topology	sf_round#4: 00ab9690e1e5d970 vs be9766d4249ab4f8 -- as order
+stdlib/print_test.star	mesh	sf_round#4: c09e2ff7027f7543 vs 988337cab4a2a147 -- as order
+stdlib/print_test.star	inspect	sf_round#4: min_altitude_at (8.32, -6, 7.75) vs (-8.32, -6, 16.25) -- the hole is symmetric and two triangles tie for the thinnest; which is found first follows the order row, as split_for_bed.star's inspect row

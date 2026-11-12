@@ -27,6 +27,7 @@ $C export examples/cabin_site.star --model-unit ft -o /tmp/cabin.glb    # glTF
 $C export examples/storey_kit.star --run-exports --out-dir /tmp/kit -p printer=bambu_h2d -p slots=4   # a Bambu project
 $C publish examples/cabin_site.star --model-unit ft --out-dir /tmp/cabin   # a read-only static site
 $C check examples/story_kit.star --layer kit --max-bridge 20            # printability checks
+$C check examples/thumbscrew.star -p layout=print -p thread_form=print --support-free   # does it print without support
 $C inspect examples/impeller.star                   # per body: counts, solid verdict, kernel decisions
 $C op Drawing --doc examples/bracket.star --view three-view --format svg
 $C test examples/room_layout_opt.star               # `opt`: LP/MILP solved by HiGHS (native only)

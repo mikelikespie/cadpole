@@ -16,7 +16,7 @@ STILLS = {
     "knob": ("examples/knurled_knob.star", ["--view", "az=-30,el=26"]),
     "mascot": ("examples/desk_mascot.star", ["--view", "az=-30,el=24"]),
     "gridfinity": ("examples/gridfinity_showcase.star", []),
-    # The lid lifted off the seated board, so the snap arms and the board show.
+    # The lid lifted off the seated board, so the clips' hooks and the board show.
     "enclosure": ("examples/enclosure.star", ["-p", "lid_lift=26", "--view", "az=35,el=28"]),
     "thumbscrew": ("examples/thumbscrew.star", []),
     # Assembled, as it comes off the bed, the sun turned a little so the

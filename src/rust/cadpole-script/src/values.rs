@@ -1973,6 +1973,10 @@ pub struct KPrinter {
     pub material: String,
     pub density: f64,
     pub source: String,
+    /// The support rules (`cadpole_print::SupportRules`) the machine is
+    /// judged by.
+    #[allocative(skip)]
+    pub support: cadpole_print::SupportRules,
 }
 starlark_simple_value!(KPrinter);
 
@@ -2006,6 +2010,13 @@ impl<'v> StarlarkValue<'v> for KPrinter {
             "max_overhang" => Some(heap.alloc(self.max_overhang)),
             "material" => Some(heap.alloc(self.material.as_str())),
             "density" => Some(heap.alloc(self.density)),
+            "max_overhang_area" => Some(heap.alloc(self.support.max_overhang_area)),
+            "max_cantilever" => Some(heap.alloc(self.support.max_cantilever)),
+            "max_horizontal_hole" => Some(heap.alloc(self.support.max_horizontal_hole)),
+            "min_island" => Some(heap.alloc(self.support.min_island)),
+            "max_slenderness" => Some(heap.alloc(self.support.max_slenderness)),
+            "slender_width" => Some(heap.alloc(self.support.slender_width)),
+            "max_height_to_base" => Some(heap.alloc(self.support.max_height_to_base)),
             // Where the numbers came from, so a script can print its own
             // provenance.
             "source" => Some(heap.alloc(self.source.as_str())),
@@ -2024,6 +2035,13 @@ impl<'v> StarlarkValue<'v> for KPrinter {
             "max_overhang",
             "material",
             "density",
+            "max_overhang_area",
+            "max_cantilever",
+            "max_horizontal_hole",
+            "min_island",
+            "max_slenderness",
+            "slender_width",
+            "max_height_to_base",
             "source",
         ]
         .iter()
@@ -2046,6 +2064,7 @@ impl KPrinter {
             material: p.material.name.to_owned(),
             density: p.material.density_g_cm3,
             source: source.to_owned(),
+            support: p.support,
         }
     }
 
@@ -2065,6 +2084,7 @@ impl KPrinter {
             material: cadpole_print::Material::parse(&self.material).unwrap_or_default(),
             build_direction: d.build_direction,
             chord_gap_fraction: d.chord_gap_fraction,
+            support: self.support,
         }
     }
 }
@@ -2107,6 +2127,25 @@ pub struct KPrintReport {
     pub bridge_area: f64,
     pub longest_bridge: f64,
     pub bridges: u32,
+    /// The support rules' measurements (`cadpole_print::support`): what
+    /// still needs support after the allowances, the largest connected
+    /// overhang patch, ledges, islands, round horizontal holes, slender
+    /// features and the first layer.
+    pub support_area: f64,
+    pub largest_overhang: f64,
+    pub ledge_area: f64,
+    pub longest_cantilever: f64,
+    pub islands: u32,
+    pub deepest_island: f64,
+    pub horizontal_holes: u32,
+    pub wide_holes: u32,
+    pub slender: u32,
+    pub slenderness: f64,
+    pub first_layer_area: f64,
+    pub height_to_base: f64,
+    /// The findings that say it needs support, as text; empty when it
+    /// prints without.
+    pub support: Vec<String>,
     pub fits_bed: bool,
     pub fits_bed_rotated: bool,
     #[allocative(skip)]
@@ -2173,6 +2212,20 @@ impl<'v> StarlarkValue<'v> for KPrintReport {
             "bridge_area" => Some(heap.alloc(self.bridge_area)),
             "longest_bridge" => Some(heap.alloc(self.longest_bridge)),
             "bridges" => Some(heap.alloc(self.bridges as i32)),
+            "support_area" => Some(heap.alloc(self.support_area)),
+            "largest_overhang" => Some(heap.alloc(self.largest_overhang)),
+            "ledge_area" => Some(heap.alloc(self.ledge_area)),
+            "longest_cantilever" => Some(heap.alloc(self.longest_cantilever)),
+            "islands" => Some(heap.alloc(self.islands as i32)),
+            "deepest_island" => Some(heap.alloc(self.deepest_island)),
+            "horizontal_holes" => Some(heap.alloc(self.horizontal_holes as i32)),
+            "wide_holes" => Some(heap.alloc(self.wide_holes as i32)),
+            "slender" => Some(heap.alloc(self.slender as i32)),
+            "slenderness" => Some(heap.alloc(self.slenderness)),
+            "first_layer_area" => Some(heap.alloc(self.first_layer_area)),
+            "height_to_base" => Some(heap.alloc(self.height_to_base)),
+            "support" => Some(alloc_str_list(heap, &self.support)),
+            "support_free" => Some(heap.alloc(self.support.is_empty())),
             "fits_bed" => Some(heap.alloc(self.fits_bed)),
             "fits_bed_rotated" => Some(heap.alloc(self.fits_bed_rotated)),
             "size" => Some(alloc_vec3(heap, self.size)),
@@ -2220,6 +2273,20 @@ impl<'v> StarlarkValue<'v> for KPrintReport {
             "bridge_area",
             "longest_bridge",
             "bridges",
+            "support_area",
+            "largest_overhang",
+            "ledge_area",
+            "longest_cantilever",
+            "islands",
+            "deepest_island",
+            "horizontal_holes",
+            "wide_holes",
+            "slender",
+            "slenderness",
+            "first_layer_area",
+            "height_to_base",
+            "support",
+            "support_free",
             "fits_bed",
             "fits_bed_rotated",
             "size",
@@ -2277,6 +2344,21 @@ impl KPrintReport {
             bridge_area: r.overhang.bridge_area,
             longest_bridge: r.overhang.longest_bridge,
             bridges: r.overhang.bridges as u32,
+            support_area: r.overhang.support_area,
+            largest_overhang: r.overhang.largest_patch,
+            ledge_area: r.overhang.ledge_area,
+            longest_cantilever: r.overhang.longest_cantilever,
+            islands: r.support.islands as u32,
+            deepest_island: r.support.deepest_island,
+            horizontal_holes: r.support.horizontal_holes as u32,
+            wide_holes: r.support.wide_holes as u32,
+            slender: r.support.slender as u32,
+            slenderness: r.support.slenderness,
+            first_layer_area: r.support.first_layer_area,
+            // A part with no first layer (nothing within half a layer of
+            // its lowest point) reports a large number rather than inf.
+            height_to_base: if r.support.height_to_base.is_finite() { r.support.height_to_base } else { 1e9 },
+            support: r.support_findings().map(|i| format!("[{}] {}", i.check.as_str(), i.message)).collect(),
             fits_bed: r.bed.fits,
             fits_bed_rotated: r.bed.fits_rotated,
             size: r.bed.size,

@@ -1,7 +1,7 @@
 // Page-wide rules on every window: the page is not zoomed and cannot scroll
 // sideways, no form control has text under 16 px on a touch window (a phone
 // zooms into those), nothing visible is wider than the window, tap targets
-// on touch windows are 44 px, and nothing throws.
+// on touch windows are 44 px (but for links inside text), and nothing throws.
 import { VIEWPORTS, context, expect, test } from "./site.js";
 
 for (const [name, v] of Object.entries(VIEWPORTS)) {
@@ -44,7 +44,8 @@ for (const [name, v] of Object.entries(VIEWPORTS)) {
       }
       if (touch) {
         for (const e of document.querySelectorAll("a[href], button, summary, input, select, [role=button], [role=tab]")) {
-          if (!vis(e) || e.closest("p, li, figcaption, .foot, footer")) continue;
+          // A link in running text, or in a command or request to copy, is a word in a line: exempt.
+          if (!vis(e) || e.closest("p, li, figcaption, .foot, footer, code")) continue;
           const r = e.getBoundingClientRect();
           if (r.height < 43.5 || r.width < 43.5) out.taps.push(`${tag(e)} ${Math.round(r.width)}x${Math.round(r.height)}`);
         }

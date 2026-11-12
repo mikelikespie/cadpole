@@ -113,13 +113,19 @@ service CadpoleOps {
   }
 
   // Check whether a model can actually be printed, and say where the problems
-  // are. Five checks on the tessellated bodies, each reporting positions
-  // rather than a yes/no: the surface is closed, consistently oriented and
-  // does not run through itself; no wall is thinner than the perimeters that
-  // have to fit in it; nothing overhangs past the support angle; and the part
-  // fits the build volume. Set `orient` to also be told which way up to print
-  // it and why. Printing checks are advice: this never fails because a model
-  // is unprintable, it reports.
+  // are. Checks on the tessellated bodies, each reporting positions and face
+  // names rather than a yes/no: the surface is closed, consistently oriented
+  // and does not run through itself; no wall is thinner than the perimeters
+  // that have to fit in it; it fits the build volume; and it prints without
+  // support -- no connected overhang patch past the support angle larger
+  // than `max_overhang_area` (bridges up to `max_bridge` and ledges up to
+  // `max_cantilever` allowed), no island (a downward tip or hanging region
+  // whose lowest point is in mid-air), no round horizontal hole wider than
+  // `max_horizontal_hole` without a teardrop top. Slender features and a
+  // small first layer are warnings. Set `support_free` to judge only
+  // whether it prints without support, and `orient` to also be told which
+  // way up to print it and why. Printing checks are advice: this never
+  // fails because a model is unprintable, it reports.
   rpc PrintCheck(PrintCheckRequest) returns (PrintCheckResponse) {
     option (cadpole.op) = {
       cli_name: "check",
@@ -1557,6 +1563,38 @@ message PrintCheckRequest {
   // length"). A negative number turns bridging off: every downward face past
   // the overhang angle needs support.
   double max_bridge = 18 [(cadpole.field) = {example: "10"}];
+  // The largest connected patch of overhang, in mm2, that prints without
+  // support: a speck the perimeters round it carry. 0 means Cadpole's
+  // default, 4 mm2; a negative number counts every patch.
+  double max_overhang_area = 19 [(cadpole.field) = {example: "4"}];
+  // How far a near-level downward ledge held up on one side only (a shelf,
+  // an outstretched thumb) may stick out, in mm, before it needs support. 0
+  // means Cadpole's default, 3 mm; a negative number judges every ledge.
+  double max_cantilever = 20 [(cadpole.field) = {example: "3"}];
+  // The widest round horizontal hole, in mm across, whose round top a
+  // slicer bridges; a wider one wants a teardrop or diamond top. 0 means
+  // Cadpole's default, 7 mm; a negative number flags every round hole with
+  // a round top.
+  double max_horizontal_hole = 21 [(cadpole.field) = {example: "7"}];
+  // How deep, in mm, a region whose lowest point is in mid-air (a downward
+  // tip, a hanging finger) may hang before it is an island that needs
+  // support. 0 means one layer height; a negative number flags every one.
+  double min_island = 22 [(cadpole.field) = {example: "0.2"}];
+  // The tallest a feature narrower than `slender_width` may be, as a
+  // multiple of its width, before the `slender` warning. 0 means Cadpole's
+  // default, 8; a negative number turns the check off.
+  double max_slenderness = 23 [(cadpole.field) = {example: "8"}];
+  // What counts as slender, in mm across. 0 means Cadpole's default, 3 mm.
+  double slender_width = 24 [(cadpole.field) = {example: "3"}];
+  // The tallest a part may be over the square root of its first-layer area
+  // before the `bed_contact` warning (it may tip or come off the plate). 0
+  // means Cadpole's default, 6; a negative number turns the check off.
+  double max_height_to_base = 25 [(cadpole.field) = {example: "6"}];
+  // Judge only whether the model prints without support: each body's
+  // `issues` keeps the support findings (overhang past the allowances,
+  // island, cantilever, horizontal_hole, and bridge between bodies) and
+  // drops the rest, and `ok` is false when any is left.
+  bool support_free = 26;
 }
 
 message PrintCheckResponse {
@@ -1668,6 +1706,34 @@ message BodyPrintReport {
   // The longest bridge the overhangs were judged against, in mm; 0 when
   // bridging was turned off.
   double max_bridge_mm = 40;
+
+  // What still needs support after every allowance (bridges, ledges within
+  // `max_cantilever`, the tops of small round horizontal holes, patches no
+  // larger than `max_overhang_area`), in mm2. 0 when the overhang rule is
+  // satisfied.
+  double support_area_mm2 = 41;
+  // The largest connected overhang patch after those allowances, in mm2.
+  double largest_overhang_mm2 = 42;
+  // How far the longest ledge held up on one side sticks out, in mm.
+  double longest_cantilever_mm = 43;
+  // Regions whose lowest point is in mid-air, and the deepest, in mm.
+  uint32 islands = 44;
+  double deepest_island_mm = 45;
+  // Round horizontal holes found (only on bodies with recognised cylinder
+  // faces), and how many are wider than `max_horizontal_hole` with a round
+  // top.
+  uint32 horizontal_holes = 46;
+  uint32 wide_holes = 47;
+  // Slender features past `max_slenderness`, and the largest height over
+  // width among them.
+  uint32 slender = 48;
+  double slenderness = 49;
+  // Area of the section half a layer above the bed, in mm2, and the part's
+  // height over its square root.
+  double first_layer_area_mm2 = 50;
+  double height_to_base = 51;
+  // True when no support finding was made: it prints without support.
+  bool support_free = 52;
 }
 
 // Where to cut a part that does not fit the build volume, ready to be written
@@ -1687,7 +1753,9 @@ message PrintSplit {
 message PrintIssue {
   // Which check found it: "solid", "watertight", "non_manifold",
   // "orientation", "self_intersection", "internal_face", "fold",
-  // "degenerate", "thickness", "overhang", "bed_fit".
+  // "degenerate", "thickness", "overhang", "bridged", "island",
+  // "cantilever", "horizontal_hole", "slender", "bed_contact", "bed_fit",
+  // "chord_error", and between bodies "fuse", "layer_gap" and "bridge".
   string check = 1;
   // "info", "warning" or "error".
   string severity = 2;

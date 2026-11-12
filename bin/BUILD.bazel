@@ -1,5 +1,15 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+# The scripts the site names, so it can link to them (site/build/linkify.mjs).
+exports_files(
+    [
+        "cadpole",
+        "doctor",
+        "install",
+    ],
+    visibility = ["//site:__pkg__"],
+)
+
 # The checkout scripts, run from a copy of bin/ in a scratch checkout with a
 # stub `bazel` (and stub compilers) on a PATH that holds nothing else: the
 # preflight checklist for each platform and each missing tool, the stamp that

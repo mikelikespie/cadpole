@@ -1,14 +1,16 @@
 // Builds the Cadpole site into one self-contained static directory.
 //
 //   node build.mjs --site <dir> --examples <dir> --web-dist <dir> \
-//       --embed <site3d.js> --pages <dir of published viewer pages> --out <dir>
+//       --embed <site3d.js> --pages <dir of published viewer pages> --repo <dir> --out <dir>
 //
 // Everything on the page is generated from files in this repository: the
 // scripts under examples/ and site/features/, the viewer pages `cadpole
 // publish` wrote for them, the web app's engine, and the pictures under
 // site/static/. The frame sets and the recording named in media.lock.json are
 // large and are not in the tree; the page is written for them all the same,
-// and tools/assemble.mjs adds them.
+// and tools/assemble.mjs adds them. --repo is the repository root, where the
+// files the page names (docs/*.md, examples/*.star, bin/install) are checked
+// before they are linked.
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -17,10 +19,11 @@ import { createHash } from "node:crypto";
 import { hl, hlLines, E, T } from "./highlight.mjs";
 import { CARDS, GALLERY, PLAY, SCENES } from "./models.mjs";
 import { slim } from "./slim.mjs";
+import { linkify } from "./linkify.mjs";
 
 const args = {};
 for (let i = 2; i < process.argv.length; i += 2) args[process.argv[i].replace(/^--/, "")] = process.argv[i + 1];
-for (const k of ["site", "examples", "web-dist", "embed", "pages", "out"]) if (!args[k]) throw new Error(`missing --${k}`);
+for (const k of ["site", "examples", "web-dist", "embed", "pages", "repo", "out"]) if (!args[k]) throw new Error(`missing --${k}`);
 const SITE = args.site, EX = args.examples, WEB = args["web-dist"], OUT = args.out;
 const GH = "https://github.com/mikelikespie/cadpole";
 /** Where the site is published: link previews need absolute addresses for the page and its picture. */
@@ -639,7 +642,7 @@ writeFileSync(join(OUT, "site.webmanifest"), JSON.stringify({
 }, null, 1));
 writeFileSync(join(OUT, ".nojekyll"), "");
 const full = await views();
-const doc = page(full);
+const doc = linkify(page(full), { repo: GH, root: args.repo });
 checkWords(doc);
 checkLinks(doc);
 writeFileSync(join(OUT, "index.html"), doc);

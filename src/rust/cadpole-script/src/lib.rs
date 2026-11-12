@@ -2568,6 +2568,39 @@ assert_eq(u.kind, "brep")
         assert!(errors(&ctx).iter().any(|e| e.contains("max_bridge is a length")), "{:?}", errors(&ctx));
     }
 
+    /// `assert_support_free` fails with one line per finding, each naming
+    /// its check, its position and its face; the support rules are
+    /// keywords of `print_check` too, refused when they are negative.
+    #[test]
+    fn assert_support_free_lists_what_needs_support() {
+        let hook = concat!(
+            "post = box(4, 4, 30, name=\"post\")\n",
+            "arm = box(14, 4, 4, at=(4, 0, 26), name=\"arm\")\n",
+            "finger = box(2, 4, 8, at=(14, 0, 18), name=\"finger\")\n",
+            "hook = union(post, arm, finger, name=\"hook\")\n",
+        );
+        let ctx = run(&format!("{hook}assert_support_free(hook, msg=\"the hook\")\n"));
+        let e = errors(&ctx);
+        let m = e.iter().find(|m| m.contains("assert_support_free failed")).unwrap_or_else(|| panic!("{e:?}"));
+        assert!(m.contains("(the hook)"), "{m}");
+        assert!(m.contains("\n  - hook: [island] a region starts in mid-air at (14"), "{m}");
+        assert!(m.contains("8 mm below where it joins"), "{m}");
+        assert!(m.contains("on finger/") || m.contains("on hook/"), "a face name: {m}");
+        // Off by keywords: an island must hang deeper than 9 mm, and the
+        // finger's 8 mm2 tip is a patch within a 10 mm2 allowance.
+        let ctx = run(&format!(
+            "{hook}r = print_check(hook, min_island=9, max_overhang_area=10)\nassert_eq(r.islands, 0)\n\
+             assert_true(r.support_free, msg=str(r.support))\n\
+             assert_support_free(hook, min_island=9, max_overhang_area=10)\n"
+        ));
+        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
+        // A printer value carries the rules.
+        let ctx = run("p = printer(\"bambu_a1\")\nassert_eq(p.max_overhang_area, 4.0)\nassert_eq(p.max_cantilever, 3.0)\nassert_eq(p.min_island, p.layer_height)\n");
+        assert!(errors(&ctx).is_empty(), "{:?}", errors(&ctx));
+        let ctx = run(&format!("{hook}r = print_check(hook, max_cantilever=-1)\n"));
+        assert!(errors(&ctx).iter().any(|e| e.contains("max_cantilever must be 0 or more")), "{:?}", errors(&ctx));
+    }
+
     #[test]
     fn duplicate_names_are_rejected() {
         let ctx = run("a = box(1,1,1, name=\"x\")\nb = box(1,1,1, name=\"x\")\n");
