@@ -4272,7 +4272,7 @@ Materials, for the mass estimate: `PLA` (1.24 g/cm³), `PETG` (1.27), `ABS`
 
 A building printed one story at a time is a stack of pieces that has to go
 back together where it came apart. `load("@cadpole/print.star", "pegs",
-"peg_sites", "story_bands", "drop_to_bed", "is_box", "PEG")`:
+"peg_sites", "story_bands", "drop_to_bed", "is_box", "snap_fit", "PEG")`:
 
 | Function | What it does |
 | --- | --- |
@@ -4281,6 +4281,7 @@ back together where it came apart. `load("@cadpole/print.star", "pegs",
 | `story_bands(parts, levels, regions=None, scale=1.0, weld=0.01, sliver=None, pegs_per_joint=0, drop=True, name="story", peg=None, layer=None, thicken=None)` | Cut a list of bodies into horizontal bands at `levels` (model units, lowest first) and make each a printable piece: every part clipped to each band it reaches (a box by arithmetic, anything else by an intersection), a clipped piece thinner than `sliver` (default a hundredth of the thinnest band) dropped, every box narrower than `thicken` (in the scaled units: `0.8` is two perimeters) across x or y widened to it about its centre line -- a mullion, a pane, a baluster that would otherwise not print --, everything multiplied by `scale`, each band joined with `union(weld=)` (`weld=None` leaves the parts, for `export(name=)`), each joint pegged with up to `pegs_per_joint` pegs (`peg=` a dict of `PEG` options; a joint with less room says so and gets what fits), each piece dropped onto the bed and put on `layer`. `regions=[(label, ((x0, y0), (x1, y1)), levels), ...]` cuts the parts whose plan centre is in a rectangle at their own levels, as their own stack. Returns `[(label, body), ...]`: `"main.0"`, `"main.1"`, ..., then each region's |
 | `drop_to_bed(body, name=None)` | the body moved so its lowest point is z = 0 |
 | `is_box(b, rel=1e-6)` | six faces and the volume of its bounding box: what `union(weld=)` joins on its grid |
+| `snap_fit(length, thickness, deflection, thickness_tip=None, width=1.0, width_tip=None, modulus=None, max_strain=None, steps=400)` | the peak bending strain in a cantilever snap arm whose load point, `length` from the root, moves `deflection` sideways; thickness (in the bending direction) and width taper linearly to `thickness_tip` and `width_tip` at the load point. Returns `{"strain", "at", "factor"}` (`factor` is the strain over the uniform arm's 1.5 t y / L², so a taper to half thickness reads about 0.61), plus `"force"` and `"stiffness"` given `modulus`; with `max_strain` an arm that bends further is an error. A printed arm bent along its layers takes about the material's own strain (PLA: 0.02 once, 0.01 repeatedly); one bent across them, a fraction of it |
 | `PEG` | the defaults below |
 
 **The fit, for FDM at a 0.4 mm nozzle** (every one a keyword of `pegs`,

@@ -6,7 +6,7 @@
 # Rust tests in `src/rust/cadpole-script/src/stdlib.rs`, because a Starlark
 # script cannot catch `fail()`.
 
-load("@cadpole/print.star", "PEG", "drop_to_bed", "is_box", "peg_sites", "pegs", "story_bands", "teardrop")
+load("@cadpole/print.star", "PEG", "drop_to_bed", "is_box", "peg_sites", "pegs", "snap_fit", "story_bands", "teardrop")
 
 # ----------------------------------------------------------------- helpers
 
@@ -290,6 +290,24 @@ def a_list_is_one_print_and_a_body_in_the_air_needs_support():
 test("assert_support_free: a 10 mm teardrop hole passes, a round one fails and passes with max_horizontal_hole", a_teardrop_hole_prints_without_support_and_a_round_one_does_not)
 test("assert_support_free: a hanging finger is an island; a ledge within max_cantilever passes, a longer one fails", a_hanging_finger_is_an_island_and_a_ledge_within_reach_is_not)
 test("print_check on a list: a body in the air is a support finding", a_list_is_one_print_and_a_body_in_the_air_needs_support)
+
+def snap_fit_strain():
+    # A uniform arm is the textbook 1.5 t y / L^2, peaking at the root.
+    s = snap_fit(10.0, 1.2, 0.7)
+    assert_close(s["strain"], 1.5 * 1.2 * 0.7 / 100.0, tol = 1e-6)
+    assert_close(s["factor"], 1.0, tol = 1e-4)
+    assert_eq(s["at"], 0.0)
+    # Halving the thickness toward the load point, or tapering the width to
+    # nothing, spreads the bend: about 0.61 and exactly 2/3 of it.
+    assert_close(snap_fit(10.0, 1.2, 0.7, thickness_tip = 0.6)["factor"], 0.611, tol = 2e-3)
+    assert_close(snap_fit(10.0, 1.2, 0.7, width = 6.0, width_tip = 0.0)["factor"], 2.0 / 3.0, tol = 1e-3)
+    # Strain scales with t y / L^2; the force with E b t^3 y / (4 L^3).
+    assert_close(snap_fit(20.0, 1.2, 2.8)["strain"], s["strain"], tol = 1e-9)
+    f = snap_fit(10.0, 1.2, 0.7, width = 6.0, modulus = 3500.0)
+    assert_close(f["force"], 3500.0 * 6.0 * 1.2 * 1.2 * 1.2 * 0.7 / (4 * 1000.0), tol = 1e-3)
+    assert_close(f["stiffness"] * 0.7, f["force"], tol = 1e-9)
+    assert_true(snap_fit(10.0, 1.2, 0.7, max_strain = 0.02)["strain"] < 0.02)
+
 test("three pegs register two stories: solids, the pegs' and sockets' volumes, the pegs' height", three_pegs_register_two_stories)
 test("peg_sites finds places on the walls, spread over the plan, the same every time", the_sites_are_on_walls_spread_out_and_deterministic)
 test("pegs go where at= says; round pins", pegs_go_where_they_are_told_and_round_pins_work)
@@ -300,3 +318,4 @@ test("story_bands cuts, drops a sliver, joins, pegs and puts every piece on the 
 test("story_bands scales, and a region is cut at its own levels as its own stack", story_bands_scale_and_regions)
 test("thicken= widens boxes thinner than a printable wall, in plan, about their centre line", thin_boxes_are_thickened_to_print)
 test("is_box and drop_to_bed", the_helpers)
+test("snap_fit: the textbook strain for a uniform arm, less for a tapered one, and the force", snap_fit_strain)

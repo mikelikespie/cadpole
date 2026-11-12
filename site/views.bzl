@@ -30,7 +30,7 @@ VIEWS = [
     _v("radial_open", "radial", "Radial engine, apart", "//examples:radial_engine.star", ["--tolerance", "0.25", "-p", "explode=30", "-p", "cutaway=true"]),
     _v("mascot", "gallery", "Desk mascot", "//examples:desk_mascot.star", ["--tolerance", "0.1"]),
     _v("gridfinity", "gallery", "Gridfinity set", "//examples:gridfinity_showcase.star", ["--tolerance", "0.15"]),
-    _v("enclosure", "gallery", "Enclosure for a Raspberry Pi 5", "//examples:enclosure.star", ["--tolerance", "0.1", "-p", "lid_lift=26", "--eye", "112,-159,125", "--target", "0,0,22", "--show-params", "wall,clearance,snap_len,barb,fastener,cooling,gpio,button,shell,lid_lift"]),
+    _v("enclosure", "gallery", "Enclosure for a Raspberry Pi 5", "//examples:enclosure.star", ["--tolerance", "0.1", "-p", "lid_lift=26", "--eye", "112,-159,125", "--target", "0,0,22", "--show-params", "wall,clearance,closure,clip_len,barb,fastener,cooling,gpio,button,shell,lid_lift"]),
     _v("thumbscrew", "gallery", "Thumbscrew and nut", "//examples:thumbscrew.star", ["--tolerance", "0.1"]),
     _v("imports", "gallery", "Imported files", "//examples:import_demo.star", ["--tolerance", "0.15"]),
     _v("planetary", "gallery", "Herringbone planetary", "//examples:planetary.star", ["--tolerance", "0.15", "-p", "explode=14", "-p", "chord=0.05"]),
