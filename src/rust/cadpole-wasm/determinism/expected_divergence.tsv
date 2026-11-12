@@ -146,7 +146,11 @@ import_demo.star	volume	block_finished#26: 40e01678141fe44e vs 40e0167865cec349 
 import_demo.star	topology	block_finished#26: 14f596f1478791d0 vs 420a2442aeb02537 -- as the body's other rows: its f64 digest in the last bits
 import_demo.star	mesh	block_finished#26: 1d85e89703f356c5 vs 5cf765cc5230c1f0 -- the f32 positions differ in their last bits
 import_demo.star	inspect	block_finished#26 at char 324: …12.0, z: 45.0 }) }), volume_mm3: 32947.75245661345, area_mm2: 9025.263368889824, solid: Some(SolidVe vs …12.0, z: 45.0... -- as volume
-iris.star	topology	actuator_ring#53: 3acb8b95aeed18fc vs 7cc275b4b6bce64a -- as the body's other rows: its f64 digest in the last bits
+iris.star	order	blade_0#42 edges[32]: "blade_plate_0/end|drive_pin_collar_0/side#1" vs "...side#0" -- the exact union of a blade plate and its drive pin collar splits the collar's side at points that differ in the last bits, so the two halves sort the other way round
+iris.star	volume	blade_0#42: 4086e773358b5b25 vs 4086e773358b5b28 -- the same exact union: its f64 volume in the last bits
+iris.star	topology	blade_0#42: 18a215f21a941acf vs 292aada9209cbb61 -- the same exact union: its f64 digest in the last bits
+iris.star	mesh	blade_0#42: a76c1a04d5894d73 vs 1523bedf80f7ae56 -- the same exact union, tessellated: f32 positions in the last bits
+iris.star	inspect	blade_0#42: volume_mm3 732.9312544715109 vs 732.9312544715112 -- the same exact union: volume and area in the last bits
 part.star	order	part#2 edges[9]: "extrude_1/start|extrude_2/side[0.1]" vs "extrude_1/start|extrude_2/side[0.0]" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
 part.star	topology	part#2: 1cd56d964ac4c3b4 vs 379a5dc839731479 -- as the body's other rows: its f64 digest in the last bits
 part.star	mesh	part#2: 912d8ae02151c087 vs 47cbff0ef6704129 -- the f32 positions differ in their last bits

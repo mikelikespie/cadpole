@@ -2506,11 +2506,7 @@ fn print_inspection(resp: &pb::InspectResponse) {
     for i in &resp.instances {
         let pose = i.pose.as_ref();
         let t = at(&pose.and_then(|p| p.translation.clone()));
-        let q = pose.and_then(|p| p.rotation.as_ref()).map(|q| {
-            // The turn a unit quaternion carries, in degrees, for a reader.
-            let deg = 2.0 * q.w.clamp(-1.0, 1.0).acos().to_degrees();
-            if deg.abs() < 1e-6 { "no turn".to_owned() } else { format!("turned {deg:.3} deg") }
-        });
+        let q = pose.and_then(|p| p.rotation.as_ref()).map(|q| describe_turn(q.x, q.y, q.z, q.w));
         let explode = i.explode.as_ref().filter(|e| e.x != 0.0 || e.y != 0.0 || e.z != 0.0);
         println!(
             "instance {}  part {:?}  at {t}  {}{}{}",
@@ -3761,8 +3757,57 @@ fn main() -> ExitCode {
     }
 }
 
+/// The turn a unit quaternion carries, for a reader: the signed angle in
+/// degrees, in (-180, 180], about a world axis when it is one
+/// (`turned -90.000 deg about z`), else about the axis itself. `q` and `-q`
+/// are the same rotation, so the angle is read with its axis rather than
+/// from `w` alone, which loses the direction and folds 270 onto 90.
+fn describe_turn(x: f64, y: f64, z: f64, w: f64) -> String {
+    let n = (x * x + y * y + z * z).sqrt();
+    let mut deg = 2.0 * n.atan2(w).to_degrees();
+    let (mut ax, mut ay, mut az) = if n > 0.0 { (x / n, y / n, z / n) } else { (0.0, 0.0, 1.0) };
+    if deg > 180.0 {
+        deg = 360.0 - deg;
+        (ax, ay, az) = (-ax, -ay, -az);
+    }
+    if deg.abs() < 1e-6 {
+        return "no turn".to_owned();
+    }
+    for (name, c) in [("x", ax), ("y", ay), ("z", az)] {
+        if c.abs() > 1.0 - 1e-9 {
+            return format!("turned {:.3} deg about {name}", deg * c.signum());
+        }
+    }
+    format!("turned {deg:.3} deg about ({ax:.4}, {ay:.4}, {az:.4})")
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn describe_turn_keeps_the_direction() {
+        // A turn of `deg` about +z, as a quaternion with w >= 0.
+        let about_z = |deg: f64| {
+            let h = deg.to_radians() / 2.0;
+            let (mut z, mut w) = (h.sin(), h.cos());
+            if w < 0.0 {
+                (z, w) = (-z, -w);
+            }
+            describe_turn(0.0, 0.0, z, w)
+        };
+        assert_eq!(about_z(0.0), "no turn");
+        assert_eq!(about_z(45.0), "turned 45.000 deg about z");
+        assert_eq!(about_z(225.0), "turned -135.000 deg about z");
+        assert_eq!(about_z(270.0), "turned -90.000 deg about z");
+        assert_eq!(about_z(315.0), "turned -45.000 deg about z");
+        assert_eq!(about_z(-30.0), "turned -30.000 deg about z");
+        // The same rotation written as -q reads the same.
+        let h = 135f64.to_radians();
+        assert_eq!(describe_turn(0.0, 0.0, -h.sin(), -h.cos()), "turned -90.000 deg about z");
+        // An axis that is not a world axis is printed.
+        let s = 0.5f64.sqrt() * (30f64.to_radians() / 2.0).sin();
+        assert_eq!(describe_turn(s, s, 0.0, (30f64.to_radians() / 2.0).cos()), "turned 30.000 deg about (0.7071, 0.7071, 0.0000)");
+    }
+
     use super::*;
     use std::path::{Path, PathBuf};
 
