@@ -107,6 +107,10 @@ test.describe("where evaluation runs", () => {
   });
 
   test("evaluates in a worker by default, and says which engine ran", async ({ page }) => {
+    // The default is for a document not yet measured. `beforeEach` evaluated
+    // this one, and on a loaded machine that evaluation can pass the
+    // promotion threshold, which would send the reload to the server.
+    await page.evaluate(() => localStorage.removeItem("cadpole.engineVerdicts.v1"));
     await page.goto("/?nosw=1");
     await ready(page);
 

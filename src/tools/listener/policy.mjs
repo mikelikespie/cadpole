@@ -27,6 +27,7 @@ export const EXPECTED_TOOLS = [
   "animate",
   "export",
   "print_check",
+  "plate",
   "drawing",
   "api_doc",
   "get_session",

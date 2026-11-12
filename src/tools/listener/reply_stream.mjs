@@ -35,6 +35,7 @@ const ACTIVITY = {
   evaluate: "checking the model…",
   inspect: "checking the model…",
   print_check: "checking the model…",
+  plate: "laying out the print plate…",
   run_tests: "running the tests…",
   render: "rendering…",
   sweep: "rendering…",

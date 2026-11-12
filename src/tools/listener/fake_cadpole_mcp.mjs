@@ -32,6 +32,7 @@ const GRANTED = [
   "animate",
   "export",
   "print_check",
+  "plate",
   "drawing",
   "api_doc",
   "get_session",
