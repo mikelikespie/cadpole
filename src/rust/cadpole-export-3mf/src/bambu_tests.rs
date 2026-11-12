@@ -547,6 +547,39 @@ pub(crate) fn check_common(s: &Structure, bed: Option<[f64; 2]>) {
     }
 }
 
+/// A project of more than one filament purges between every two of them:
+/// `flush_volumes_matrix` is an `n x n` table per nozzle (as many as
+/// `nozzle_diameter` lists, at least one), row by row, every entry a string,
+/// zero on the diagonal and above zero everywhere else, and
+/// `flush_multiplier` is one positive value per nozzle. A slicer reads a
+/// missing table as no purge at all and the colours mix.
+pub(crate) fn check_purge(settings: &serde_json::Map<String, serde_json::Value>, n: usize) {
+    if n <= 1 {
+        return;
+    }
+    let nozzles = json_string_array(settings, "nozzle_diameter").map_or(1, |d| d.len().max(1));
+    let m = json_string_array(settings, "flush_volumes_matrix").expect("flush_volumes_matrix, a list of strings");
+    assert_eq!(
+        settings["flush_volumes_matrix"].as_array().unwrap().len(),
+        m.len(),
+        "every purge volume is a string"
+    );
+    assert_eq!(m.len(), nozzles * n * n, "{nozzles} nozzle(s) x {n} x {n} purge volumes");
+    for (k, v) in m.iter().enumerate() {
+        let (i, j) = ((k % (n * n)) / n, k % n);
+        let v: f64 = v.parse().unwrap_or_else(|_| panic!("purge volume {v:?} is a number"));
+        if i == j {
+            assert_eq!(v, 0.0, "no purge from filament {} to itself", i + 1);
+        } else {
+            assert!(v > 0.0, "a purge from filament {} to {}: {v}", i + 1, j + 1);
+        }
+    }
+    let mult = json_string_array(settings, "flush_multiplier").expect("flush_multiplier, a list of strings");
+    assert_eq!(mult.len(), nozzles, "a flush_multiplier per nozzle");
+    assert!(mult.iter().all(|x| x.parse::<f64>().is_ok_and(|x| x > 0.0)), "{mult:?}");
+    assert!(crate::bambu_settings::flush_is_whole(settings.get("flush_volumes_matrix"), n));
+}
+
 /// The stricter rules our own writer keeps on top of [`check_common`]:
 /// closed meshes, exact centring, a part matrix that is the component
 /// transform, no core colour layer, a Bambu Studio `Application` no
@@ -569,6 +602,7 @@ pub(crate) fn check_ours(s: &Structure, bed: [f64; 2]) {
             assert_eq!(list.len() % n, 0, "{k} has a block per filament");
         }
     }
+    check_purge(settings, n);
     for (path, f) in &s.files {
         assert!(f.materials.is_empty(), "{path}: no basematerials in a project");
         assert!(edge_uses(&f.xml).iter().all(|&(a, b)| (a, b) == (1, 1)), "{path}: every edge twice, once each way");
@@ -1550,4 +1584,67 @@ fn a_template_brings_its_settings_and_none_of_its_objects_or_pictures() {
     assert_eq!(s.root.objects.len(), 1, "{:?}", s.root.objects);
     let ps = s.settings_json.as_ref().unwrap();
     assert_ne!(ps["wipe_tower_x"], serde_json::json!(["10"]), "the template's tower spot is its own model's, not ours");
+}
+
+#[test]
+fn every_multi_filament_project_purges_between_every_two_filaments() {
+    let meshes = toy_meshes();
+    let read = |project: &Project<'_>| {
+        let s = read_structure(&write_project(project).unwrap().bytes);
+        let n = s.filament_colour.as_ref().unwrap().len();
+        (s.settings_json.clone().unwrap(), n)
+    };
+    // Cadpole's built-in settings: a one-nozzle bed and a two-nozzle one.
+    for machine in [Machine::default(), h2c_like()] {
+        let mut project = toy_like(&meshes);
+        project.machine = machine;
+        let (ps, n) = read(&project);
+        assert_eq!(n, 3);
+        check_purge(&ps, n);
+        // From the dark teal (slot 3) to the light terracotta (slot 1)
+        // purges more than the other way.
+        let m: Vec<f64> = json_string_array(&ps, "flush_volumes_matrix").unwrap().iter().map(|v| v.parse().unwrap()).collect();
+        assert!(m[2 * 3] > m[2], "{m:?}");
+    }
+    // A template with no table gets Cadpole's, and says so.
+    let settings = serde_json::json!({
+        "printable_area": ["0x0", "256x0", "256x256", "0x256"],
+        "nozzle_diameter": ["0.4"],
+        "filament_colour": ["#000000", "#FFFFFF", "#FF0000"],
+    });
+    let t = Template::from_parts("BambuStudio-02.04.00.70", &settings.to_string()).unwrap();
+    let mut project = toy_like(&meshes);
+    project.machine = t.machine();
+    project.template = Some((t, "bare.3mf".into()));
+    let w = write_project(&project).unwrap();
+    assert!(w.warnings.iter().any(|m| m.contains("bare.3mf") && m.contains("purge")), "{:?}", w.warnings);
+    let s = read_structure(&w.bytes);
+    check_purge(s.settings_json.as_ref().unwrap(), 3);
+    // A template whose table purges nothing between two colours too.
+    let settings = serde_json::json!({
+        "printable_area": ["0x0", "256x0", "256x256", "0x256"],
+        "nozzle_diameter": ["0.4"],
+        "filament_colour": ["#C98A6B", "#0078BF", "#2F8F8F"],
+        "flush_volumes_matrix": ["0", "0", "300", "300", "0", "300", "300", "300", "0"],
+        "flush_multiplier": ["0"],
+    });
+    let mut project = toy_like(&meshes);
+    let t = Template::from_parts("BambuStudio-02.04.00.70", &settings.to_string()).unwrap();
+    project.machine = t.machine();
+    project.template = Some((t, "zeros.3mf".into()));
+    let (ps, n) = read(&project);
+    check_purge(&ps, n);
+    // The plain 3MF writer's minimal Bambu settings.
+    let (a, b) = (box_mesh(Vec3::ZERO, Vec3::new(10.0, 10.0, 4.0)), box_mesh(Vec3::new(0.0, 0.0, 4.0), Vec3::new(10.0, 10.0, 6.0)));
+    let scene = crate::Scene {
+        parts: vec![crate::Part::new("base", &a, 1), crate::Part::new("lid", &b, 2)],
+        palette: palette(),
+        slicer: crate::Slicer::Bambu,
+        ..crate::Scene::default()
+    };
+    let z = open(&crate::write(&scene).bytes);
+    let Ok(serde_json::Value::Object(ps)) = serde_json::from_str(&z.text(BAMBU_PROJECT_CONFIG).unwrap()) else {
+        panic!("project_settings.config is a JSON object")
+    };
+    check_purge(&ps, 2);
 }

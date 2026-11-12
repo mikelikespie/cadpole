@@ -275,6 +275,18 @@ fn a_planned_project_reads_back_with_its_plates_objects_and_filaments() {
     let list = ps["filament_colour"].as_array().unwrap();
     assert_eq!(list.len(), 4, "four colours in the model: {list:?}");
     assert!(extruders.values().flatten().all(|s| *s >= 1 && *s as usize <= list.len()));
+    // A purge volume for every change of filament, on each nozzle, so the
+    // colours do not mix: zero only on the diagonal.
+    let n = list.len();
+    let nozzles = ps["nozzle_diameter"].as_array().map_or(1, |d| d.len().max(1));
+    let flush = ps["flush_volumes_matrix"].as_array().expect("flush_volumes_matrix");
+    assert_eq!(flush.len(), nozzles * n * n);
+    for (k, v) in flush.iter().enumerate() {
+        let v: f64 = v.as_str().expect("a string").parse().unwrap();
+        let (i, j) = ((k % (n * n)) / n, k % n);
+        assert!(if i == j { v == 0.0 } else { (100.0..=800.0).contains(&v) }, "{i} -> {j}: {v}");
+    }
+    assert_eq!(ps["flush_multiplier"].as_array().map(Vec::len), Some(nozzles));
 
     // Every object on z = 0, inside its plate, and clear of the others.
     let root = z.text("3D/3dmodel.model").unwrap();

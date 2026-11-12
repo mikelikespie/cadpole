@@ -9,7 +9,8 @@
 //! slicer was read**, and no Bambu profile or saved project is shipped: what
 //! Cadpole writes on its own is a handful of keys whose values are facts about a
 //! machine (its bed, its nozzles, the names of its stock presets) and about
-//! the model (its filament colours).
+//! the model (its filament colours, and the purge volumes between them that
+//! [`crate::purge`] estimates from those colours).
 //!
 //! # Two sources
 //!
@@ -24,8 +25,11 @@
 //!   own would.
 //! * **Cadpole's built-in file**, when there is no template: the machine's bed,
 //!   height, nozzles and the names of its stock printer, process and
-//!   filament presets, and per filament its colour and the few properties
-//!   the slicers index by filament. Both slicers open it as a project with
+//!   filament presets, per filament its colour and the few properties
+//!   the slicers index by filament, and the purge volume for every change
+//!   of filament ([`crate::purge`]: without one a slicer purges nothing
+//!   and the colours mix). A template keeps its own purge table unless it
+//!   lacks a volume for some change of filament. Both slicers open it as a project with
 //!   its plates, objects, parts and filaments, and slice it — but a slicer
 //!   fills every setting the file leaves out with **its own defaults, not the
 //!   named preset's** (the Bambu Studio CLI does so: 60 mm/s
@@ -717,6 +721,10 @@ fn built_in(machine: &Machine, colours: &[String], application: &str) -> Map<Str
     ps.insert("filament_is_support".into(), list("0"));
     ps.insert("filament_shrink".into(), list("100%"));
     ps.insert("filament_start_gcode".into(), list(""));
+    // Without a table the slicer purges nothing between filaments and the
+    // colours mix: Cadpole's own estimate from the colours ([`crate::purge`]).
+    ps.insert("flush_multiplier".into(), strs(crate::purge::flush_multiplier(nozzles)));
+    ps.insert("flush_volumes_matrix".into(), strs(crate::purge::flush_volumes_matrix(colours, nozzles)));
     for k in FEATURE_FILAMENTS {
         ps.insert((*k).into(), s("0"));
     }
@@ -790,6 +798,22 @@ fn from_template(t: &Template, name: &str, colours: &[String], warnings: &mut Ve
         ));
     }
     ps.insert("filament_colour".into(), Value::Array(colours.iter().cloned().map(Value::String).collect()));
+    // A template with no table, or with no purge between some two colours,
+    // gets Cadpole's estimate ([`crate::purge`]) for the nozzles it has.
+    if !flush_is_whole(ps.get("flush_volumes_matrix"), n) {
+        let nozzles = strings(ps.get("nozzle_diameter")).len().max(1);
+        let strs = |v: Vec<String>| Value::Array(v.into_iter().map(Value::String).collect());
+        ps.insert("flush_volumes_matrix".into(), strs(crate::purge::flush_volumes_matrix(colours, nozzles)));
+        if strings(ps.get("flush_multiplier")).iter().all(|m| m.trim().parse::<f64>().map_or(true, |v| v <= 0.0)) {
+            ps.insert("flush_multiplier".into(), strs(crate::purge::flush_multiplier(nozzles)));
+        }
+        if n > 1 {
+            warnings.push(format!(
+                "template {name:?} has no purge volume for every change of filament: Cadpole's estimate from \
+                 the colours is used; check it in Bambu Studio's purging volumes"
+            ));
+        }
+    }
     for k in FEATURE_FILAMENTS {
         if ps.contains_key(*k) {
             ps.insert((*k).into(), Value::String("0".into()));
@@ -814,6 +838,21 @@ fn from_template(t: &Template, name: &str, colours: &[String], warnings: &mut Ve
         ));
     }
     ps
+}
+
+/// Is `matrix` whole `n x n` blocks with a purge above zero for every change
+/// of filament? One filament needs no purge.
+pub fn flush_is_whole(matrix: Option<&Value>, n: usize) -> bool {
+    if n <= 1 {
+        return true;
+    }
+    let m = strings(matrix);
+    !m.is_empty()
+        && m.len() % (n * n) == 0
+        && m.iter().enumerate().all(|(k, v)| {
+            let (i, j) = ((k % (n * n)) / n, k % n);
+            i == j || v.trim().parse::<f64>().is_ok_and(|v| v > 0.0)
+        })
 }
 
 /// The flush matrix — per nozzle, `n x n` purge volumes in mm³ from one

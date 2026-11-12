@@ -234,6 +234,17 @@ writer reads its `project_settings.config` and the version that saved it,
 and no object, plate picture, cut information or per-plate file of it ever
 reaches the output (`a_template_brings_its_settings_and_none_of_its_objects_or_pictures`).
 
+**Purge volumes.** A project of several filaments carries a purge
+(flush) volume for every change of filament, `flush_volumes_matrix` with
+`flush_multiplier` 1; a slicer reads a project without one as "purge
+nothing" and the colours mix. With no template the volumes are Cadpole's
+own estimate from the two colours (`cadpole_export_3mf::purge`):
+`100 + 250·d + 450·max(0, ΔL*)/100` mm³, clamped to 100..800, where `d` is
+the sRGB distance between the colours (0..1) and `ΔL*` how much lighter the
+new filament is. Black to white purges 800 mm³, white to black 350, two
+near-identical colours 100. A template's own table is kept when it has a
+volume for every change; otherwise the estimate replaces it, with a warning.
+
 ## Follow-ups
 
 * A per-piece "held but tight" choice: a lid snapped onto its base is

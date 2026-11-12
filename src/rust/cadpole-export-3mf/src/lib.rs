@@ -51,7 +51,7 @@
 //! * `key="extruder"` inside PrusaSlicer's per-volume config. The
 //!   metadata mechanism is verified; that exact key is not.
 //! * The *content* of our minimal `project_settings.config` and
-//!   `slice_info.config`. Their format is verified; a three-key file of our
+//!   `slice_info.config`. Their format is verified; a five-key file of our
 //!   own construction is not a file Bambu wrote, and whether Bambu is happy
 //!   with a minimal one is the known risk.
 //!   [`Scene::bambu_project_settings`] turns them off.
@@ -79,6 +79,7 @@ use cadpole_core::tessellate::Mesh;
 pub mod bambu;
 pub mod bambu_settings;
 pub mod paint;
+pub mod purge;
 pub mod zip;
 
 /// Which compatibility layers to write.
@@ -735,14 +736,18 @@ fn bambu_model_config(objects: &[OutObject]) -> String {
 }
 
 /// A minimal Bambu project settings part: enough for the preview to colour the
-/// filaments, nothing that would fight the user's own printer profile. The
-/// format is verified; this minimal content is ours, hence
-/// [`Scene::bambu_project_settings`].
+/// filaments and for a change of filament to purge ([`purge`]), nothing that
+/// would fight the user's own printer profile. The format is verified; this
+/// minimal content is ours, hence [`Scene::bambu_project_settings`].
 fn bambu_project_settings(scene: &Scene<'_>) -> String {
-    let colors =
-        scene.palette.iter().map(|f| format!("\"{}\"", f.hex())).collect::<Vec<_>>().join(", ");
+    let colours: Vec<String> = scene.palette.iter().map(Filament::hex).collect();
+    let list = |v: &[String]| v.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
     format!(
-        "{{\n  \"from\": \"project\",\n  \"name\": \"project_settings\",\n  \"filament_colour\": [{colors}]\n}}\n"
+        "{{\n  \"from\": \"project\",\n  \"name\": \"project_settings\",\n  \"filament_colour\": [{}],\n  \
+         \"flush_multiplier\": [{}],\n  \"flush_volumes_matrix\": [{}]\n}}\n",
+        list(&colours),
+        list(&purge::flush_multiplier(1)),
+        list(&purge::flush_volumes_matrix(&colours, 1)),
     )
 }
 
