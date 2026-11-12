@@ -146,10 +146,12 @@ enclosure.star	volume	board_i#193: 405a3f61a8c9ec6b vs 405a3f61a8c9ec65 -- the s
 enclosure.star	topology	board_i#164: 2a9083b38862212b vs 4dc6c8bea5f9b773 -- as order: a connector's f64 digest in the last bits
 enclosure.star	mesh	board_i#193: 7bd5cf8981a0bdaf vs 7e571955a52b2400 -- as order
 enclosure.star	inspect	board_i#193: volume_mm3 104.99033565253346 vs 104.99033565253337 -- as volume
-gridfinity_showcase.star	names	parts_3x2_seated#22 faces[14]: "parts_3x2_socket/side[0.7]#1" vs "parts_3x2_socket/side[0.6]#1" -- a mesh body's face ids follow its triangulation, as gridfinity_baselid.star's names row
-gridfinity_showcase.star	order	parts_3x2_seated#22 edges[31]: "parts_3x2_body/end|parts_3x2_socket/side[0.7]#1" vs "parts_3x2_body/end|parts_3x2_socket/side[0.6]#1" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
-gridfinity_showcase.star	topology	parts_3x2_seated#22: 01b03808d2f8d427 vs baabfdc680a5239f -- as the body's other rows: its f64 digest in the last bits
-gridfinity_showcase.star	mesh	parts_3x2_seated#22: 847d5b5ce73662d0 vs 50fef244962d33f4 -- the f32 positions differ in their last bits
+gridfinity_showcase.star	names	parts_3x2_placed#23 faces[14]: "parts_3x2_socket/side[0.7]#1" vs "parts_3x2_socket/side[0.6]#1" -- a mesh body's face ids follow its triangulation, as gridfinity_baselid.star's names row
+gridfinity_showcase.star	order	parts_3x2_placed#23 edges[31]: "parts_3x2_body/end|parts_3x2_socket/side[0.7]#1" vs "parts_3x2_body/end|parts_3x2_socket/side[0.6]#1" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row
+gridfinity_showcase.star	volume	tray_2x1#176: 40d93d1d20dea140 vs 40d93d1d20dea13d -- the bin laid out on its 3MF plate, moved by a non-whole offset: its mesh volume in the last bit
+gridfinity_showcase.star	topology	parts_3x2_placed#23: 6ace632033603564 vs 06707ea7341facb8 -- as the body's other rows: its f64 digest in the last bits
+gridfinity_showcase.star	mesh	parts_3x2_placed#23: c85ac0c07fe9fad4 vs 141814f245fad904 -- the f32 positions differ in their last bits
+gridfinity_showcase.star	inspect	tray_2x1#176: volume_mm3 25844.4551312041 vs 25844.45513120409 -- as volume
 import_demo.star	diagnostics	diagnostic[38]: {"severity":"info","feature":"gear_hubbed","message":"mesh union: snapped 1 face group (1 face: `gear_plate/side[1.2]`) onto 1 shared plane, 2 vertices moved, the furthest by 0.03 µm — -- the gear hub's mesh union snaps a face group on one target and not the other, so the info notes differ in count and order
 import_demo.star	names	step_plinth_edged#64 faces[12]: "step_plinth_edged/blend[step_plinth_block/end|side[0.3]]" vs "step_plinth_block/side[0.1]" -- the plinth's top-edge blend: which of a rounded rectangle's tangent sides the exact fillet names its blend after differs between the targets, as filleted_bracket.star's names row
 import_demo.star	order	block_finished#57 edges[52]: "oil_hole/side#1|spot_face/bottom" vs "oil_hole/side#0|spot_face/bottom" -- an exact boolean's intersection edges come out in another order, as bracket.star's order row

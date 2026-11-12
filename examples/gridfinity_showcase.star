@@ -1,9 +1,21 @@
 # Gridfinity showcase: one script, every bin.
 #
-# A baseplate with a mix of bins seated in it -- 1x1, 2x1 and 3x2, some with
-# dividers and label tabs, one with a scoop -- in three filaments. Switch
-# `mode` to "bin" and the same script is a single parametric bin, which is what
-# `cadpole sweep` and the tests walk across sizes and divider counts.
+# A baseplate with a mix of bins in it -- 1x1, 2x1 and 3x2, some with
+# dividers and label tabs, two with scoops -- in three filaments. One 2x1 is
+# lifted out of its two cells (`lift`) and tipped towards the camera (`tilt`),
+# so its stepped feet face the cups they seat in, and a short cup stands in
+# the stacking lip of a 1x1. Switch `mode` to "bin" and the same script is a
+# single parametric bin, which is what `cadpole sweep` and the tests walk
+# across sizes and divider counts.
+#
+# Every bin in the scene faces the same way: the drawer opens towards +y, so
+# each label tab runs along a bin's -y wall and each scoop along its +y wall,
+# where a finger comes in. The camera stands behind the drawer, on the tab
+# side, and looks over the tabs into the scoops.
+#
+# Exports: an STL per bin and one for the baseplate, and a Bambu Studio
+# project, gridfinity_set.3mf, with the baseplate on one plate and the bins
+# laid out on a plate per filament, each bin a named object.
 #
 # Built on examples/gridfinity_bin.star and examples/gridfinity_baseplate.star
 # and self-contained: the foot and the cup are the same exact four-section
@@ -15,15 +27,18 @@
 # * Feet are built at the full 42 mm pitch, carried 0.5 mm up into the body so
 #   neighbouring feet share a face rather than an edge, and the whole bin is
 #   trimmed to its 42N - 0.5 footprint at the end (gridfinity_bin.star, notes 2 and 3).
-# * The booleans run on the default kernel="auto", which sends the larger ones
-#   to the mesh kernel, so this is an STL model, not a STEP one (its note 9).
+# * Each bin's hollowing subtract stays on the exact kernel; fitting the
+#   inserts, welding the feet and trimming the footprint run on the mesh
+#   kernel, so this is an STL and 3MF model, not a STEP one (its note 9).
 # * `cadpole check`: every body is a solid (closed, oriented, no crossings). Each
 #   bin's one finding is the foot's 45-degree band, which the chords of its
 #   corner cones put at 45.36 degrees; at --max-overhang 46 the bins report
 #   nothing. The light plate reports thin walls: its cups overlap, so the
 #   ridges between them and the outer rim run to a knife edge at the bin-Z
 #   relief plane -- the reference's geometry -- and its
-#   0.5 mm bottom chamfer is a 45-degree band.
+#   0.5 mm bottom chamfer is a 45-degree band. The tipped 2x1 is checked as
+#   it stands in the scene and reports overhang there; its STL and its 3MF
+#   object are upright, and the tests check every bin that way.
 #
 # Added here, all planar so their booleans stay plane-plane:
 # * dividers: 1.2 mm walls across the cavity, ends buried in the side walls;
@@ -50,6 +65,10 @@ filament = param("filament", "auto", choices=["auto", "off-white", "teal", "grey
 plate_w = param("plate_width", 5, min=5, max=8, doc="Baseplate grid units along X, scene mode")
 plate_l = param("plate_length", 4, min=4, max=8, doc="Baseplate grid units along Y, scene mode")
 wall = param("wall", 1.2, unit="mm", min=0.8, max=1.6, doc="Bin wall and divider thickness")
+lift = param("lift", 32.0, unit="mm", min=0.0, max=60.0,
+             doc="How far the lowest point of the 2x1 in cells (3, 0)-(4, 0) is lifted above its seat, scene mode (0 seats it)")
+tilt = param("tilt", 62.0, unit="deg", min=0.0, max=90.0,
+             doc="How far the lifted 2x1 is tipped, its near edge up, so its feet show; scene mode")
 
 # ---------------------------------------------------------------- constants
 # gridfinity-freecad/gridfinity/const.py, as in the two source examples.
@@ -69,6 +88,13 @@ R_OUT = CORNER_R - CLEAR                     # 3.75
 CELL_AXIS = PITCH / 2 - CLEAR                # 20.75
 BIN_Z_CLEAR = 0.5
 PLATE_CHAMFER = 0.5
+# A bin stacked in another's lip: the lip's 45-degree band is the foot's own
+# band grown by one CLEAR, starting FOOT_BOT + FOOT_MID above the wall top, so
+# the two bands meet when the upper foot top is FOOT_H - CLEAR above the lower
+# bin's wall top. STACK_GAP more keeps them apart rather than coincident.
+STACK_SEAT = FOOT_H - CLEAR                  # 4.75
+STACK_GAP = 0.2
+MIN_GAP = 0.14                               # the closest any two bodies in the scene come
 
 FILAMENTS = {
     "off-white": "#e9e3d6",
@@ -133,10 +159,11 @@ def bin_geometry(w, l, h):
     return aw, al, wall_top, top
 
 
-def make_bin(name, w, l, h, nx=0, ny=0, tab=False, ramp=False, cell=(0, 0), turn=False):
+def make_bin(name, w, l, h, nx=0, ny=0, tab=False, ramp=False, turn=False):
     """A w x l x h Gridfinity bin with a stacking lip, nx/ny dividers, an
-    optional label tab and scoop, seated in plate cell `cell` (turned end for
-    end if `turn`, so a scoop faces the camera)."""
+    optional label tab and scoop, in cell (0, 0) with its foot top at z = 0.
+    The tab is on the +y wall and the scoop on the -y wall; `turn` swaps them
+    end for end."""
     aw, al, wall_top, top = bin_geometry(w, l, h)
     centre = (aw / 2, al / 2)
 
@@ -156,11 +183,16 @@ def make_bin(name, w, l, h, nx=0, ny=0, tab=False, ramp=False, cell=(0, 0), turn
     # vertical on the flats, 30 at the corners), from the wall
     # face out to the socket's straight band (inset 1.9, corner R2.1), so the
     # step from wall to lip is a printable chamfer instead of the flat 0.7 mm
-    # ledge gridfinity_bin.star leaves there (its note 4).
+    # ledge gridfinity_bin.star leaves there (its note 4). The chamfer is
+    # carried OVERLAP on past the band, along the same ruling, so it crosses
+    # the band at z = wall_top instead of ending in it: an edge lying in a
+    # face is a contact the exact kernel refuses, a crossing is not.
     sock_in = FOOT_TOP - 2 * CLEAR                 # 1.9 from the body face
     blend = 2.0 * (sock_in - wall)
-    cav = [(FLOOR, wall, R_OUT - wall), (wall_top - blend, wall, R_OUT - wall),
-           (wall_top, sock_in, nr - FOOT_TOP)]
+    r_wall, r_sock = R_OUT - wall, nr - FOOT_TOP
+    run = OVERLAP / blend
+    cav = [(FLOOR, wall, r_wall), (wall_top - blend, wall, r_wall),
+           (wall_top + OVERLAP, sock_in + (sock_in - wall) * run, r_sock + (r_sock - r_wall) * run)]
     cavity = loft([sketch(XY.offset(z)).polygon(rounded_polygon(aw - 2 * i, al - 2 * i, r, centre))
                    for (z, i, r) in cav], ruled=True, name=name + "_cavity")
     hollow = subtract(body, [socket, cavity], name=name + "_hollow")
@@ -170,8 +202,11 @@ def make_bin(name, w, l, h, nx=0, ny=0, tab=False, ramp=False, cell=(0, 0), turn
     inserts = []
     x_in0, x_in1 = wall, aw - wall
     y_in0, y_in1 = wall, al - wall
-    div_top = wall_top - 2.0
     tab_top = wall_top - 0.6
+    lip = 1.2      # the tab's flat front edge
+    # Dividers stop 2 mm under the wall top, or, under a label tab, run
+    # OVERLAP up into its front edge so they meet it crossing, not 0.2 mm short.
+    div_top = tab_top - lip + OVERLAP if tab else wall_top - 2.0
     for k in range(1, nx + 1):
         x = x_in0 + (x_in1 - x_in0) * k / (nx + 1) - wall / 2
         inserts.append(box(wall, (y_in1 - y_in0) + 2 * OVERLAP, div_top - FLOOR + OVERLAP,
@@ -181,7 +216,6 @@ def make_bin(name, w, l, h, nx=0, ny=0, tab=False, ramp=False, cell=(0, 0), turn
         inserts.append(box((x_in1 - x_in0) + 2 * OVERLAP, wall, div_top - FLOOR + OVERLAP,
                            at=(x_in0 - OVERLAP, y, FLOOR - OVERLAP), name="%s_divy_%d" % (name, k)))
     if tab:
-        lip = 1.2      # the tab's flat front edge
         drop = 1.25    # underside slope, rise over run: 51 degrees, steeper than 45
         depth = min(12.0, (wall_top - FLOOR - lip - 1.5) / drop)
         if depth < 5.0:
@@ -214,11 +248,9 @@ def make_bin(name, w, l, h, nx=0, ny=0, tab=False, ramp=False, cell=(0, 0), turn
     welded = union(hollow, feet, name=name + "_welded", kernel="mesh")
     footprint = slab(aw, al, R_OUT, -FOOT_H - OVERLAP, FOOT_H + top + OVERLAP, centre,
                      name=name + "_footprint")
-    b = intersect(welded, footprint, name=name, kernel="mesh")
+    b = intersect(welded, footprint, name=name + "_trimmed", kernel="mesh")
     if turn:
         b = rotate(b, 180, axis=(0, 0, 1), origin=(aw / 2, al / 2, 0), name=name + "_turned")
-    if cell != (0, 0):
-        b = translate(b, (cell[0] * PITCH, cell[1] * PITCH, 0), name=name + "_seated")
     return b
 
 
@@ -246,34 +278,105 @@ def make_plate(pw, pl):
 
 
 # ---------------------------------------------------------------- the model
-# (name, w, l, h, x dividers, y dividers, label, scoop, cell, filament, turned)
+# (name, w, l, h, x dividers, y dividers, label, scoop, cell, filament, rest)
+# rest: "seated" in its cells, "lifted" (tipped `tilt` degrees about its long
+# axis, its lowest point `lift` mm above where its feet seat), or the name of
+# the bin it stands in, seated in that bin's stacking lip.
 SCENE = [
-    ("parts_3x2", 3, 2, 6, dividers, 1, True, False, (0, 2), "teal", False),
-    ("scoop_2x1", 2, 1, 3, 0, 0, True, True, (0, 0), "off-white", True),
-    ("tray_2x1", 2, 1, 3, 3, 0, False, False, (0, 1), "grey", False),
-    ("bits_1x1_a", 1, 1, 3, 1, 0, True, False, (2, 0), "teal", False),
-    ("bits_1x1_b", 1, 1, 4, 0, 0, True, False, (3, 0), "off-white", False),
-    ("tall_1x1", 1, 1, 9, 0, 0, False, False, (3, 3), "grey", False),
-    ("drawer_2x1", 2, 1, 6, 1, 0, True, False, (3, 2), "off-white", False),
-    ("cup_1x1", 1, 1, 4, 0, 0, False, True, (4, 1), "teal", True),
+    ("parts_3x2", 3, 2, 6, dividers, 1, True, False, (0, 2), "teal", "seated"),
+    ("scoop_2x1", 2, 1, 4, 0, 0, True, True, (0, 0), "teal", "seated"),
+    ("tray_2x1", 2, 1, 3, 3, 0, False, False, (0, 1), "grey", "seated"),
+    ("bits_1x1", 1, 1, 3, 1, 0, True, False, (2, 0), "grey", "seated"),
+    ("small_1x1", 1, 1, 4, 0, 0, True, False, (2, 1), "off-white", "seated"),
+    ("sorter_2x1", 2, 1, 3, 1, 0, True, False, (3, 0), "off-white", "lifted"),
+    ("deep_2x1", 2, 1, 4, 1, 0, True, False, (3, 1), "teal", "seated"),
+    ("drawer_2x1", 2, 1, 4, 1, 0, True, False, (3, 2), "off-white", "seated"),
+    ("base_1x1", 1, 1, 5, 0, 0, False, False, (3, 3), "grey", "seated"),
+    ("cup_1x1", 1, 1, 3, 0, 0, False, True, (3, 3), "off-white", "base_1x1"),
+    ("tall_1x1", 1, 1, 8, 0, 0, False, False, (4, 3), "teal", "seated"),
 ]
+SPEC = {e[0]: e for e in SCENE}
 
-bins = {}
+
+def rest_height(rest):
+    """The foot top's height for a bin resting as `rest` says."""
+    if rest == "seated":
+        return 0.0
+    if rest == "lifted":
+        return lift
+    under = SPEC[rest]
+    return rest_height(under[10]) + bin_geometry(under[1], under[2], under[3])[2] + STACK_SEAT + STACK_GAP
+
+
+def shelf_layout(sizes, width=220.0, gap=8.0):
+    """Places (name, w, l) footprints in rows across a bed, longest first:
+    {name: (x, y)}."""
+    order = sorted(sizes, key=lambda e: (-e[2], -e[1]))
+    at, x, y, row = {}, 0.0, 0.0, 0.0
+    for (n, w, l) in order:
+        if x > 0 and x + w > width:
+            x, y, row = 0.0, y + row + gap, 0.0
+        at[n] = (x, y)
+        x, row = x + w + gap, max(row, l)
+    return at
+
+
+bins = {}       # where each bin is in the scene
+parts = {}      # each bin at the origin, as it prints
 plate = None
 if mode == "scene":
     plate = make_plate(plate_w, plate_l)
-    for (n, w, l, h, nx, ny, t, s, c, f, u) in SCENE:
-        bins[n] = pla(make_bin(n, w, l, h, nx, ny, t, s, c, u), f)
+    for (n, w, l, h, nx, ny, t, s, c, f, rest) in SCENE:
+        b = pla(make_bin(n, w, l, h, nx, ny, t, s, turn=True), f)
+        parts[n] = b
+        if rest == "lifted" and lift > 0:
+            # Tipped about the bin's long axis, near (-y) edge up, then raised
+            # so its lowest point is `lift` above the seated foot bottom.
+            al = PITCH * l - 2 * CLEAR
+            b = rotate(b, -tilt, axis=(1, 0, 0), origin=(0, al / 2, 0), name=n + "_tipped")
+            low = b.bbox()[0][2]
+            bins[n] = translate(b, (c[0] * PITCH, c[1] * PITCH, -FOOT_H + lift - low), name=n + "_placed")
+        else:
+            bins[n] = translate(b, (c[0] * PITCH, c[1] * PITCH, rest_height(rest)), name=n + "_placed")
 else:
     colour = filament
     if colour == "auto":
         colour = ["teal", "off-white", "grey"][(W - 1) % 3]
     bins["bin"] = pla(make_bin("bin", W, L, H, dividers, dividers_y, label, scoop), colour)
+    parts["bin"] = bins["bin"]
 
-for n, b in bins.items():
+# The default camera: behind the drawer and to the right (35 degrees round
+# from -y towards +x, 40 up), looking over the label tabs into the scoops and
+# at the lifted bin's feet, far enough back that a 24-degree lens takes the
+# plate.
+def default_camera(az=35.0, el=40.0, fov=24.0):
+    fw, fl = PITCH * plate_w, PITCH * plate_l
+    target = (fw / 2, fl / 2 - 6.0, 14.0)
+    reach = 1.32 * math.sqrt(fw * fw + fl * fl) / 2 / math.tan(fov / 2)
+    ce = math.cos(el)
+    eye = (target[0] + reach * ce * math.sin(az), target[1] - reach * ce * math.cos(az),
+           target[2] + reach * math.sin(el))
+    return view(eye=eye, target=target, fov=fov)
+
+
+render_defaults(camera=default_camera())
+
+# ---------------------------------------------------------------- exports
+# An STL per bin, as it prints, and one for the baseplate; and a Bambu Studio
+# project: the baseplate on its own plate, then one plate per filament with
+# that filament's bins laid out in rows, each bin an object named after it.
+for n, b in parts.items():
     export(b, "gridfinity_%s.stl" % n)
 if plate:
     export(plate, "gridfinity_baseplate_%dx%d.stl" % (plate_w, plate_l))
+    project = "gridfinity_set.3mf"
+    export(plate, project, flavor=flavor.bambu, plate="Baseplate")
+    print_layer = layer("print_layout", doc="The bins as the 3MF lays them out on their plates", visible=False)
+    for f in ["teal", "off-white", "grey"]:
+        mine = [(e[0], PITCH * e[1] - 2 * CLEAR, PITCH * e[2] - 2 * CLEAR) for e in SCENE if e[9] == f]
+        at = shelf_layout(mine)
+        laid = [translate(parts[n], (at[n][0], at[n][1], 0), name=n, layer=print_layer) for (n, _, _) in mine]
+        export(laid, project, flavor=flavor.bambu, plate="%s bins" % f.capitalize())
 
 
 # ---------------------------------------------------------------- tests
@@ -290,7 +393,7 @@ def every_bin_is_closed():
     # of their corner cones, which a default check flags; that is the
     # Gridfinity foot itself, printed unsupported by every Gridfinity bin.
     # Anything steeper than that -- a tab, a ledge -- still fails here.
-    for n, b in bins.items():
+    for n, b in parts.items():
         r = print_check(b, max_overhang=46)
         assert_true(r.solid, msg="%s is a solid (closed, oriented, no crossings)" % n)
         assert_true(r.watertight, msg="%s is watertight" % n)
@@ -301,32 +404,85 @@ def every_bin_is_closed():
 
 
 def material_used():
-    return bins["bin" if mode == "bin" else "parts_3x2"].volume()
+    return parts["bin" if mode == "bin" else "parts_3x2"].volume()
 
 
-def bins_seat_in_the_plate():
+def bins_sit_in_the_plate():
     if mode != "scene":
         return
     plo, phi = plate.bbox()
     assert_close(phi[2], -BIN_Z_CLEAR, tol=0.02, msg="plate top one bin-Z clearance below z = 0")
-    boxes = []
-    for (n, w, l, h, nx, ny, t, s, c, f, u) in SCENE:
+    cells = {}
+    for (n, w, l, h, nx, ny, t, s, c, f, rest) in SCENE:
         lo, hi = bins[n].bbox()
-        # Seated: foot bottom on the cup floor, footprint on the cell grid.
-        assert_close(lo[2], plo[2], tol=0.02, msg="%s foot bottom on the cup floor" % n)
+        # On the cell grid, inside the plate, the foot as high as it rests.
         assert_close(lo[0], c[0] * PITCH, tol=0.02, msg="%s on its cell in X" % n)
-        assert_close(lo[1], c[1] * PITCH, tol=0.02, msg="%s on its cell in Y" % n)
         assert_true(hi[0] <= phi[0] + 0.02 and hi[1] <= phi[1] + 0.02, msg="%s inside the plate" % n)
-        boxes.append((n, lo, hi))
-    # No two bins claim the same cell: their footprints leave the 0.5 mm gap.
-    for a in range(len(boxes)):
-        for b in range(a + 1, len(boxes)):
-            (na, la, ha), (nb, lb, hb) = boxes[a], boxes[b]
-            apart = ha[0] <= lb[0] or hb[0] <= la[0] or ha[1] <= lb[1] or hb[1] <= la[1]
-            assert_true(apart, msg="%s and %s overlap" % (na, nb))
+        assert_close(lo[2], plo[2] + rest_height(rest), tol=0.02, msg="%s lowest point where it rests" % n)
+        if rest != "lifted" or lift == 0:
+            assert_close(lo[1], c[1] * PITCH, tol=0.02, msg="%s on its cell in Y" % n)
+        if rest == "seated" or (rest == "lifted" and lift == 0):
+            # Seated: the foot's bands clear the cup's by CLEAR all round.
+            d = distance(bins[n], plate)
+            assert_true(not d.overlap and d.distance > 0.1, msg="%s clears its cups: %s" % (n, d))
+            assert_true(d.distance < 0.3, msg="%s sits in its cups, not above them: %s" % (n, d))
+        if rest in SPEC:
+            # Stacked: the foot rests in the lower bin's lip. The closest
+            # approach is at the corners of the two straight bands, whose
+            # arcs (R1.6 on the foot, R2.1 in the lip) leave 0.14 mm there.
+            d = distance(bins[n], bins[rest])
+            assert_true(not d.overlap and d.distance >= MIN_GAP - 2 * d.tolerance,
+                        msg="%s clears %s's lip: %s" % (n, rest, d))
+            assert_true(d.distance < 0.3, msg="%s sits in %s's lip: %s" % (n, rest, d))
+            continue
+        for i in range(w):
+            for j in range(l):
+                k = (c[0] + i, c[1] + j)
+                assert_true(k not in cells, msg="%s and %s claim cell %s" % (n, cells.get(k), k))
+                cells[k] = n
+    if (plate_w, plate_l) == (5, 4):
+        assert_true(len(cells) == 20, msg="every cell of the 5 x 4 plate is a bin's")
 
 
-test("the scene: every bin seated on its own cells", bins_seat_in_the_plate)
+def nothing_interferes():
+    if mode != "scene":
+        return
+    names = [e[0] for e in SCENE]
+    for a in range(len(names)):
+        for b in range(a + 1, len(names)):
+            d = distance(bins[names[a]], bins[names[b]])
+            assert_true(not d.overlap and d.distance >= MIN_GAP - 2 * d.tolerance,
+                        msg="%s and %s: %s" % (names[a], names[b], d))
+
+
+def lifted_bin_shows_its_feet():
+    if mode != "scene" or lift == 0:
+        return
+    d = distance(bins["sorter_2x1"], plate)
+    assert_true(not d.overlap and d.distance >= lift - FOOT_H, msg="the 2x1 hangs clear of its cups: %s" % d)
+    lo, hi = bins["sorter_2x1"].bbox()
+    assert_true(lo[0] >= 3 * PITCH - 0.02 and hi[0] <= 5 * PITCH and lo[1] >= -0.02,
+                msg="the 2x1 stays over its own cells, inside the plate's front edge")
+
+
+def the_scene_has_every_feature():
+    if mode != "scene":
+        return
+    sizes = [(e[1], e[2]) for e in SCENE]
+    for s in [(1, 1), (2, 1), (3, 2)]:
+        assert_true(s in sizes, msg="a %dx%d bin" % s)
+    assert_true(len([e for e in SCENE if e[4] + e[5] > 0]) >= 3, msg="bins with dividers")
+    assert_true(len([e for e in SCENE if e[6]]) >= 3, msg="bins with label tabs")
+    assert_true(len([e for e in SCENE if e[7]]) >= 2, msg="bins with scoops")
+    assert_true(len({e[9]: 1 for e in SCENE}) == 3, msg="three filaments")
+    assert_true(len([e for e in SCENE if e[10] in SPEC]) >= 1, msg="a bin stacked in a lip")
+
+
+test("the scene: every bin on its own cells, seated with clearance", bins_sit_in_the_plate)
+test("the scene: seated with the lifted bin put back", bins_sit_in_the_plate, sweep={"lift": [0.0]})
+test("the scene: no two bins touch", nothing_interferes)
+test("the scene: the lifted 2x1 hangs over its cups", lifted_bin_shows_its_feet)
+test("the scene: every size, dividers, tabs, scoops, a stack", the_scene_has_every_feature)
 test("the scene: every bin closed, one piece, walls of two perimeters", every_bin_is_closed)
 test("one script, every bin: sizes x dividers", every_bin_is_closed,
      sweep={"mode": ["bin"], "width": [1, 2, 3], "length": [1, 2], "dividers": [0, 1, 3]})

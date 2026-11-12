@@ -656,14 +656,30 @@ pub fn scene_from_context(ctx: &mut Context, body_ids: &[String], highlight: &[E
         .filter(|b| cadpole_core::layers::effective(&b.layer, &ctx.layers, &layers).0)
         .map(|b| b.id)
         .collect();
+    scene_items(ctx, &ids, highlight, &layers, true)
+}
+
+/// Tessellate exactly the bodies `body_ids` into a scene, whatever the
+/// viewer would show: a body consumed by a later feature, or on a display
+/// layer that is hidden or ghosted, is drawn as it is, opaque. This is the
+/// scene of something written out -- an export's plate -- whose bodies a
+/// script may well keep out of its own view.
+pub fn scene_of_bodies(ctx: &mut Context, body_ids: &[String]) -> RenderScene {
+    let ids: Vec<_> = ctx.bodies.iter().filter(|b| body_ids.contains(&b.id_string())).map(|b| b.id).collect();
+    scene_items(ctx, &ids, &[], &[], false)
+}
+
+/// The scene of the bodies `ids`, with display-layer opacity applied when
+/// `by_layer` (the viewer's scene) and not otherwise (an export's).
+fn scene_items(ctx: &mut Context, ids: &[cadpole_core::BodyId], highlight: &[EntityRef], layers: &[LayerOverride], by_layer: bool) -> RenderScene {
     let paints = cadpole_core::paint::paints(ctx);
     let mut items = Vec::with_capacity(ids.len());
-    for id in &ids {
+    for id in ids {
         let (mut material, feature, id_string) = {
             let b = ctx.body(*id).unwrap();
-            let (_, layer_opacity) = cadpole_core::layers::effective(&b.layer, &ctx.layers, &layers);
+            let (_, layer_opacity) = cadpole_core::layers::effective(&b.layer, &ctx.layers, layers);
             let mut material = b.material.clone();
-            if layer_opacity < 0.999 {
+            if by_layer && layer_opacity < 0.999 {
                 material.opacity = (material.opacity * layer_opacity).clamp(0.0, 1.0);
             }
             (material, b.feature.0.clone(), b.id_string())
@@ -3381,6 +3397,27 @@ export(plan, "plan.dxf")
         let a_id = ctx.body(a).unwrap().id_string();
         let img = print::plate_thumbnail_image(&mut ctx, &[a_id]);
         assert_eq!(img.rgba[((256 * img.width + 256) * 4 + 3) as usize], 255, "the hidden layer's body is in the thumbnail");
+    }
+
+    /// A plate draws the bodies the export writes even when the script keeps
+    /// them out of its own view: on a hidden display layer, or consumed by
+    /// a later feature. Both must still show in the plate's thumbnail.
+    #[test]
+    fn a_plate_thumbnail_draws_bodies_the_view_hides() {
+        let src = "l = layer(\"print\", visible=False)\n\
+                   a = box(20, 20, 10, name=\"a\", layer=l)\n\
+                   b = box(20, 20, 10, name=\"b\")\n\
+                   c = translate(b, (40, 0, 0), name=\"c\")\n";
+        let (mut ctx, _) = evaluate_document_with(&doc(src), &HashMap::new(), 0.0, 0.0);
+        let id = |name: &str| ctx.bodies.iter().find(|x| x.name == name).unwrap().id_string();
+        let (a, b) = (id("a"), id("b"));
+        assert!(crate::scene_from_context(&mut ctx, &[a.clone()], &[], &[]).items.is_empty(), "the view leaves a out");
+        assert!(crate::scene_from_context(&mut ctx, &[b.clone()], &[], &[]).items.is_empty(), "and b, consumed by c");
+        for body in [a, b] {
+            let img = print::plate_thumbnail_image(&mut ctx, &[body.clone()]);
+            let alpha = |x: u32, y: u32| img.rgba[((y * img.width + x) * 4 + 3) as usize];
+            assert_eq!(alpha(256, 256), 255, "{body} is drawn on its plate");
+        }
     }
 
     #[test]
