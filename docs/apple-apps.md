@@ -27,6 +27,7 @@ src/apple/
   CadpoleLocalEngine/  LocalEngine: the Rust engine through the C ABI (macOS only)
   CadpoleUI/           the SwiftUI views and the document model, shared by both apps
   CadpoleMac/          the macOS app
+    QuickLook/         its Quick Look preview and thumbnail for .3mf projects
   CadpoleiOS/          the iOS app
   CadpoleKitTests/     tests for CadpoleKit
 ```
@@ -181,6 +182,40 @@ Other behaviour to know:
 
 The macOS app runs in the App Sandbox with the network-client and
 user-selected-file entitlements (`CadpoleMac/CadpoleMac.entitlements`).
+
+### Quick Look for 3MF projects
+
+The Mac app carries a Quick Look preview and a thumbnail extension for
+`.3mf` files (type `org.3mf.3mf`, which the app imports; the system declares
+none), in `src/apple/CadpoleMac/QuickLook`:
+
+- **Preview** (space bar): the project's plates on the printer's bed, in an
+  orbitable SceneKit view. The bed is the project's `printable_area` (a
+  256 mm square when there is none) with a 10 mm and 50 mm grid; parts sit
+  where they are on their plate. A sidebar lists the plates when there is
+  more than one; arrow keys move between them. It opens on the first plate
+  with objects on it; empty plates come last. Each part is drawn in its
+  filament's colour, and painted faces in the colour they were painted.
+  Drag to orbit, pinch or scroll to zoom, double-click to reframe; the
+  rates live in `CameraFeel`.
+- **Thumbnail**: a render of that first plate.
+
+`CadpolePlates` reads the package: the ZIP's central directory, the plate
+settings, and then only the mesh parts the shown plate uses, with a
+byte-level scanner; it builds one flat vertex buffer per filament, with
+normals smoothed across edges under 30 degrees. The other plates are built
+in the background afterwards.
+
+```
+bazel test //src/apple/CadpoleMac/QuickLook:PlatesTests
+bazel run  //src/apple/CadpoleMac/QuickLook:plate_viewer -- stats file.3mf     # triangles and timings per plate
+bazel run  //src/apple/CadpoleMac/QuickLook:plate_viewer -- window file.3mf    # the preview's view in a window
+```
+
+After installing the app, `pluginkit -m -v -i
+io.github.mikelikespie.cadpole.mac.plate-preview` shows whether the system
+has registered the extension. When another installed app also previews
+`.3mf`, choose one in System Settings, Login Items & Extensions, Quick Look.
 
 ## Build and test
 

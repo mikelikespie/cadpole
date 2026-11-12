@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Cadpole Plates Preview</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Apache-2.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<key>QLIsDataBasedPreview</key>
+			<false/>
+			<key>QLSupportedContentTypes</key>
+			<array>
+				<string>org.3mf.3mf</string>
+			</array>
+			<key>QLSupportsSearchableItems</key>
+			<false/>
+		</dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.quicklook.preview</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>CadpolePlatePreviewController</string>
+	</dict>
+</dict>
+</plist>

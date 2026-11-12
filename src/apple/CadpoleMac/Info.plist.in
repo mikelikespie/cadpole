@@ -82,6 +82,31 @@
 				</array>
 			</dict>
 		</dict>
+		<!-- 3MF packages, for the Quick Look plate preview and thumbnail
+		     (QuickLook/). The system declares no type for .3mf; without one
+		     the extensions' QLSupportedContentTypes match nothing. -->
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.3mf.3mf</string>
+			<key>UTTypeDescription</key>
+			<string>3D Manufacturing Format</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.3d-content</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>3mf</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>model/3mf</string>
+				</array>
+			</dict>
+		</dict>
 	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>

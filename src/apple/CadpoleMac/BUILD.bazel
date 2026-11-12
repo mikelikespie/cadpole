@@ -37,6 +37,11 @@ macos_application(
     bundle_id = "io.github.mikelikespie.cadpole.mac",
     bundle_name = "Cadpole",
     entitlements = "CadpoleMac.entitlements",
+    # Quick Look for .3mf slicer projects: a page per build plate.
+    extensions = [
+        "//src/apple/CadpoleMac/QuickLook:PlatePreview",
+        "//src/apple/CadpoleMac/QuickLook:PlateThumbnail",
+    ],
     infoplists = [":info_plist"],
     minimum_os_version = "26.0",
     version = "//src/apple:CadpoleVersion",

@@ -1,0 +1,123 @@
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_command_line_application", "macos_extension")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+
+package(default_visibility = ["//src/apple/CadpoleMac:__subpackages__"])
+
+# Quick Look for slicer projects (.3mf from Bambu Studio, Orca Slicer or
+# `cadpole export` for a Bambu printer), carried by the Mac app:
+#
+#   - PlatePreview: the space-bar preview. Each plate's meshes on the
+#     printer's bed in an orbitable SceneKit view, with a sidebar of plates;
+#     it opens on the first plate with objects on it, empty plates last.
+#   - PlateThumbnail: the Finder icon, a render of that plate.
+#
+#   bazel test //src/apple/CadpoleMac/QuickLook:PlatesTests
+#   bazel run  //src/apple/CadpoleMac/QuickLook:plate_viewer -- stats in.3mf
+#   bazel run  //src/apple/CadpoleMac/QuickLook:plate_viewer -- window in.3mf
+#
+# The extension and tool targets are `manual`: like the app itself they need
+# a macOS execution platform even to be analysed, so a wildcard build on
+# Linux must not reach them. The app depends on the extensions by name.
+
+DARWIN_COPTS = select({
+    "@platforms//os:macos": [
+        "-target",
+        "arm64-apple-macos26.0",
+    ],
+    "//conditions:default": [],
+})
+
+MACOS = ["@platforms//os:macos"]
+
+# The reader: the ZIP, the plate settings, the meshes, and each plate's
+# vertex buffers. Foundation, Compression and simd only. Optimised: it
+# parses tens of MB of XML, ten times slower unoptimised.
+swift_library(
+    name = "CadpolePlates",
+    srcs = glob(["Plates/*.swift"]),
+    copts = DARWIN_COPTS + ["-O"],
+    module_name = "CadpolePlates",
+    target_compatible_with = MACOS,
+)
+
+# The view: the bed, the camera, the sidebar (AppKit and SceneKit).
+swift_library(
+    name = "CadpolePlateView",
+    srcs = glob(["View/*.swift"]),
+    copts = DARWIN_COPTS,
+    module_name = "CadpolePlateView",
+    target_compatible_with = MACOS,
+    deps = [":CadpolePlates"],
+)
+
+swift_library(
+    name = "PreviewLib",
+    srcs = glob(["Preview/*.swift"]),
+    copts = DARWIN_COPTS,
+    module_name = "CadpolePlatePreview",
+    target_compatible_with = MACOS,
+    deps = [":CadpolePlateView"],
+)
+
+swift_library(
+    name = "ThumbnailLib",
+    srcs = glob(["Thumbnail/*.swift"]),
+    copts = DARWIN_COPTS,
+    module_name = "CadpolePlateThumbnail",
+    target_compatible_with = MACOS,
+    deps = [":CadpolePlateView"],
+)
+
+# Bundle ids sit under the app's, as the system requires of embedded
+# extensions.
+macos_extension(
+    name = "PlatePreview",
+    bundle_id = "io.github.mikelikespie.cadpole.mac.plate-preview",
+    bundle_name = "CadpolePlatePreview",
+    entitlements = "Preview/Preview.entitlements",
+    infoplists = ["Preview/Info.plist"],
+    minimum_os_version = "26.0",
+    tags = ["manual"],
+    version = "//src/apple:CadpoleVersion",
+    deps = [":PreviewLib"],
+)
+
+macos_extension(
+    name = "PlateThumbnail",
+    bundle_id = "io.github.mikelikespie.cadpole.mac.plate-thumbnail",
+    bundle_name = "CadpolePlateThumbnail",
+    entitlements = "Thumbnail/Thumbnail.entitlements",
+    infoplists = ["Thumbnail/Info.plist"],
+    minimum_os_version = "26.0",
+    tags = ["manual"],
+    version = "//src/apple:CadpoleVersion",
+    deps = [":ThumbnailLib"],
+)
+
+swift_library(
+    name = "ToolLib",
+    srcs = ["Tool/main.swift"],
+    copts = DARWIN_COPTS,
+    module_name = "PlateViewerTool",
+    target_compatible_with = MACOS,
+    deps = [
+        ":CadpolePlateView",
+        ":CadpolePlates",
+    ],
+)
+
+# The preview's loader and view outside Quick Look: timings, frame times.
+macos_command_line_application(
+    name = "plate_viewer",
+    minimum_os_version = "26.0",
+    tags = ["manual"],
+    deps = [":ToolLib"],
+)
+
+swift_test(
+    name = "PlatesTests",
+    srcs = glob(["Tests/*.swift"]),
+    copts = DARWIN_COPTS,
+    target_compatible_with = MACOS,
+    deps = [":CadpolePlates"],
+)
