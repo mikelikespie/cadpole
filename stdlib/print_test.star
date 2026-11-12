@@ -6,7 +6,7 @@
 # Rust tests in `src/rust/cadpole-script/src/stdlib.rs`, because a Starlark
 # script cannot catch `fail()`.
 
-load("@cadpole/print.star", "PEG", "drop_to_bed", "is_box", "peg_sites", "pegs", "story_bands")
+load("@cadpole/print.star", "PEG", "drop_to_bed", "is_box", "peg_sites", "pegs", "story_bands", "teardrop")
 
 # ----------------------------------------------------------------- helpers
 
@@ -232,6 +232,64 @@ def the_helpers():
     lo, hi = d.bbox()
     assert_close(lo, (4, 5, 0), tol = 1e-9)
 
+def block_with_hole(tag, d, tear):
+    """A 30 x 12 x 24 block on the bed with a horizontal hole `d` across,
+    along y, 12 up: round, or teardropped."""
+    blk = box(30, 12, 24, at = (-15, -6, 0), name = tag + "_blk")
+    if tear:
+        tool = teardrop(d, 16, at = (0, 0, 12), name = tag + "_tool")
+    else:
+        tool = rotate(cylinder(d / 2.0, 16, at = (0, 0, -8), name = tag + "_cyl"), 90, axis = (1, 0, 0), name = tag + "_tool0")
+        tool = translate(tool, (0, 0, 12), name = tag + "_tool")
+    return subtract(blk, tool, name = tag)
+
+def a_teardrop_hole_prints_without_support_and_a_round_one_does_not():
+    round_ = block_with_hole("sf_round", 10, False)
+    r = print_check(round_)
+    assert_true(not r.support_free, msg = "a round 10 mm hole lying down needs its top supported")
+    assert_eq(r.wide_holes, 1)
+    assert_true(len([s for s in r.support if s.startswith("[horizontal_hole]")]) == 1, msg = str(r.support))
+    # With a printer that bridges wider holes, it passes.
+    assert_support_free(round_, max_horizontal_hole = 12)
+    tear = block_with_hole("sf_tear", 10, True)
+    assert_support_free(tear)
+    assert_true(print_check(tear).support_free)
+    # The teardrop is the full circle below its peak.
+    lo, hi = teardrop(10, 16, name = "sf_probe").bbox()
+    assert_close(lo[2], -5, tol = 1e-6)
+    assert_close(hi[2], 5 * math.sqrt(2.0), tol = 1e-6)
+    # A small round hole is bridged as it is.
+    assert_support_free(block_with_hole("sf_small", 5, False))
+
+def a_hanging_finger_is_an_island_and_a_ledge_within_reach_is_not():
+    post = box(4, 4, 30, name = "sf_post")
+    arm = box(14, 4, 4, at = (4, 0, 26), name = "sf_arm")
+    finger = box(2, 4, 8, at = (14, 0, 18), name = "sf_finger")
+    hook = union(post, arm, finger, name = "sf_hook")
+    r = print_check(hook)
+    assert_eq(r.islands, 1)
+    assert_close(r.deepest_island, 8, tol = 1e-6)
+    assert_true(len([s for s in r.support if s.startswith("[island]")]) == 1, msg = str(r.support))
+    # A lip sticking out 2 mm over the wall under it is a ledge within reach.
+    shelf = union(box(10, 10, 20, name = "sf_wall"), box(12, 10, 2, at = (0, 0, 20), name = "sf_lip"), name = "sf_shelf")
+    assert_support_free(shelf)
+    assert_eq(print_check(shelf).islands, 0)
+    long = union(box(10, 10, 20, name = "sf_wall2"), box(16, 10, 2, at = (0, 0, 20), name = "sf_lip2"), name = "sf_long")
+    lr = print_check(long)
+    assert_true(not lr.support_free)
+    assert_close(lr.longest_cantilever, 6, tol = 1e-6)
+    assert_support_free(long, max_cantilever = 6.5)
+
+def a_list_is_one_print_and_a_body_in_the_air_needs_support():
+    base = box(20, 20, 4, name = "sf_base")
+    lid = box(20, 20, 2, at = (0, 0, 9), name = "sf_lid")
+    assert_support_free([base])
+    r = print_check([base, lid])
+    assert_true(not r[1].support_free or not r[0].support_free, msg = "the lid floats 5 mm over the base")
+
+test("assert_support_free: a 10 mm teardrop hole passes, a round one fails and passes with max_horizontal_hole", a_teardrop_hole_prints_without_support_and_a_round_one_does_not)
+test("assert_support_free: a hanging finger is an island; a ledge within max_cantilever passes, a longer one fails", a_hanging_finger_is_an_island_and_a_ledge_within_reach_is_not)
+test("print_check on a list: a body in the air is a support finding", a_list_is_one_print_and_a_body_in_the_air_needs_support)
 test("three pegs register two stories: solids, the pegs' and sockets' volumes, the pegs' height", three_pegs_register_two_stories)
 test("peg_sites finds places on the walls, spread over the plan, the same every time", the_sites_are_on_walls_spread_out_and_deterministic)
 test("pegs go where at= says; round pins", pegs_go_where_they_are_told_and_round_pins_work)

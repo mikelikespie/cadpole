@@ -861,6 +861,38 @@ enum Cmd {
         /// downward face as an overhang).
         #[arg(long, value_name = "MM", allow_hyphen_values = true)]
         max_bridge: Option<f64>,
+        /// The largest connected overhang patch in mm² that prints without
+        /// support (default 4; 0 counts every patch).
+        #[arg(long, value_name = "MM2")]
+        max_overhang_area: Option<f64>,
+        /// How far a near-level ledge held up on one side may stick out, in
+        /// mm (default 3; 0 judges every ledge).
+        #[arg(long, value_name = "MM")]
+        max_cantilever: Option<f64>,
+        /// The widest round horizontal hole in mm whose top is bridged; a
+        /// wider one wants a teardrop top (default 7; 0 flags every one).
+        #[arg(long, value_name = "MM")]
+        max_horizontal_hole: Option<f64>,
+        /// How deep in mm a region starting in mid-air may hang before it
+        /// is an island (default one layer; 0 flags every one).
+        #[arg(long, value_name = "MM")]
+        min_island: Option<f64>,
+        /// Height over width past which a feature under --slender-width is
+        /// a warning (default 8; 0 turns it off).
+        #[arg(long, value_name = "RATIO")]
+        max_slenderness: Option<f64>,
+        /// What counts as slender, in mm across (default 3).
+        #[arg(long, value_name = "MM")]
+        slender_width: Option<f64>,
+        /// Height over the square root of the first-layer area past which
+        /// the part may tip or lift, a warning (default 6; 0 turns it off).
+        #[arg(long, value_name = "RATIO")]
+        max_height_to_base: Option<f64>,
+        /// Judge only whether it prints without support: report the
+        /// overhang, island, cantilever, horizontal_hole and bridge
+        /// findings, and exit 1 when there is any.
+        #[arg(long)]
+        support_free: bool,
         /// Check only the bodies on this display layer, by the name
         /// `layer(...)` declared (`other` is the bodies on no layer);
         /// repeatable. A hidden layer named here is checked. Adds to --body.
@@ -3296,11 +3328,27 @@ fn run() -> anyhow::Result<ExitCode> {
             bed_shape,
             orient,
             max_bridge,
+            max_overhang_area,
+            max_cantilever,
+            max_horizontal_hole,
+            min_island,
+            max_slenderness,
+            slender_width,
+            max_height_to_base,
+            support_free,
             layers,
             bodies,
             include_hidden,
             json,
         } => {
+            // 0 in the request is "the profile's"; a flag's own 0 is the
+            // strictest rule (or, for a ratio, the check off), which the
+            // request spells as a negative number.
+            let rule = |v: Option<f64>| match v {
+                Some(m) if m <= 0.0 => -1.0,
+                Some(m) => m,
+                None => 0.0,
+            };
             let bed = bed_arg(bed.as_deref())?;
             let bed_shape = bed_shape_arg(bed_shape)?;
             let host = cadpole_ops::DocumentHost(document(&eval)?);
@@ -3329,6 +3377,14 @@ fn run() -> anyhow::Result<ExitCode> {
                         Some(m) => m,
                         None => 0.0,
                     },
+                    max_overhang_area: rule(max_overhang_area),
+                    max_cantilever: rule(max_cantilever),
+                    max_horizontal_hole: rule(max_horizontal_hole),
+                    min_island: rule(min_island),
+                    max_slenderness: rule(max_slenderness),
+                    slender_width: slender_width.unwrap_or(0.0),
+                    max_height_to_base: rule(max_height_to_base),
+                    support_free,
                     ..Default::default()
                 },
                 &host,
@@ -3362,7 +3418,7 @@ fn run() -> anyhow::Result<ExitCode> {
                     println!("  {:<7} [{}] {}{}", i.severity, i.check, i.message, at);
                 }
                 if b.issues.is_empty() {
-                    println!("  nothing to report");
+                    println!("  {}", if support_free { "prints without support" } else { "nothing to report" });
                 }
             }
             Ok(if resp.ok { ExitCode::SUCCESS } else { ExitCode::from(1) })

@@ -1,6 +1,6 @@
 """@cadpole/print.star -- printing a model in pieces: registration pegs, story bands, the bed.
 
-    load("@cadpole/print.star", "pegs", "peg_sites", "story_bands", "drop_to_bed", "is_box", "PEG")
+    load("@cadpole/print.star", "pegs", "peg_sites", "story_bands", "drop_to_bed", "is_box", "teardrop", "PEG")
 
 A building printed one story at a time is a stack of pieces that has to go
 back together where it came apart. This module makes the pieces and the
@@ -17,7 +17,11 @@ features that line them up:
 * `story_bands(parts, levels, ...)` cuts a model into horizontal bands,
   joins each into one printable solid (`union(weld=)`), pegs every
   band to the next and drops each onto the bed;
-* `drop_to_bed(body)` moves a body so its lowest point is z = 0.
+* `drop_to_bed(body)` moves a body so its lowest point is z = 0;
+* `teardrop(d, length, ...)` is the tool that cuts a horizontal hole with
+  a 45 degree peaked top, the shape that prints without support where a
+  round bore wider than about 7 mm sags (`print_check`'s
+  `horizontal_hole`, `assert_support_free`).
 
 Every length is in the model's units at the moment of the call -- the
 peg sizes are millimetres because pegs are made after a model drawn in feet
@@ -67,6 +71,34 @@ def drop_to_bed(body, name = None):
     a print starts. Returns the moved body; the original is consumed."""
     lo, _ = body.bbox()
     return translate(body, (0, 0, -lo[2]), name = name)
+
+def teardrop(d, length, at = (0, 0, 0), axis = "y", segments = 48, name = "teardrop"):
+    """The tool for a horizontal hole `d` across that prints without
+    support: a bore along `axis` ("x" or "y"), `length` long and centred on
+    `at`, whose top is two 45 degree flats meeting `d / sqrt(2)` above the
+    centre instead of a round ceiling. Subtract it from the part.
+
+    A slicer bridges the round top of a horizontal bore up to about 7 mm
+    across; past that the top sags into the hole. Two 45 degree slopes are
+    self-supporting at any size, and the bore below them is the full circle,
+    so a pin or a screw still bears on it. The profile is a polygon of
+    `segments` steps round the circle, every vertex on it, so the hole is a
+    chord error under `d` and never over."""
+    if not d > 0 or not length > 0:
+        fail("teardrop: d and length must be positive, got %s and %s" % (d, length))
+    if axis not in ("x", "y"):
+        fail("teardrop: axis is \"x\" or \"y\" (a horizontal hole), got %s" % repr(axis))
+    r = d / 2.0
+    n = max(8, segments)
+    pts = [(r * math.cos(135.0 + 270.0 * i / n), r * math.sin(135.0 + 270.0 * i / n)) for i in range(n + 1)]
+    pts.append((0.0, r * math.sqrt(2.0)))
+    # On XZ: sketch x is world x, sketch y world z, extruded along -y.
+    tool = extrude(sketch(XZ, name = name + "_profile").polygon(pts), length, name = name + "_bore")
+    lo, hi = tool.bbox()
+    tool = translate(tool, (at[0], at[1] - (lo[1] + hi[1]) / 2.0, at[2]), name = name if axis == "y" else name + "_y")
+    if axis == "x":
+        tool = rotate(tool, 90, axis = (0, 0, 1), origin = at, name = name)
+    return tool
 
 def _opts(overrides):
     o = dict(PEG)

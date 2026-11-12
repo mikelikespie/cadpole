@@ -400,6 +400,63 @@ fn bridge_limit(max_bridge: Option<UnpackFloat>, what: &str) -> anyhow::Result<f
     }
 }
 
+/// The support rules a call may set (`cadpole_print::SupportRules`), each
+/// `None` when it was not passed.
+#[derive(Default)]
+struct SupportArgs {
+    max_overhang_area: Option<f64>,
+    max_cantilever: Option<f64>,
+    max_horizontal_hole: Option<f64>,
+    min_island: Option<f64>,
+    max_slenderness: Option<f64>,
+    slender_width: Option<f64>,
+    max_height_to_base: Option<f64>,
+}
+
+impl SupportArgs {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        what: &str,
+        max_overhang_area: Option<UnpackFloat>,
+        max_cantilever: Option<UnpackFloat>,
+        max_horizontal_hole: Option<UnpackFloat>,
+        min_island: Option<UnpackFloat>,
+        max_slenderness: Option<UnpackFloat>,
+        slender_width: Option<UnpackFloat>,
+        max_height_to_base: Option<UnpackFloat>,
+    ) -> anyhow::Result<SupportArgs> {
+        let n = |v: Option<UnpackFloat>, k: &str| opt_num(&v, &format!("{what}: {k}"));
+        Ok(SupportArgs {
+            max_overhang_area: n(max_overhang_area, "max_overhang_area")?,
+            max_cantilever: n(max_cantilever, "max_cantilever")?,
+            max_horizontal_hole: n(max_horizontal_hole, "max_horizontal_hole")?,
+            min_island: n(min_island, "min_island")?,
+            max_slenderness: n(max_slenderness, "max_slenderness")?,
+            slender_width: n(slender_width, "slender_width")?,
+            max_height_to_base: n(max_height_to_base, "max_height_to_base")?,
+        })
+    }
+
+    /// Layer what was passed over `p`'s rules, and check the result.
+    fn apply(&self, what: &str, p: &mut cadpole_print::Profile) -> anyhow::Result<()> {
+        let r = &mut p.support;
+        for (v, slot) in [
+            (self.max_overhang_area, &mut r.max_overhang_area),
+            (self.max_cantilever, &mut r.max_cantilever),
+            (self.max_horizontal_hole, &mut r.max_horizontal_hole),
+            (self.min_island, &mut r.min_island),
+            (self.max_slenderness, &mut r.max_slenderness),
+            (self.slender_width, &mut r.slender_width),
+            (self.max_height_to_base, &mut r.max_height_to_base),
+        ] {
+            if let Some(v) = v {
+                *slot = v;
+            }
+        }
+        p.validate().map_err(|e| anyhow::anyhow!("{what}: {e}"))
+    }
+}
+
 fn resolve_profile(
     what: &str,
     printer: Option<Value<'_>>,
@@ -451,6 +508,8 @@ fn resolve_profile(
     }
     if let Some(n) = layer_height {
         p.layer_height = n;
+        // A tip within one layer is not an island, whatever the layer.
+        p.support.min_island = n;
     }
     if let Some(m) = material {
         p.material = cadpole_print::Material::parse(m).ok_or_else(|| {
@@ -1438,13 +1497,33 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
     /// and `bridges`; a span longer than `max_bridge` stays an overhang, and
     /// the warning says it is a span that is too long.
     ///
+    /// **Support rules** beyond the angle, each a keyword, a printer
+    /// field and a `cadpole check` flag: `max_overhang_area` (default 4 mm²)
+    /// is the largest *connected* overhang patch that prints anyway, and the
+    /// warning names the largest; `max_cantilever` (3 mm) is how far a
+    /// near-level ledge held up on one side may stick out (`cantilever`
+    /// past it); `min_island` (one layer) is how deep a region that starts
+    /// in mid-air -- a downward tip, a hanging finger, a ball's underside --
+    /// may hang before it is an `island`; `max_horizontal_hole` (7 mm) is
+    /// the widest round horizontal hole whose top a slicer bridges
+    /// (`horizontal_hole` past it, with the teardrop fix);
+    /// `max_slenderness` (8) and `slender_width` (3 mm) make a `slender`
+    /// warning of a thin feature too tall for its width; and
+    /// `max_height_to_base` (6) makes a `bed_contact` warning of a first
+    /// layer small for the part's height. `report.support` lists the
+    /// findings that need support and `report.support_free` is true when
+    /// there are none; `assert_support_free(body)` insists on it.
+    ///
     /// **When the part does not fit the bed** the diagnostic says where to cut
     /// it, and `report.split_advice` is the `split(...)` call that does it.
     ///
     /// The returned `PrintReport` has `ok`, `solid`, `watertight`, `min_wall`,
     /// `thin_area`, `unsupported_area`, `max_overhang`, `bed_contact_area`,
-    /// `bridge_area`, `longest_bridge`, `bridges`,
-    /// `fits_bed`, `bed_excess`, `size`, `holes`, `self_intersections`,
+    /// `bridge_area`, `longest_bridge`, `bridges`, `support_area`,
+    /// `largest_overhang`, `ledge_area`, `longest_cantilever`, `islands`,
+    /// `deepest_island`, `horizontal_holes`, `wide_holes`, `slender`,
+    /// `slenderness`, `first_layer_area`, `height_to_base`, `support`,
+    /// `support_free`, `fits_bed`, `bed_excess`, `size`, `holes`, `self_intersections`,
     /// `internal_faces`, `components`, `genus`, `errors`, `warnings`,
     /// `summary`, `profile`, `mass`, `layers`, `split_advice`, `split_axis`,
     /// `split_pieces` and `split_at`. `solid` is the verdict of the checks
@@ -1466,10 +1545,27 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] min_gap: Option<UnpackFloat>,
         #[starlark(require = named, default = false)] orient: bool,
         #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
+        #[starlark(require = named)] max_overhang_area: Option<UnpackFloat>,
+        #[starlark(require = named)] max_cantilever: Option<UnpackFloat>,
+        #[starlark(require = named)] max_horizontal_hole: Option<UnpackFloat>,
+        #[starlark(require = named)] min_island: Option<UnpackFloat>,
+        #[starlark(require = named)] max_slenderness: Option<UnpackFloat>,
+        #[starlark(require = named)] slender_width: Option<UnpackFloat>,
+        #[starlark(require = named)] max_height_to_base: Option<UnpackFloat>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<Value<'v>> {
         let max_bridge = bridge_limit(max_bridge, "print_check")?;
-        let profile = resolve_profile(
+        let rules = SupportArgs::new(
+            "print_check",
+            max_overhang_area,
+            max_cantilever,
+            max_horizontal_hole,
+            min_island,
+            max_slenderness,
+            slender_width,
+            max_height_to_base,
+        )?;
+        let mut profile = resolve_profile(
             "print_check",
             printer,
             min_wall,
@@ -1483,6 +1579,7 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             build_direction.as_ref(),
             min_gap,
         )?;
+        rules.apply("print_check", &mut profile)?;
         let heap = eval.heap();
         // One report for one body -- a Body, or an Instance of one;
         // a list of reports for a list, an Assembly, or a many-body Instance.
@@ -1504,18 +1601,19 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         let mut reports = Vec::with_capacity(bodies.len());
         for b in &bodies {
             let name = ctx.body(b.body_id())?.name.clone();
-            let mesh = ctx.body_mesh(b.body_id())?.0.clone();
-            let mut report = cadpole_print::check_with(&mesh, &profile, max_bridge);
+            let (mesh, topo) = ctx.body_mesh(b.body_id())?.clone();
+            let mut report = cadpole_print::check_named(&mesh, Some(&topo), &profile, max_bridge);
             if let Some(issue) = chord_issue_for(&mut ctx, b.body_id(), profile.chord_gap_fraction)? {
                 report.push_issue(issue);
             }
             let orientation = orient.then(|| cadpole_print::orient::orient(&mesh, &profile));
             // Every finding is a warning: a print check must never turn a
             // working script into a failed evaluation.
-            // What was bridged is information, not a finding.
+            // What was bridged, and overhang the allowances cover, is
+            // information, not a finding.
             for issue in &report.issues {
                 let text = format!("print_check({name}): [{}] {}{}", issue.check.as_str(), issue.message, where_(issue));
-                let d = if issue.check == cadpole_print::Check::Bridged {
+                let d = if issue.severity == cadpole_print::Severity::Info {
                     cadpole_core::context::Diagnostic::info(text)
                 } else {
                     cadpole_core::context::Diagnostic::warning(text)
@@ -1546,6 +1644,9 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             .with_span(span.clone());
             ctx.diagnostics.push(d);
             let r = &mut reports[f.body];
+            if issue.check.is_support() {
+                r.support.push(format!("[{}] {}", issue.check.as_str(), issue.message));
+            }
             if issue.severity == cadpole_print::Severity::Error {
                 r.errors.push(issue.message.clone());
                 r.ok = false;
@@ -2589,10 +2690,27 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] min_gap: Option<UnpackFloat>,
         #[starlark(require = named)] msg: Option<&str>,
         #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
+        #[starlark(require = named)] max_overhang_area: Option<UnpackFloat>,
+        #[starlark(require = named)] max_cantilever: Option<UnpackFloat>,
+        #[starlark(require = named)] max_horizontal_hole: Option<UnpackFloat>,
+        #[starlark(require = named)] min_island: Option<UnpackFloat>,
+        #[starlark(require = named)] max_slenderness: Option<UnpackFloat>,
+        #[starlark(require = named)] slender_width: Option<UnpackFloat>,
+        #[starlark(require = named)] max_height_to_base: Option<UnpackFloat>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<NoneType> {
         let max_bridge = bridge_limit(max_bridge, "assert_printable")?;
-        let profile = resolve_profile(
+        let rules = SupportArgs::new(
+            "assert_printable",
+            max_overhang_area,
+            max_cantilever,
+            max_horizontal_hole,
+            min_island,
+            max_slenderness,
+            slender_width,
+            max_height_to_base,
+        )?;
+        let mut profile = resolve_profile(
             "assert_printable",
             printer,
             min_wall,
@@ -2606,6 +2724,7 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             None,
             min_gap,
         )?;
+        rules.apply("assert_printable", &mut profile)?;
         let bodies = collect_bodies(&[body], eval.heap(), "assert_printable")?;
         let single = bodies.len() == 1 && body.get_type() != "list" && body.get_type() != "tuple"
             && body.downcast_ref::<crate::assembly::KAssembly>().is_none();
@@ -2618,13 +2737,14 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         let mut names = Vec::with_capacity(bodies.len());
         for b in &bodies {
             let name = ctx.body(b.body_id())?.name.clone();
-            let mesh = ctx.body_mesh(b.body_id())?.0.clone();
-            let mut report = cadpole_print::check_with(&mesh, &profile, max_bridge);
+            let (mesh, topo) = ctx.body_mesh(b.body_id())?.clone();
+            let mut report = cadpole_print::check_named(&mesh, Some(&topo), &profile, max_bridge);
             if let Some(issue) = chord_issue_for(&mut ctx, b.body_id(), profile.chord_gap_fraction)? {
                 report.push_issue(issue);
             }
-            // A bridge is what a slicer does, not a finding.
-            for i in report.issues.iter().filter(|i| i.check != cadpole_print::Check::Bridged) {
+            // A bridge is what a slicer does, not a finding; nor is overhang
+            // the allowances cover.
+            for i in report.issues.iter().filter(|i| i.severity != cadpole_print::Severity::Info) {
                 let line = format!("[{}] {}", i.check.as_str(), i.message);
                 why.push(if single { line } else { format!("{name}: {line}") });
             }
@@ -2640,6 +2760,94 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
                 "assert_printable failed: {who}{}{}",
                 why.join("; "),
                 msg.map(|m| format!(" ({m})")).unwrap_or_default()
+            );
+        }
+        Ok(NoneType)
+    }
+
+    /// Fail evaluation unless `body` prints **without support**: the
+    /// support checks of `print_check` find nothing. Those are the overhang
+    /// rule past its allowances (`max_overhang` degrees, flat spans up to
+    /// `max_bridge` mm held up at both ends, patches up to
+    /// `max_overhang_area` mm², ledges sticking out up to `max_cantilever`
+    /// mm), `island` (a region whose lowest point is in mid-air, deeper than
+    /// `min_island`), `cantilever`, `horizontal_hole` (a round horizontal
+    /// hole wider than `max_horizontal_hole` mm with a round top) and, for a
+    /// list of bodies printed together, `bridge` (a body in the air). Walls,
+    /// bed fit, slender features and the first layer are `assert_printable`'s
+    /// business, not this one's.
+    ///
+    /// The keywords override the printer's rules (`printer=` names one, as
+    /// for `print_check`); `build_direction=` judges the part another way up.
+    /// The failure lists every finding on a line of its own, each with its
+    /// position and the face it is on.
+    fn assert_support_free<'v>(
+        #[starlark(require = pos)] body: Value<'v>,
+        #[starlark(require = named)] printer: Option<Value<'v>>,
+        #[starlark(require = named)] layer_height: Option<UnpackFloat>,
+        #[starlark(require = named)] max_overhang: Option<UnpackFloat>,
+        #[starlark(require = named)] max_bridge: Option<UnpackFloat>,
+        #[starlark(require = named)] max_overhang_area: Option<UnpackFloat>,
+        #[starlark(require = named)] max_cantilever: Option<UnpackFloat>,
+        #[starlark(require = named)] max_horizontal_hole: Option<UnpackFloat>,
+        #[starlark(require = named)] min_island: Option<UnpackFloat>,
+        #[starlark(require = named)] build_direction: Option<VecArg>,
+        #[starlark(require = named)] msg: Option<&str>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> anyhow::Result<NoneType> {
+        let what = "assert_support_free";
+        let max_bridge = bridge_limit(max_bridge, what)?;
+        let rules =
+            SupportArgs::new(what, max_overhang_area, max_cantilever, max_horizontal_hole, min_island, None, None, None)?;
+        let mut profile = resolve_profile(
+            what,
+            printer,
+            None,
+            None,
+            None,
+            layer_height,
+            None,
+            max_overhang,
+            None,
+            None,
+            build_direction.as_ref(),
+            None,
+        )?;
+        rules.apply(what, &mut profile)?;
+        let bodies = collect_bodies(&[body], eval.heap(), what)?;
+        if bodies.is_empty() {
+            anyhow::bail!("{what}: the list of bodies is empty");
+        }
+        let single = bodies.len() == 1 && body.get_type() != "list" && body.get_type() != "tuple"
+            && body.downcast_ref::<crate::assembly::KAssembly>().is_none();
+        let st = store(eval)?;
+        let mut ctx = st.ctx.borrow_mut();
+        let mut why: Vec<String> = Vec::new();
+        let mut names = Vec::with_capacity(bodies.len());
+        for b in &bodies {
+            let name = ctx.body(b.body_id())?.name.clone();
+            let (mesh, topo) = ctx.body_mesh(b.body_id())?.clone();
+            let report = cadpole_print::check_named(&mesh, Some(&topo), &profile, max_bridge);
+            for i in report.support_findings() {
+                why.push(format!("{name}: [{}] {}", i.check.as_str(), i.message));
+            }
+            names.push(name);
+        }
+        if !single {
+            let ids: Vec<cadpole_core::BodyId> = bodies.iter().map(|b| b.body_id()).collect();
+            for f in crate::clearance::assembly_findings(&mut ctx, &ids, &profile)? {
+                if f.issue.check.is_support() {
+                    why.push(format!("{}: [{}] {}", names[f.body], f.issue.check.as_str(), f.issue.message));
+                }
+            }
+        }
+        if !why.is_empty() {
+            anyhow::bail!(
+                "{what} failed{}: {} finding{} need support\n  - {}",
+                msg.map(|m| format!(" ({m})")).unwrap_or_default(),
+                why.len(),
+                if why.len() == 1 { "" } else { "s" },
+                why.join("\n  - ")
             );
         }
         Ok(NoneType)

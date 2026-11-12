@@ -241,6 +241,15 @@ fn islands(
     if found.is_empty() {
         return;
     }
+    // A tip over the part below it, across a print-in-place gap, rests on
+    // it ([`crate::overhang::RESTING_LAYERS`]).
+    let bvh = cadpole_core::render::bvh::Bvh::from_mesh(mesh);
+    let gap = crate::overhang::resting_gap(profile);
+    let eps = (scale * 1e-6).max(1e-5);
+    found.retain(|f| !crate::overhang::rests_on(&bvh, mesh, f.0, up, gap, eps));
+    if found.is_empty() {
+        return;
+    }
     r.islands = found.len();
     r.deepest_island = found.iter().map(|f| f.1).fold(0.0, f64::max);
     let spots = cluster(found.iter().map(|f| (f.0, f.1)).collect(), 8, scale * 0.01, false);
@@ -709,6 +718,26 @@ mod tests {
         let r = check(&wall, &Profile::default());
         assert_eq!(r.support.islands, 0, "{:?}", r.issues);
         assert_eq!(r.support_findings().count(), 0, "{:?}", r.issues);
+    }
+
+    #[test]
+    fn a_part_two_layers_over_another_rests_on_it() {
+        // A plate and, in the same mesh, a disc standing 0.4 mm (two 0.2 mm
+        // layers) over it: a print-in-place gap. Its underside is neither an
+        // island nor an overhang. At 1 mm it is both.
+        let plate = box_mesh(30.0, 30.0, 2.0);
+        for (gap, resting) in [(0.4, true), (1.0, false)] {
+            let mut m = plate.clone();
+            append(&mut m, &box_between(Vec3::new(5.0, 5.0, 2.0 + gap), Vec3::new(25.0, 25.0, 6.0)));
+            let r = check(&m, &Profile::default());
+            assert_eq!(r.support_findings().next().is_none(), resting, "gap {gap}: {:?}", r.issues);
+            if resting {
+                assert!((r.overhang.resting_area - 400.0).abs() < 1e-6, "{}", r.overhang.resting_area);
+                assert_eq!(r.overhang.unsupported_area, 0.0);
+            } else {
+                assert_eq!(r.support.islands, 1, "{:?}", r.issues);
+            }
+        }
     }
 
     #[test]

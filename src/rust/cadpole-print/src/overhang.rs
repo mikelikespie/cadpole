@@ -40,6 +40,7 @@
 use std::collections::{HashMap, HashSet};
 
 use cadpole_core::geom::Vec3;
+use cadpole_core::render::bvh::Bvh;
 use cadpole_core::tessellate::{Mesh, Topology};
 
 use crate::{
@@ -68,6 +69,32 @@ pub const CANTILEVER_DEGREES: f64 = 70.0;
 /// a face drawn at exactly 45° (a teardrop's top, a chamfer) comes back
 /// from f32 positions a few millionths of a degree either side of it.
 pub const ANGLE_SLACK: f64 = 1e-3;
+
+/// A downward face no more than this many layers above an upward face of
+/// the same part -- the vertical gap of a print-in-place mechanism, a gear
+/// standing two layers over its carrier -- is printed onto that face and
+/// comes free of it: it rests, and needs no support. The two-layer gap is
+/// what print-in-place parts are drawn with (the `layer_gap` rule of
+/// [`crate::assembly`] holds such gaps to whole layers); a quarter layer
+/// more absorbs the tessellation.
+pub const RESTING_LAYERS: f64 = 2.0;
+
+/// The gap, in mm, under which a face rests on the part below it.
+pub fn resting_gap(profile: &Profile) -> f64 {
+    profile.layer_height * (RESTING_LAYERS + 0.25)
+}
+
+/// Whether the point `p`, on a downward face, has an upward face of the same
+/// mesh within `gap` straight below it.
+pub(crate) fn rests_on(bvh: &Bvh, mesh: &Mesh, p: Vec3, up: Vec3, gap: f64, eps: f64) -> bool {
+    let d = -up;
+    let Some(h) = bvh.intersect([p.x as f32, p.y as f32, p.z as f32], [d.x as f32, d.y as f32, d.z as f32], eps as f32, gap as f32)
+    else {
+        return false;
+    };
+    let t = bvh.tri(h.tri).tri as usize;
+    tri_normal_area(&tri(mesh, t)).0.dot(up) > 0.0
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct OverhangReport {
@@ -119,6 +146,10 @@ pub struct OverhangReport {
     /// How far the longest ledge held up on one side sticks out past what
     /// holds it, in mm; 0 when there is none.
     pub longest_cantilever: f64,
+    /// Area in mm² of downward faces past the threshold resting on the part
+    /// below across a print-in-place gap ([`RESTING_LAYERS`]): not in
+    /// `unsupported_area`.
+    pub resting_area: f64,
 }
 
 /// Check one mesh as if it were alone on the plate: the bed is its own lowest
@@ -211,6 +242,25 @@ pub fn check_support(
             }
         }
     }
+    // Faces resting on the part below them across a print-in-place gap.
+    let mut resting: HashSet<usize> = HashSet::new();
+    if !over.is_empty() {
+        let bvh = Bvh::from_mesh(mesh);
+        let gap = resting_gap(profile);
+        let eps = (scale * 1e-6).max(1e-5);
+        over.retain(|&(t, _, area)| {
+            if rests_on(&bvh, mesh, centroid(&tri(mesh, t)), up, gap, eps) {
+                resting.insert(t);
+                r.resting_area += area;
+                r.per_triangle[t] = 0.0;
+                false
+            } else {
+                true
+            }
+        });
+        let kept: HashSet<usize> = over.iter().map(|o| o.0).collect();
+        candidates.retain(|t| kept.contains(t));
+    }
     let spans = if max_bridge > 0.0 && !candidates.is_empty() {
         bridge_spans(adj, up, &candidates, scale)
     } else {
@@ -252,25 +302,25 @@ pub fn check_support(
     // Ledges: near-level patches held up along one side. Within
     // `max_cantilever` they print off their perimeters; past it they are a
     // finding of their own.
-    // A flat face held up at both ends is a bridge, too long or not, and
-    // `max_bridge` judges it; a ledge is held up on one side only.
-    let ledge: Vec<usize> = left
-        .iter()
-        .filter(|(t, d, _)| *d >= CANTILEVER_DEGREES && !spans.contains_key(t))
-        .map(|(t, _, _)| *t)
-        .collect();
+    // A ledge within reach of what holds it is printed off it whatever
+    // else is true of it -- including a strip along a wall that the span
+    // cast above found "held up at both ends" by running along it. A ledge
+    // too long that is held up at both ends is a span too long, which the
+    // overhang finding says, and not a cantilever.
+    let ledge: Vec<usize> =
+        left.iter().filter(|(_, d, _)| *d >= CANTILEVER_DEGREES).map(|(t, _, _)| *t).collect();
     let mut exempt: HashSet<usize> = HashSet::new();
     let mut cantilevers: Vec<(Vec3, f64, usize)> = Vec::new();
     for reg in regions(adj, &ledge) {
         let spacing = (rules.max_cantilever / 4.0).max(scale * 1e-3);
-        let Some((reach, at, t)) = cantilever_reach(adj, up, &reg, floor, bed_eps, scale, spacing) else { continue };
+        let Some((reach, at, t)) = cantilever_reach(adj, up, &reg, &resting, floor, bed_eps, scale, spacing) else { continue };
         r.longest_cantilever = r.longest_cantilever.max(reach);
         if reach <= rules.max_cantilever {
             for &t in &reg {
                 exempt.insert(t);
                 r.ledge_area += tri_normal_area(&tri(mesh, t)).1;
             }
-        } else {
+        } else if !reg.iter().any(|t| spans.contains_key(t)) {
             cantilevers.push((at, reach, t));
         }
     }
@@ -439,10 +489,12 @@ fn find(p: &mut [usize], mut x: usize) -> usize {
 /// down (the wall it stands on), or that lies on the bed. With the
 /// position of that corner and a triangle that has it. `None` when no
 /// edge of the region is held up: a ceiling over air is not a ledge.
+#[allow(clippy::too_many_arguments)]
 fn cantilever_reach(
     adj: &Adjacency,
     up: Vec3,
     region: &[usize],
+    resting: &HashSet<usize>,
     floor: f64,
     bed_eps: f64,
     scale: f64,
@@ -465,7 +517,8 @@ fn cantilever_reach(
             let h = (pa.dot(up) + pb.dot(up)) / 2.0;
             let on_bed = h - floor <= bed_eps;
             let down = on.iter().filter(|x| !in_region.contains(x)).any(|&x| {
-                adj.wtri(x).iter().any(|&v| v != a && v != b && adj.wpos(v).dot(up) < h - eps)
+                resting.contains(&(adj.origin[x] as usize))
+                    || adj.wtri(x).iter().any(|&v| v != a && v != b && adj.wpos(v).dot(up) < h - eps)
             });
             if on_bed || down {
                 held.push((flat2(pa), flat2(pb)));
