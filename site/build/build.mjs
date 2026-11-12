@@ -237,7 +237,7 @@ function features() {
     tiles.push(`<li><button class="tile" type="button" id="f-${id}" data-card="${id}" data-kind="${kind}" ${open} aria-haspopup="dialog"><span class="tile-pic">${thumb}</span><span class="tile-name">${E(title)}</span></button><template data-card-info="${id}">${info}</template></li>`);
   };
   // The part of a sheet a tile shows (fractions of its width and height): the views, without the title block.
-  const CROP = { "sheet-flanged-boss": [0.16, 0.19, 0.75, 0.8], "sheet-pillow-block": [0.11, 0.18, 0.75, 0.81], "section-pillow-block": [0.07, 0.08, 0.61, 0.88] };
+  const CROP = { "sheet-flanged-boss": [0.16, 0.19, 0.75, 0.8], "sheet-pillow-block": [0.03, 0.16, 0.71, 0.9], "section-pillow-block": [0.05, 0.27, 0.69, 0.83] };
   const drawThumb = (stem, label) => {
     const [w, h] = svgBox(draw(`${stem}.svg`)), c = CROP[stem] ?? [0, 0, 1, 1];
     return `<span class="dwg tile-dwg" data-svg="draw/${stem}.svg"${CROP[stem] ? ` data-crop="${c.join(",")}"` : ""} style="aspect-ratio:${(w * (c[2] - c[0])).toFixed(2)}/${(h * (c[3] - c[1])).toFixed(2)}" aria-hidden="true" data-label="${E(label)}"></span>`;

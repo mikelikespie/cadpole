@@ -1240,7 +1240,8 @@ fn build_closed_chains(
                 stations.iter().all(|&f| {
                     let s = section_at(run, radius, f);
                     let dir = if ps == 0 { s.a } else { s.b };
-                    probe.distance_to_face(plane, s.e + dir * (d_plane(k) * scale)) <= 1e-6
+                    let p = s.e + dir * (d_plane(k) * scale);
+                    probe.distance_to_face(plane, p) <= Probe::plane_slack(p)
                 })
             };
             if !on_plane(1.0) {
@@ -2127,6 +2128,25 @@ mod tests {
             + 4.0 / 3.0 * PI * r * r * r;
         let v = volume(&mut ctx, out.body);
         assert_volume(v, expect, 3e-4);
+    }
+
+    /// The on-face probe reads the face's triangles, whose positions are
+    /// f32: a point exactly on a plane at x = 76.2 is a few micrometres off
+    /// the plane's stored triangles, so a fixed 1 nm-scale slack refused the
+    /// corners of a 6 in (152.4 mm) block as "wider than the face" with a
+    /// largest fit of 0 mm, while the same corners at 4 in passed.
+    #[test]
+    fn corners_far_from_the_origin_are_not_refused_by_f32_rounding() {
+        let (w, d, h, r) = (152.4, 31.75, 12.7, 6.35);
+        let mut ctx = Context::new();
+        let s = Sketch::new(Plane::XY).with_loop(Loop::rect(P2::new(0.0, 0.0), w, d));
+        let blk = ctx.extrude("box", &s, None, h, BTreeMap::new(), Some("blk".into()), None).unwrap()[0];
+        let verticals: Vec<String> = edges_named(&mut ctx, blk, |e| (e.start.z - e.end.z).abs() > 1.0);
+        assert_eq!(verticals.len(), 4, "{verticals:?}");
+        let out = ctx.fillet(blk, &verticals, r, Some("round".into()), None).unwrap();
+        assert_clean(&mut ctx, out.body);
+        // Each vertical edge loses (1 − π/4) r² of the cross-section.
+        assert_volume(volume(&mut ctx, out.body), w * d * h - 4.0 * (1.0 - PI / 4.0) * r * r * h, 1e-4);
     }
 
     /// A chain of two edges turning a corner mitres there and ends on the

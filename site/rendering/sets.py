@@ -72,9 +72,9 @@ DRAWINGS = {
     "pair-pillow-block": dict(
         script="site/features/feat-hidden-line.star", view="sheet:V1", flags=["--tolerance", "0.005"],
         title="Pillow block, hidden lines dashed", theme=["--only", "vis,hid", "--weights", "vis=2.4,hid=1.3", "--dash", "9,6"],
-        frame="47.4530,70.4153,146.0940,146.0940"),
+        frame="50.1112,73.3114,140.7777,140.7777"),
     "sheet-pillow-block": dict(
-        script="examples/pillow_block.star", view="three-view", flags=["--sheet", "ANSI_A", "--units", "in", "--title", "Pillow block", "--tolerance", "0.005"],
+        script="site/features/feat-sheet.star", view="sheet:D1", flags=["--tolerance", "0.005"],
         title="Pillow block, three views"),
     # The "Drawing" feature card: the card's own script, as the sheet its snippet makes.
     "sheet-flanged-boss": dict(

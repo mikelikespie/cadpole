@@ -546,6 +546,15 @@ impl Probe<'_> {
         kernel::encloses(&self.soup, p)
     }
 
+    /// How far a point exactly on a plane may read off that plane's
+    /// triangles: their positions are f32, so each coordinate carries up to
+    /// half an f32 ulp of rounding, which passes a micrometre once a
+    /// coordinate reaches a few tens of millimetres. A fixed nanometre-scale
+    /// slack refused a setback of any size on a face 76.2 mm from the origin.
+    pub(crate) fn plane_slack(p: Vec3) -> f64 {
+        1e-6 + 4.0 * f64::from(f32::EPSILON) * p.x.abs().max(p.y.abs()).max(p.z.abs())
+    }
+
     /// Distance from `p` to face `fi`'s triangles.
     pub(crate) fn distance_to_face(&self, fi: usize, p: Vec3) -> f64 {
         let f = &self.topo.faces[fi];
@@ -1563,8 +1572,10 @@ pub(crate) fn check_run(
             let e = run.path.at(f);
             let v = run.path.carry(dir, 0.0, f);
             run.face_sets[side].iter().any(|&fi| {
-                let slack = if matches!(topo.faces[fi].surface, SurfaceClass::Plane { .. }) { 1e-6 } else { mesh_tol + 1e-6 };
-                probe.distance_to_face(fi, e + v * dd) <= slack
+                let p = e + v * dd;
+                let slack =
+                    if matches!(topo.faces[fi].surface, SurfaceClass::Plane { .. }) { Probe::plane_slack(p) } else { mesh_tol + 1e-6 };
+                probe.distance_to_face(fi, p) <= slack
             })
         })
     };
