@@ -2,7 +2,7 @@
 
 Cadpole is parametric CAD for bots.
 
-Bring your own coding agent. It builds the model and checks its own work:
+An agent builds the model and checks its own work:
 it evaluates the model and reads diagnostics that name the line, measures
 clearances and volumes, renders pictures and runs the model's tests, all
 through one set of typed operations (a CLI and an MCP server). Every
