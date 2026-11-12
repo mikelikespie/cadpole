@@ -170,7 +170,9 @@ def disc(c, r, name, deeper=0.0):
 # where a mesh boolean leaves triangles crossing. Its socket in the body is
 # RIM_GAP bigger, wider than the finer grid's error.
 RIM_GAP = 0.1 * S
-rim = mesh(whole_field.intersect(field.from_body(construction.add(prism(rim_outline(0.0, "rim_cut"), "rim_prism")))), resolution=0.5 * RES, name="paddle_rim")
+RIM_RES = 0.5 * RES
+rim_field = whole_field.intersect(field.from_body(construction.add(prism(rim_outline(0.0, "rim_cut"), "rim_prism"))))
+rim = mesh(rim_field, resolution=RIM_RES, name="paddle_rim")
 dark = subtract(whole, prism(rim_outline(RIM_GAP, "rim_socket_cut"), "rim_socket"), name="figure_dark", kernel="mesh")
 white = subtract(intersect(dark, disc(eye_c, EYE_R, "eye_disc"), name="eye_inlay", kernel="mesh"), disc(pupil_c, PUPIL_R + GAP, "pupil_socket", deeper=0.5), name="eye_white", kernel="mesh")
 pupil = intersect(dark, disc(pupil_c, PUPIL_R, "pupil_disc"), name="pupil", kernel="mesh")
@@ -232,13 +234,20 @@ for g in letters:
 print_layer = layer("print", doc="The two pieces as they print: the figure on its back beside the plinth", visible=False)
 
 
+LAY_AT = (0, -BASE_W / 2.0 - 4.0 * S - (TOP + FIG_H), Y_BACK)  # in front of the plinth, the back plane on z = 0
+
+
 def lay_flat(b, name):
-    """The figure turned onto its back (the back plane on z = 0), in front of the plinth."""
+    """The figure turned onto its back, in front of the plinth."""
     b2 = rotate(copy(b), -90, axis=(1, 0, 0))  # +y (the back's normal) turns to -z, +z (up) to +y
-    return print_layer.add(translate(b2, (0, -BASE_W / 2.0 - 4.0 * S - (TOP + FIG_H), Y_BACK), name=name))
+    return print_layer.add(translate(b2, LAY_AT, name=name))
 
 
-LAID = [lay_flat(b, n + "_flat") for b, n in zip(FIGURE, ["body", "paddle_rim", "eye_white", "pupil"])]
+# The rim is meshed again from its field, already lying down, rather than
+# moved: a moved mesh is rounded to f32 a second time, and the rim's slivers
+# at its two points are thin enough for that to make a pair cross.
+rim_laid = print_layer.add(mesh(rim_field.rotate(-90, axis=(1, 0, 0)).translate(LAY_AT), resolution=RIM_RES, name="paddle_rim_flat"))
+LAID = [lay_flat(body, "body_flat"), rim_laid, lay_flat(white, "eye_white_flat"), lay_flat(pupil, "pupil_flat")]
 for b, c in zip(LAID, [DARK, LIGHT, WHITE, INK]):
     b.material(preset="pla_matte", color=c)
 PLINTH_PRINT = [base] + letters

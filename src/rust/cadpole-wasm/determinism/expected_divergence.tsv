@@ -12,6 +12,9 @@ bracket.star	topology	bracket#5: 7619582f836ce529 vs 169aec6cd89dfd9d -- as orde
 bracket.star	mesh	bracket#5: 12efd5e9715bdc32 vs fbaebe8e02c58205 -- as order
 charging_stand.star	topology	arm#2: da2b4b01f749ac22 vs ed25822785f461d0 -- the lofted arm's f64 digest in its last bits while its f32 mesh agrees
 constrained_lprofile.star	topology	angle#0: 1ca66904d5030d6e vs 5c4d03570bc33e07
+desk_mascot.star	order	plinth_round#17 edges[10]: "plinth/end|slot/back" vs "plinth/end|slot/left" -- the plinth is an exact subtract of the tab's slot: the exact kernel's intersection edges, as nightstand.star's order row
+desk_mascot.star	topology	silhouette_prism#0: 282b92d58589f545 vs 864bf5d5860cad11 -- the prism of the mark's SVG silhouette (curves flattened to a polyline), its f64 digest in the last bits, as svg_badge.star's topology row; the figure meshed from its field agrees
+desk_mascot.star	mesh	plinth_round#17: a57dfc335ae1a505 vs cfc7b464a9795b6a -- as order
 drawing_sheet.star	order	bracket#5 edges[17]: "hole_left/side#1|plate/top" vs "hole_left/side#0|plate/top" -- bracket.star's body, as its order row
 drawing_sheet.star	topology	bracket#5: 7619582f836ce529 vs 169aec6cd89dfd9d -- as order
 drawing_sheet.star	mesh	bracket#5: 12efd5e9715bdc32 vs fbaebe8e02c58205 -- as order
