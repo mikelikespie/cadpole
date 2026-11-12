@@ -108,3 +108,30 @@ def nut_clears_bolt_by_the_clearance():
 
 
 test("the nut clears the bolt by the clearance, at every clearance", nut_clears_bolt_by_the_clearance, sweep={"clearance": [0.1, 0.15]})
+
+
+def bolts_and_nuts_are_chamfered_unless_asked_not_to_be():
+    # The 30 degree chamfer turns a hex's corners off at the head's top
+    # face and at both faces of a nut; `chamfer=False` keeps the bare hex,
+    # whose section is the full hexagon at every height.
+    def area(body, z):
+        return body.section(plane(origin=(0, 0, z), normal=(0, 0, 1))).area()
+
+    hexagon = 13 * 13 * math.sqrt(3) / 2
+    b = bolt(8, 1.25, 12, 13, 5, name="cb")
+    n = nut(8, 1.25, 13, 6, start=(0, 0, 3), name="cn")
+    assert_solid(b)
+    assert_solid(n)
+    assert_true(area(b, 16.95) < 0.9 * hexagon, msg="the head's top corners are turned off")
+    assert_close(area(b, 12.5), hexagon, rel=0.01, msg="the head's bearing face is the whole hex")
+    assert_true(area(n, 3.05) < 0.9 * area(n, 6), msg="the nut's lower corners are turned off")
+    assert_true(area(n, 8.95) < 0.9 * area(n, 6), msg="the nut's upper corners are turned off")
+    assert_true(area(b, 0.05) < math.pi * 3.4 * 3.4, msg="the tip is chamfered to the thread's root")
+    bare = bolt(8, 1.25, 12, 13, 5, chamfer=False, name="bb")
+    bare_nut = nut(8, 1.25, 13, 6, start=(0, 0, 3), chamfer=False, name="bn")
+    assert_close(area(bare, 16.95), hexagon, rel=0.01, msg="chamfer=False keeps the bare head")
+    assert_close(area(bare_nut, 3.05), area(bare_nut, 6), rel=0.02, msg="chamfer=False keeps the bare nut")
+    assert_true(distance(b, n).distance > 0, msg="a chamfered nut still runs free on a chamfered bolt")
+
+
+test("bolts and nuts are chamfered unless asked not to be", bolts_and_nuts_are_chamfered_unless_asked_not_to_be)

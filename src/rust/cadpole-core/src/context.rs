@@ -3067,7 +3067,7 @@ impl Context {
                         "{} of a mesh body: the mesh kernel takes it (the B-rep side is \
                          tessellated at tolerance {}, so the result is approximate to that)",
                         op.kind_name(),
-                        self.tolerance
+                        mesh_tol
                     ))
                 } else if pair_faces > budget {
                     Some(format!(
@@ -3135,7 +3135,6 @@ impl Context {
             Err(e) => {
                 // `kernel="brep"`: the refusal is the answer, with the faces
                 // named. The tessellation this costs is on the error path only.
-                let mesh_tol = self.tolerance;
                 let named = match (realise(&a, a_names, mesh_tol), realise(b, b_names, mesh_tol)) {
                     (Ok((am, _, _)), Ok((bm, _, _))) => cadpole_tangent_summary(op, &am, &bm, tol, crate::tangent::Path::Exact),
                     _ => String::new(),
@@ -3501,6 +3500,11 @@ impl Context {
 
         let fid = self.new_feature("split", name.clone(), inputs, args, span.clone())?;
         let generator = Arc::new(naming::Generator::Cut { plane: *plane });
+        // The body's own bounds, when it has them, are what the mesh route
+        // tessellates it at, and the pieces carry them on: a split is a
+        // section of the body, and should be drawn as finely as the body.
+        let own = self.body(self.derivation_root(body)?)?.tessellation;
+        let mesh_tol = self.tessellation_for(body, None)?.0.tolerance;
         // The half-spaces are sized from the body's mesh, so its bounds are
         // an input too.
         let mut key = KeyBuilder::new("split");
@@ -3513,7 +3517,7 @@ impl Context {
             for sign in [-1.0f64, 1.0] {
                 let tool = half_space(plane, &corners, sign)?;
                 let tool_names = NameSource::Generator { feature: fid.clone(), generator: generator.clone() };
-                let (piece, names) = ctx.boolean_pair(
+                let (piece, names) = ctx.boolean_pair_at(
                     BoolOp::Intersect,
                     source_body.clone(),
                     &source_names,
@@ -3522,6 +3526,7 @@ impl Context {
                     kernel_choice,
                     &fid,
                     span.clone(),
+                    (mesh_tol, mesh_tol),
                 )?;
                 pieces.push(ProducedBody::new(piece, names));
             }
@@ -3533,6 +3538,7 @@ impl Context {
         for id in &ids {
             self.body_mut(*id)?.material = material.clone();
             self.body_mut(*id)?.layer = layer.clone();
+            self.body_mut(*id)?.tessellation = own;
         }
         Ok(ids)
     }
@@ -3898,6 +3904,42 @@ mod tests {
             );
             assert!(!names.iter().any(|n| n.contains("/tool[")), "the tool's own faces must not survive: {names:?}");
         }
+    }
+
+    /// A cylinder cut on its axis: the exact kernel refuses it (the seam
+    /// lies in the cut plane) and the mesh kernel takes it. The piece is
+    /// tessellated at the body's own `tessellation(tolerance=)`, not the
+    /// document's, and keeps those bounds.
+    #[test]
+    fn a_split_on_the_mesh_route_honours_the_body_s_own_tolerance() {
+        let half = |own: Option<f64>| {
+            let mut ctx = Context::new();
+            let s = Sketch::new(Plane::XY).with_loop(Loop::circle(P2::new(0.0, 0.0), 20.0));
+            let b = ctx.extrude("extrude", &s, None, 30.0, BTreeMap::new(), Some("drum".into()), None).unwrap()[0];
+            ctx.body_mut(b).unwrap().tessellation.tolerance = own;
+            let plane = Plane::new(Vec3::ZERO, -Vec3::Y, Vec3::X).unwrap();
+            let pieces = ctx.split(b, &SplitTool::Plane(plane), KernelChoice::Auto, None, None).unwrap();
+            assert_eq!(ctx.body(pieces[0]).unwrap().tessellation.tolerance, own, "the piece keeps the body's bounds");
+            let (mesh, _) = ctx.body_mesh(pieces[0]).unwrap();
+            // The worst sag of the half circle's chords, from the rim
+            // vertices of the top face.
+            let rim: Vec<f64> = mesh
+                .positions
+                .chunks(3)
+                .map(|p| (p[0] as f64, p[1] as f64, p[2] as f64))
+                .filter(|(x, y, z)| (z - 30.0).abs() < 1e-4 && (x.hypot(*y) - 20.0).abs() < 1e-3)
+                .map(|(x, y, _)| y.atan2(x))
+                .collect();
+            let mut angles = rim;
+            angles.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            angles.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+            let widest = angles.windows(2).map(|w| w[1] - w[0]).fold(0.0f64, f64::max);
+            20.0 * (1.0 - (widest / 2.0).cos())
+        };
+        let document = half(None);
+        let fine = half(Some(0.005));
+        assert!(document <= 0.05 + 1e-9 && document > 0.01, "at the document's 0.05 mm: {document}");
+        assert!(fine <= 0.005 + 1e-9, "at the body's own 0.005 mm: {fine}");
     }
 
     #[test]

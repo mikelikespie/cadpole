@@ -12,6 +12,11 @@ use crate::naming::{self, Fingerprint, Kind, Named};
 use crate::surface_class::{self, SurfaceClass};
 use crate::fmath;
 
+/// How far under [`Mesh::smooth_seams`]'s threshold a fold must be to shade
+/// as one surface: an f32 normal's rounding, with room to spare, so a fold
+/// of exactly the threshold stays a crease.
+pub const SEAM_MARGIN_DEGREES: f64 = 0.05;
+
 /// Flat triangle mesh, ready for the GPU or the software rasterizer.
 #[derive(Clone, Debug, Default)]
 pub struct Mesh {
@@ -173,7 +178,7 @@ impl Mesh {
     }
 
     /// Smooth the shading normals across seams that fold by less than
-    /// `max_degrees`, in place.
+    /// `max_degrees` (by more than [`SEAM_MARGIN_DEGREES`] less), in place.
     ///
     /// Tessellation and the mesh kernel both give each topology face its own
     /// vertices and a normal that is the face's own. That is right at a box
@@ -282,14 +287,19 @@ impl Mesh {
                 if g.length() > 1e-12 { g.normalized() } else { own[i].normalized() }
             })
             .collect();
-        let cos_max = fmath::cos(max_degrees.to_radians());
+        // A fold of exactly `max_degrees` is a crease, as the line overlay
+        // draws it: a 30 degree chamfer on a 30 degree threshold is a real
+        // edge, and its two faces' normals, rounded to f32, land a hair
+        // either side of the cosine. So a seam is a fold under the
+        // threshold by more than that rounding.
+        let cos_max = fmath::cos((max_degrees - SEAM_MARGIN_DEGREES).to_radians());
         let mut out = Vec::with_capacity(nv * 3);
         for i in 0..nv {
             let reference = given[i];
             let mut sum = Vec3::ZERO;
             for &(j, angle) in &corners[class[i] as usize] {
                 let n = given[j as usize];
-                if n.dot(reference) >= cos_max {
+                if n.dot(reference) > cos_max {
                     sum = sum + n * angle;
                 }
             }
@@ -1152,6 +1162,21 @@ mod tests {
         }
         m.smooth_seams(45.0);
         assert!((normal_at(&m, 1) - normal_at(&m, 4)).length() < 1e-6);
+
+        // A fold of exactly the threshold is a crease, as the line overlay
+        // draws it, whichever side of the cosine f32 rounding puts it:
+        // a standard 30 degree chamfer keeps its edge at 30.
+        for degrees in [30.0, 30.0 + 1e-6, 30.0 - 1e-6, 30.02] {
+            let mut m = folded_strip(degrees);
+            let before = m.normals.clone();
+            m.smooth_seams(30.0);
+            for (a, b) in before.iter().zip(&m.normals) {
+                assert!((a - b).abs() < 1e-6, "a {degrees} degree fold moved at 30: {before:?} -> {:?}", m.normals);
+            }
+        }
+        let mut m = folded_strip(29.9);
+        m.smooth_seams(30.0);
+        assert!((normal_at(&m, 1) - normal_at(&m, 4)).length() < 1e-6, "a fold just under the threshold is a seam");
 
         // No normals at all: area-weighted ones are computed, then smoothed.
         let mut m = folded_strip(10.0);

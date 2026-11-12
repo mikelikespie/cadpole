@@ -358,15 +358,45 @@ def thread(major_d, pitch, length, profile="iso", internal=False, hand="right", 
 # ---------------------------------------------------------------- bolt, nut
 
 
-def bolt(major_d, pitch, length, head_af, head_h, thread_length=None, profile="iso", hand="right", start=(0, 0, 0), phase=0.0, tolerance=None, kernel="mesh", name=None):
+_TAN30 = 0.5773502691896257
+
+
+def _hex_chamfer(centre, z0, z1, af, bottom, top, tolerance, name):
+    """The solid of revolution a hex blank is intersected with for the
+    standard 30 degree chamfer: a cone through the bearing circle (0.95 of
+    the width across flats) at each chamfered face, which trims the
+    corners and leaves the arcs a forged head or a nut shows on every flat.
+    `None` when the blank is too short for the two cones."""
+    rc = 0.475 * af
+    big = af / _SQRT3 + 0.05 * af
+    drop = (big - rc) * _TAN30
+    if (bottom and top and z1 - z0 <= 2.0 * drop + 0.01) or z1 - z0 <= drop + 0.01:
+        return None
+    reach = 0.5 * rc
+    rise = reach * _TAN30
+    pts = [(0, z0 - rise), (rc - reach, z0 - rise), (big, z0 + drop)] if bottom else [(0, z0 - 1.0), (big, z0 - 1.0)]
+    pts += [(big, z1 - drop), (rc - reach, z1 + rise), (0, z1 + rise)] if top else [(big, z1 + 1.0), (0, z1 + 1.0)]
+    # The revolve's seam turned off the hex corners and flats.
+    tool = rotate(revolve(sketch(XZ).polygon(pts), **_named(name, "_cone")), 15.0, axis=(0, 0, 1), **_named(name, "_cone_turned"))
+    return _fine(translate(tool, (centre[0], centre[1], 0), **_named(name, "_chamfer_tool")), tolerance)
+
+
+def bolt(major_d, pitch, length, head_af, head_h, thread_length=None, profile="iso", hand="right", start=(0, 0, 0), phase=0.0, chamfer=True, tolerance=None, kernel="mesh", name=None):
     """A hex-head bolt: the tip at `start`, the shank `length` long up +Z,
     the hex head (`head_af` across flats, `head_h` tall) sitting on top of
     it. The thread covers `thread_length` from the tip (default the whole
     shank less one pitch, so the groove ends inside the shank rather than
     running into the head).
 
+    `chamfer=True` (the default) finishes it the way a bolt is made: the
+    head's top corners turned off at 30 degrees from the bearing circle
+    (0.95 of `head_af`), and the tip chamfered at 45 degrees down to the
+    thread's minor diameter, so the thread starts clean. `chamfer=False`
+    is the bare hex prism and cylinder.
+
     Features: the thread's (`<name>_helix`, `<name>_groove`,
-    `<name>_blank`, `<name>_shank`), `<name>_head` and `<name>`."""
+    `<name>_blank`, `<name>_shank`), `<name>_head` (and with `chamfer`,
+    `<name>_head_chamfer`) and `<name>`."""
     d = _positive("bolt", "major_d", major_d)
     p = _positive("bolt", "pitch", pitch)
     length = _positive("bolt", "length", length)
@@ -387,20 +417,34 @@ def bolt(major_d, pitch, length, head_af, head_h, thread_length=None, profile="i
     pl = _axial_plane(coil, (s[0], s[1], z0))
     pts = _groove_points(r, prof, _OVERCUT)
     groove = _fine(sweep_along(_sketch_polygon(pl, [(u - r, v) for u, v in pts]), coil, frame=sweep_frame.frenet, **_named(name, "_groove")), tolerance)
-    blank = _fine(cylinder(r, length, at=s, **_named(name, "_blank")), tolerance)
+    tip = min(prof["depth"], 0.5 * length) if chamfer else 0.0
+    if tip > 0:
+        # Turned with the seam a quarter turn off +X, where the groove's
+        # start cap lies.
+        blank = _fine(translate(rotate(revolve(sketch(XZ).polygon([(0, 0), (r - tip, 0), (r, tip), (r, length), (0, length)]), **_named(name, "_blank_profile")), 90.0, axis=(0, 0, 1), **_named(name, "_blank_turned")), s, **_named(name, "_blank")), tolerance)
+    else:
+        blank = _fine(cylinder(r, length, at=s, **_named(name, "_blank")), tolerance)
     shank = subtract(blank, groove, kernel=kernel, **_named(name, "_shank"))
     head = _fine(extrude(sketch(XY.offset(s[2] + length), origin=(s[0], s[1], s[2] + length)).ngon(6, af / _SQRT3), hh, **_named(name, "_head")), tolerance)
+    cone = _hex_chamfer(s, s[2] + length, s[2] + length + hh, af, False, True, tolerance, _named(name, "_head").get("name")) if chamfer else None
+    if cone != None:
+        head = intersect(head, cone, kernel=kernel, **_named(name, "_head_chamfer"))
     return union(shank, head, kernel=kernel, **_named(name, ""))
 
 
-def nut(major_d, pitch, af, height, clearance=0.1, profile="iso", hand="right", start=(0, 0, 0), phase=0.0, tolerance=None, kernel="mesh", name=None):
+def nut(major_d, pitch, af, height, clearance=0.1, profile="iso", hand="right", start=(0, 0, 0), phase=0.0, chamfer=True, tolerance=None, kernel="mesh", name=None):
     """A hex nut for a thread of `major_d` and `pitch`: `af` across flats,
     `height` tall, standing on +Z from `start`, its thread offset outward by
     `clearance` so a coaxial bolt clears it by that much on every surface
     (`distance(bolt, nut)` measures it).
 
+    `chamfer=True` (the default) turns both faces' corners off at 30
+    degrees from the bearing circle (0.95 of `af`), the double chamfer of a
+    standard hex nut; `chamfer=False` is the bare hex prism.
+
     Features: the internal thread's (`<name>_helix`, `<name>_ridge`,
-    `<name>_bore`, `<name>_tool`), `<name>_blank` and `<name>`."""
+    `<name>_bore`, `<name>_tool`), `<name>_blank` (and with `chamfer`,
+    `<name>_blank_chamfer`) and `<name>`."""
     d = _positive("nut", "major_d", major_d)
     p = _positive("nut", "pitch", pitch)
     af = _positive("nut", "af", af)
@@ -410,4 +454,7 @@ def nut(major_d, pitch, af, height, clearance=0.1, profile="iso", hand="right", 
         _fail("nut", "a nut %s across flats has no wall around a %s thread" % (af, d))
     tool = thread(d, p, h, profile=profile, internal=True, hand=hand, clearance=clearance, start=s, phase=phase, tolerance=tolerance, kernel=kernel, **_named(name, "_tool"))
     blank = _fine(extrude(sketch(XY.offset(s[2]), origin=(s[0], s[1], s[2])).ngon(6, af / _SQRT3), h, **_named(name, "_blank")), tolerance)
+    cone = _hex_chamfer(s, s[2], s[2] + h, af, True, True, tolerance, _named(name, "_blank").get("name")) if chamfer else None
+    if cone != None:
+        blank = intersect(blank, cone, kernel=kernel, **_named(name, "_blank_chamfer"))
     return subtract(blank, tool, kernel=kernel, **_named(name, ""))

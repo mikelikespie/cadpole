@@ -4170,6 +4170,10 @@ the cut — a square post with a bore through it fails with "this shell is not
 oriented and closed" for any cut height. With `kernel="auto"` the split falls
 back to the mesh kernel and gives correct pieces, which print but cannot export
 STEP; with `kernel="brep"` it is an error.
+The mesh route tessellates the body at its own `tessellation(tolerance=)`
+when it has one, and the pieces keep those bounds, so a turned part halved
+on its axis is drawn as finely as the body asked to be:
+`body.tessellation(tolerance=0.01)` before the `split`.
 
 #### `printer(name)`
 

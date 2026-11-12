@@ -228,8 +228,8 @@ load("@cadpole/mechanical.star", "spring", "thread", "bolt", "nut",
 | --- | --- |
 | `spring(wire_d, coil_d, pitch, turns, *, hand="right", ends="open"\|"ground", start=, kernel=, name=)` | a round wire swept along `helix()` under `sweep_frame.rmf`; `ends="ground"` cuts it flat at both ends |
 | `thread(major_d, pitch, length, *, profile="iso"\|"square"\|"acme"\|dict, internal=False, hand=, clearance=0, start=, phase=0, overrun=None, tolerance=None, kernel="mesh", name=)` | a threaded rod (the groove swept helically under `sweep_frame.frenet` and subtracted from the major cylinder), or with `internal=True` the body to subtract for a threaded hole: the minor bore plus the swept ridge, offset outward by `clearance` on every surface |
-| `bolt(major_d, pitch, length, head_af, head_h, *, thread_length=None, profile=, hand=, start=, phase=, tolerance=, kernel=, name=)` | a hex-head bolt, tip at `start`, thread from the tip |
-| `nut(major_d, pitch, af, height, *, clearance=0.1, profile=, hand=, start=, phase=, tolerance=, kernel=, name=)` | a hex nut whose thread clears a coaxial bolt's by `clearance`, which `distance(bolt, nut)` measures within the chord contract |
+| `bolt(major_d, pitch, length, head_af, head_h, *, thread_length=None, profile=, hand=, start=, phase=, chamfer=True, tolerance=, kernel=, name=)` | a hex-head bolt, tip at `start`, thread from the tip; `chamfer=True` turns the head's top corners off at 30 degrees from the bearing circle (0.95 of `head_af`) and chamfers the tip to the thread's root |
+| `nut(major_d, pitch, af, height, *, clearance=0.1, profile=, hand=, start=, phase=, chamfer=True, tolerance=, kernel=, name=)` | a hex nut whose thread clears a coaxial bolt's by `clearance`, which `distance(bolt, nut)` measures within the chord contract; `chamfer=True` is the double 30 degree chamfer of a standard nut |
 | `iso_profile(p)`, `square_profile(p)`, `acme_profile(p)` | the groove of one pitch as `{"depth", "top", "bottom", "angle"}`; `thread_depth(p, profile)`, `minor_diameter(d, p, profile)` |
 
 Every thread on an axis is phased by height, like a thread cut from stock —
