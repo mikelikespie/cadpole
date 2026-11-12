@@ -75,7 +75,7 @@ edge_break = param("edge_break", 1.0, unit="mm", min=0.4, max=2.0, doc="Break ro
 boss_fillet = param("boss_fillet", 1.0, unit="mm", min=0.0, max=2.0, doc="Fillet (a conical flare) where each standoff meets the floor")
 port_margin = param("port_margin", 0.5, unit="mm", min=0.2, max=1.5, doc="Clearance round every connector, or its plug, in its opening")
 clip_len = param("clip_len", 10.0, unit="mm", min=9, max=12, step=0.5, doc="Clip flexure length, from its root to the middle of its hook: strain falls as its square, and the slit over it rises about as much, so past 10 it needs more headroom")
-clip_taper = param("clip_taper", 0.65, min=0.5, max=1.0, step=0.05, doc="Clip flexure thickness at the hook over its thickness at the root")
+clip_taper = param("clip_taper", 0.65, min=0.55, max=1.0, step=0.05, doc="Clip flexure thickness at the hook over its thickness at the root")
 hook_w = param("hook_w", 8.0, unit="mm", min=5, max=10, doc="Width of each clip's hook")
 barb = param("barb", 0.8, unit="mm", min=0.5, max=1.2, step=0.05, doc="How far each hook's barb stands proud of it: it engages barb - clearance, and the flexure bends that far going on")
 catch_angle = param("catch_angle", 50.0, unit="deg", min=40, max=60, doc="Catch face from horizontal: under 90 the clip releases with a firm pull; over 45 it prints without support")
