@@ -17,7 +17,7 @@
 sample = param("sample", "dark_metal", choices=["dark_metal", "white_matte", "painted", "dark_matte", "film"])
 
 if sample == "film":
-    drum = extrude(sketch(XY).polygon([(100 * math.cos(math.radians(15 * i + 4)), 100 * math.sin(math.radians(15 * i + 4))) for i in range(24)]), 100, name="drum")
+    drum = extrude(sketch(XY).polygon([(100 * math.cos(15 * i + 4), 100 * math.sin(15 * i + 4)) for i in range(24)]), 100, name="drum")
     drum.material(color="#2a2b2e", roughness=0.85)
     film = revolve(sketch(XZ).polyline([(100.06, 20), (100.26, 20), (100.26, 80), (100.06, 80)], closed=True), axis=(0, 0, 1), name="film")
     film.material(color="#f2f2f0", roughness=0.8)

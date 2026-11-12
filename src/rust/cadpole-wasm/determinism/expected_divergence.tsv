@@ -185,9 +185,10 @@ radial_engine.star	volume	head_0#127: 40a702acab30c2e3 vs 40a702acab30c2f0 -- th
 radial_engine.star	topology	crankcase_i#81: 97b68bb8287f7d72 vs 7246aa6ce3898a92 -- as the body's other rows: its f64 digest in the last bits
 radial_engine.star	mesh	head_0#127: 745612b0b9772b74 vs 39a7f338bcfd5c6f -- the f32 positions differ in their last bits
 radial_engine.star	inspect	head_0#127 at char 369: …96094 }) }), volume_mm3: 2945.337243579664, area_mm2: 3249.0371020597727, solid: Some(SolidVerdict { vs …96094 }) }), volume_mm3: 2945.33724357967, area_mm2: 3249.0371020597736, solid: Some(SolidVerdict {  -- as volume
-desk_mascot.star	order	plinth_round#17 edges[10]: "plinth/end|slot/back" vs "plinth/end|slot/left" -- the plinth is an exact subtract of the tab's slot: the exact kernel's intersection edges, as nightstand.star's order row
+desk_mascot.star	order	plinth_round#19 edges[10]: "plinth/end|slot_mouth/back" vs "plinth/end|slot_mouth/left" -- the plinth is an exact subtract of the tab's slot and its relieved mouth: the exact kernel's intersection edges, as nightstand.star's order row
 desk_mascot.star	topology	silhouette_prism#0: 282b92d58589f545 vs 864bf5d5860cad11 -- the prism of the mark's SVG silhouette (curves flattened to a polyline), its f64 digest in the last bits, as svg_badge.star's topology row; the figure meshed from its field agrees
-desk_mascot.star	mesh	plinth_round#17: a57dfc335ae1a505 vs cfc7b464a9795b6a -- as order
+desk_mascot.star	mesh	plinth_round#19: f5988b285a974532 vs 21d679051a178a0c -- as order
+desk_mascot.star	inspect	plinth_round#19: area_mm2 12897.33450904811 vs 12897.334509048103 -- as order
 knurled_knob.star	topology	knob#0: cba695251825b965 vs 05effe71f8c21964 -- as the body's other rows: its f64 digest in the last bits
 knurled_knob.star	mesh	knob#0: c3d1027845211fdd vs 838d9c0c33d5f4f1 -- the f32 positions differ in their last bits
 planter.star	volume	pot#8: 40fb73f8cc80ea8f vs 40fb73f8cc588964 -- the volume in its last bits

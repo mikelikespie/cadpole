@@ -183,6 +183,12 @@ FIGURE = [body, rim, white, pupil]
 base_sk = sketch(XY).slot(BASE_L, BASE_W)
 base = extrude(base_sk, BASE_H, name="plinth")
 slot = box(TAB_L + 2.0 * CLEAR, TAB_T + 2.0 * CLEAR, TAB_D + 0.4 + 1.0, at=(FOOT_X - TAB_L / 2.0 - CLEAR, TAB_MID - TAB_T / 2.0 - CLEAR, TOP - TAB_D - 0.4), name="slot")
+# The slot's mouth is relieved by one meshing cell all round: the figure is
+# meshed from its field, which fills the inside corner between the foot and
+# the tab by up to a cell (RES, more than CLEAR at the larger sizes), and that
+# fillet of material would otherwise sit in the slot's top edge.
+mouth = box(TAB_L + 2.0 * (CLEAR + RES), TAB_T + 2.0 * (CLEAR + RES), RES + 1.0, at=(FOOT_X - TAB_L / 2.0 - CLEAR - RES, TAB_MID - TAB_T / 2.0 - CLEAR - RES, TOP - RES), name="slot_mouth")
+base = subtract(base, mouth, name="plinth_relieved")
 base = subtract(base, slot, name="plinth_slotted")
 # the outline's top edge rounded, the slot's left sharp (its edges are the short ones)
 base = fillet(base, radius=2.0 * S, edges=base.edges(on_plane=XY.offset(BASE_H), min_length=3.0 * TAB_L), name="plinth_round")

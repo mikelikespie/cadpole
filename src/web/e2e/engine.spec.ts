@@ -129,7 +129,10 @@ test.describe("where evaluation runs", () => {
 
   test("`?engine=main` still runs the engine on this thread, and admits it", async ({ page }) => {
     // The fallback path for a browser with no Worker, kept reachable so the
-    // difference can be demonstrated rather than asserted.
+    // difference can be demonstrated rather than asserted. Unmeasured, for
+    // the same reason as the case above: a slow `beforeEach` evaluation
+    // would send this one to the server.
+    await page.evaluate(() => localStorage.removeItem("cadpole.engineVerdicts.v1"));
     await page.goto("/?nosw=1&engine=main");
     await ready(page);
     await expect(page.locator("html")).toHaveAttribute("data-engine", "wasm");

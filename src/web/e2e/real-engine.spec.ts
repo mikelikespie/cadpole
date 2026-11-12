@@ -92,7 +92,9 @@ test.describe("real wasm engine", () => {
     await expect(tree.getByRole("treeitem", { name: /^boss extrude/ })).toBeVisible();
     await expect(tree.getByRole("treeitem", { name: /^ring revolve/ })).toBeVisible();
     await expect(page.locator(".diag-summary")).toContainText("No issues");
-    await expect(page.locator(".status-item.eval")).toContainText(/worker [\d.]+ ms/);
+    // A loaded machine can stretch this first evaluation past a second,
+    // which the status line gives in seconds.
+    await expect(page.locator(".status-item.eval")).toContainText(/worker [\d.]+ m?s/);
 
     // Parameters come from the script's own `param()` calls, not from the
     // mock's hardcoded defaults (height is 12 here, 20 in the mock).
@@ -112,6 +114,10 @@ test.describe("real wasm engine", () => {
   });
 
   test("changing a parameter re-evaluates through the wasm engine", async ({ page }) => {
+    // Pinned to the local engine: a first evaluation that a loaded machine
+    // stretches past the promotion threshold would send the re-evaluation to
+    // the dev server, and this case is about the wasm engine.
+    await page.addInitScript(() => localStorage.setItem("cadpole.enginePreference", "local"));
     await page.goto("/?nosw=1");
     await expect(page.locator("html")).toHaveAttribute("data-engine", "worker");
     await expect(page.locator("html")).toHaveAttribute("data-evals", /[1-9]/);
