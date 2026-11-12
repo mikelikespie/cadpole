@@ -1477,7 +1477,10 @@ fn reparametrize(pts: &[P2], bez: &[P2; 4], u: &[f64]) -> Vec<f64> {
 // ----------------------------------------------------------------- offset
 
 /// The raw offset curve of one oriented loop (material on its left).
-fn raw_offset(l: &Loop, li: usize, d: f64, join: Join, tolerance: f64) -> Vec<Piece> {
+/// `snap` is the distance under which two offset ends count as one point:
+/// a vertex whose offset pieces end that close together, without crossing,
+/// turns by so little that it is joined straight, never spiked (see below).
+fn raw_offset(l: &Loop, li: usize, d: f64, join: Join, tolerance: f64, snap: f64) -> Vec<Piece> {
     // Elements: the loop's pieces with their source; a spline is its samples.
     let mut elems: Vec<(Prim, Src)> = Vec::new();
     for (si, seg) in l.segments.iter().enumerate() {
@@ -1551,6 +1554,16 @@ fn raw_offset(l: &Loop, li: usize, d: f64, join: Join, tolerance: f64) -> Vec<Pi
                     best = Some((u, v));
                 }
             }
+        }
+        // No crossing at a vertex that turns by a hair — two chords of one
+        // smooth curve — leaves offset ends a hair apart. A spike there would
+        // be two lines out to the vertex and back that the arrangement cannot
+        // tell apart (it welds and splits them into each other, and the face
+        // labels stop agreeing with the windings), so join the ends straight
+        // instead: the region differs by a sliver no wider than `snap`.
+        if best.is_none() && dot(t_in, t_out) > 0.0 && dist(o.end(), ok.start()) <= snap {
+            at.push(At::Straight);
+            continue;
         }
         at.push(best.map_or(At::Spike, |(u, v)| At::Meet(u, v)));
     }
@@ -1659,9 +1672,12 @@ pub fn offset(sketch: &Sketch, feature: &str, d: f64, join: Join, tolerance: f64
         return Ok(Outcome { sketch: out, notes: Vec::new() });
     }
     let extent = extent_of(&loops) + 2.0 * d.abs();
+    // A thousand times the arrangement's weld distance: ends this close are
+    // one point to the offset, and still far from one point to the welder.
+    let snap = extent * 1e-6;
     let mut pieces = Vec::new();
     for (li, l) in loops.iter().enumerate() {
-        pieces.extend(raw_offset(l, li, d, join, tolerance));
+        pieces.extend(raw_offset(l, li, d, join, tolerance, snap));
     }
     let arr = Arrangement::build(&pieces, extent)?;
     let rule = |wn: [i32; 2]| wn[0] > 0;
@@ -2477,6 +2493,57 @@ mod tests {
         assert_eq!(outer.sketch.loops.len(), 1);
         for p in outer.sketch.loops[0].sample() {
             assert!(dist_to(&foil, p) >= 0.8 - 1e-3 && !foil.contains_point(p));
+        }
+    }
+
+    /// A planar section through a smooth body, as the chords of its
+    /// tessellation: dozens of nearly collinear pieces, some only a tenth of
+    /// a millimetre long, with a slight kink where two faces of the body
+    /// meet. Shrunk by more than the short pieces' length, it must still be
+    /// the one smaller loop, not an empty region.
+    #[test]
+    fn an_inward_offset_of_a_chorded_section_keeps_its_core() {
+        let raw = [
+            (-9.068560809658395, -0.5775481567903689), (-9.068560809658395, -0.28877407839518443), (-9.068560809658395, 0.8663222053832309),
+            (-9.038868701360073, 1.7974880278900778), (-8.969721179969913, 2.378144157920364), (-8.691287490411543, 3.556312872170889),
+            (-8.478416456857532, 4.142946596068712), (-7.902797359176126, 5.281133307632434), (-7.135527627043436, 6.330895233220611),
+            (-6.74987621784061, 6.74987621784061), (-5.752884194544217, 7.594318481733682), (-5.210299785219358, 7.9491156325072465),
+            (-4.067359485286331, 8.51189862188123), (-3.479579008060934, 8.718222799510102), (-2.2257636001636882, 8.992183309543199),
+            (-1.7218208737125837, 9.047117282434922), (-0.5775481567903689, 9.068560809658395), (-0.28877407839518443, 9.068560809658395),
+            (0.8663222053832309, 9.068560809658395), (1.7974880278900778, 9.038868701360073), (2.3014307543411823, 8.98393472846835),
+            (3.556312872170889, 8.691287490411543), (4.067359485286331, 8.51189862188123), (5.210299785219358, 7.9491156325072465),
+            (5.752884194544217, 7.594318481733682), (6.74987621784061, 6.74987621784061), (7.193433306022106, 6.267985171799986),
+            (7.9491156325072465, 5.210299785219358), (8.255425175961086, 4.646356866254951), (8.738697463145991, 3.402487068602377),
+            (8.875058254157668, 2.8890550266645234), (9.048566952195229, 1.6299055684018178), (9.068560809658395, 0.3682919013241199),
+            (9.068560809658395, 0.28877407839518443), (9.068560809658395, -0.8663222053832309), (9.083115534297551, -1.1613834260268736),
+            (8.969721179969913, -2.378144157920364), (8.875058254157668, -2.8890550266645234), (8.51189862188123, -4.067359485286331),
+            (8.478416456857532, -4.142946596068713), (8.255425175961086, -4.646356866254951), (7.594318481733682, -5.752884194544217),
+            (7.193433306022106, -6.267985171799986), (6.267985171799986, -7.193433306022106), (5.752884194544217, -7.594318481733682),
+            (4.646356866254951, -8.255425175961086), (4.067359485286331, -8.51189862188123), (2.8123416230853415, -8.889271802656108),
+            (2.3014307543411823, -8.98393472846835), (1.1613834260268736, -9.083115534297551), (0.28877407839518443, -9.068560809658395),
+            (-0.8663222053832309, -9.068560809658395), (-1.7974880278900778, -9.038868701360073), (-2.378144157920364, -8.969721179969913),
+            (-3.556312872170889, -8.691287490411543), (-4.142946596068713, -8.478416456857532), (-5.281133307632434, -7.902797359176126),
+            (-6.330895233220611, -7.135527627043436), (-6.74987621784061, -6.74987621784061), (-7.594318481733682, -5.752884194544217),
+            (-7.9491156325072465, -5.210299785219358), (-8.51189862188123, -4.067359485286331), (-8.718222799510102, -3.479579008060934),
+            (-8.992183309543199, -2.2257636001636882), (-9.047117282434922, -1.7218208737125837),
+        ];
+        let pts: Vec<P2> = raw.iter().map(|&(x, y)| P2::new(x, y)).collect();
+        let outline = Loop::polygon(&pts);
+        let s = xy(outline.clone());
+        let full = area(&s);
+        for d in [-0.3, -0.6, -1.0, -1.2, -1.5, -2.0, -3.0] {
+            let out = offset(&s, "s", d, Join::Round, 0.05).unwrap();
+            assert_eq!(out.sketch.loops.len(), 1, "offset {d}: {:?}", out.sketch.loop_names);
+            let a = area(&out.sketch);
+            // Nearly convex: the core loses a strip as long as the outline
+            // and gives back about the disc of radius |d| at the corners.
+            let want = full - outline.length() * -d + PI * d * d;
+            assert!((a - want).abs() < 0.02 * want, "offset {d}: area {a}, expected about {want}");
+            for p in out.sketch.loops[0].sample() {
+                let e = dist_to(&outline, p);
+                assert!(e >= -d - 1e-3, "offset {d}: {p:?} is only {e} from the outline");
+                assert!(outline.contains_point(p), "offset {d}: {p:?} is outside");
+            }
         }
     }
 

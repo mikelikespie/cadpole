@@ -66,8 +66,8 @@ DRAWINGS = {
     "pair-thumbscrew": dict(
         script="site/features/pair-thumbscrew.star", view="sheet:V1", flags=["--tolerance", "0.02"], formats=("svg", "pdf", "dxf"),
         title="Thumbscrew and nut, hidden lines dashed",
-        theme=["--only", "vis,hid", "--weights", "vis=2,hid=1.2", "--dash", "5,3.5", "--cut-dashes", "1", "--tiles", "4"],
-        pair=("examples/thumbscrew.star", -30, 24, 0.02, 3000), frame="88.3538,119.3692,64.2926,64.2926"),
+        theme=["--only", "vis,hid", "--weights", "vis=2,hid=1.2", "--dash", "5,3.5", "--cut-dashes", "1", "--tiles", "16"],
+        pair=("examples/thumbscrew.star", -30, 24, 0.02, 3000), frame="-53.0848,25.9767,257.1704,257.1704"),
     # The feature cards'.
     "pair-pillow-block": dict(
         script="site/features/feat-hidden-line.star", view="sheet:V1", flags=["--tolerance", "0.005"],
