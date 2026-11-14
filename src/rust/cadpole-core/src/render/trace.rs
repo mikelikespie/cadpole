@@ -4698,7 +4698,7 @@ mod tests {
         let (n, len, wing) = (40usize, 10.0f32, 2.0f32);
         let half_fold = |x: f32| (30.0 * (1.0 - x / len)).to_radians();
         let mut mesh = crate::tessellate::Mesh::default();
-        let mut vert = |m: &mut crate::tessellate::Mesh, p: [f32; 3], nrm: [f32; 3]| {
+        let vert = |m: &mut crate::tessellate::Mesh, p: [f32; 3], nrm: [f32; 3]| {
             m.positions.extend_from_slice(&p);
             m.normals.extend_from_slice(&nrm);
             (m.positions.len() / 3 - 1) as u32
@@ -4753,7 +4753,7 @@ mod tests {
     fn the_edge_break_follows_a_curved_edge_smoothly() {
         let (segs, r, h) = (24usize, 10.0f32, 3.0f32);
         let mut mesh = crate::tessellate::Mesh::default();
-        let mut vert = |m: &mut crate::tessellate::Mesh, p: [f32; 3], nrm: [f32; 3]| {
+        let vert = |m: &mut crate::tessellate::Mesh, p: [f32; 3], nrm: [f32; 3]| {
             m.positions.extend_from_slice(&p);
             m.normals.extend_from_slice(&nrm);
             (m.positions.len() / 3 - 1) as u32

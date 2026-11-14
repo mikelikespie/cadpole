@@ -640,10 +640,9 @@ pub fn contour(tape: &Tape, opts: &ContourOptions) -> Result<ContourMesh, String
     let mut stage = vec![0u8; fine_vertices];
     let mut repaired_vertices = 0usize;
     let mut restored_nodes = 0usize;
-    let (mut tris, mut dropped_quads, mut defects) = (Vec::new(), 0usize, Defects::default());
+    let (mut dropped_quads, mut defects) = (0usize, Defects::default());
     for round in 0..=REPAIR_ROUNDS {
-        let (t, d) = emit_all(&cells, &remap, &positions);
-        tris = t;
+        let (tris, d) = emit_all(&cells, &remap, &positions);
         dropped_quads = d;
         defects = find_defects(&positions, &tris);
         if defects.vertices.is_empty() || round == REPAIR_ROUNDS {

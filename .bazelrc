@@ -80,6 +80,10 @@ build --macos_minimum_os=26.0
 # without this they fail with "Swift requires a minimum deployment target of
 # macOS 10.9.0". Inert on Linux, which builds no macOS targets in the exec config.
 build --host_macos_minimum_os=26.0
+# rustc takes its macOS deployment target from this (else 11.0), and every Rust
+# link on a Mac then warned "overriding '-mmacosx-version-min=11.0.0' option
+# with '-target arm64-apple-macosx26.0'". Keyed off the host like build:macos.
+build:macos --action_env=MACOSX_DEPLOYMENT_TARGET=26.0
 # Do NOT force a Swift `-target` globally here: `build:macos` keys off the HOST,
 # so on a Mac it poisons iOS-configured compiles ("using sysroot for
 # 'iPhoneSimulator' but targeting 'MacOSX'"). Targets that need a deployment

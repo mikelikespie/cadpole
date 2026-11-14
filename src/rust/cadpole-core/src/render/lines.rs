@@ -29,8 +29,8 @@
 
 use super::aa::par_bands2;
 use super::{
-    Ctx, DebugView, EdgeMode, Frame, GridMode, HIGHLIGHT, NO_ITEM, View, add, debug, dot, from_srgb8, lerp3, mul, oit,
-    scale, smoothstep, sub,
+    Ctx, DebugView, EdgeMode, Frame, GridMode, HIGHLIGHT, NO_ITEM, View, debug, dot, from_srgb8, lerp3, mul, oit,
+    smoothstep,
 };
 use crate::geom::Vec3;
 

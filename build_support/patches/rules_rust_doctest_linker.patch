@@ -1,0 +1,42 @@
+Strip the cc_toolchain's generated-file roots in rust_doc_test's runner.
+
+rustdoc --test links each doc test with the cc_toolchain's linker. On macOS
+that is apple_support's wrapped_clang, a file built in the exec
+configuration, so the path rules_rust 0.74.0 writes into the test runner is
+an execroot path ("bazel-out/darwin_arm64-opt-exec/bin/external/
+apple_support+/crosstool/wrapped_clang") that does not exist under runfiles.
+Every doc test with an example failed on a Mac with "linker ... not found".
+The writer already strips crate and runtime-library roots; this adds the
+toolchain's.
+
+--- a/rust/private/rustdoc_test.bzl
++++ b/rust/private/rustdoc_test.bzl
+@@ -18,7 +18,7 @@
+ load("//rust/private:common.bzl", "rust_common")
+ load("//rust/private:providers.bzl", "CrateInfo")
+ load("//rust/private:rustdoc.bzl", "rustdoc_compile_action")
+-load("//rust/private:utils.bzl", "dedent", "find_toolchain", "transform_deps")
++load("//rust/private:utils.bzl", "dedent", "find_cc_toolchain", "find_toolchain", "transform_deps")
+ 
+ def _collect_library_roots(roots, deps):
+     for dep in deps.to_list():
+@@ -104,6 +104,19 @@
+         if lib.root.path:
+             roots.append(lib.root.path)
+ 
++    # The linker rustdoc is given is the cc_toolchain's, and on macOS that is a
++    # generated file (apple_support's wrapped_clang, built in the exec
++    # configuration): its execroot path does not exist under runfiles, and
++    # every doc test failed with "linker `bazel-out/...-exec/bin/external/
++    # apple_support+/crosstool/wrapped_clang` not found". Strip the roots of
++    # the toolchain's generated files too; the files themselves are in the
++    # test's runfiles, under the `external` link the runner makes.
++    cc_toolchain, _ = find_cc_toolchain(ctx)
++    if cc_toolchain:
++        for f in cc_toolchain.all_files.to_list():
++            if f.root.path:
++                roots.append(f.root.path)
++
+     writer_args.add_all(roots, format_each = "--strip_substring=%s/", uniquify = True)
+ 
+     # Indicate that the rustdoc_test args are over.

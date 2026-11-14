@@ -72,7 +72,9 @@ pub fn resolve_threads(requested: u32) -> u32 {
 
 /// Ceiling on worker threads, for the default and for an explicit
 /// `--threads`. High enough for any desktop or workstation; it exists only
-/// so a typo cannot ask for a million threads.
+/// so a typo cannot ask for a million threads. (wasm32 runs one thread and
+/// never reads it.)
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub const MAX_THREADS: u32 = 256;
 
 /// Rows per band for a parallel pass over `rows` scanlines on `threads`
