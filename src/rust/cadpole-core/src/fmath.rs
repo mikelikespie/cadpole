@@ -247,7 +247,13 @@ mod tests {
         ];
         let mut bad = Vec::new();
         for (name, (d, x)) in cases {
-            if *d > 1 {
+            // Apple's libm is not within one ulp for tan: at -6236.838181586386
+            // it returns -0.9828794867807675, three ulps from the correctly
+            // rounded -0.9828794867807679 (checked to 60 digits with bc),
+            // which is what ours returns. The bound is on the platform, not
+            // on ours.
+            let allowed = if cfg!(target_os = "macos") && *name == "tan" { 4 } else { 1 };
+            if *d > allowed {
                 bad.push(format!("{name}({x:e}) differs from std by {d} ulps"));
             }
         }

@@ -1,6 +1,7 @@
 //! The few process controls a solve job needs, declared by hand against the
 //! C library `std` already links: limits on the child (`setrlimit`), a lower
-//! priority (`getpriority`, `setpriority`), and signals by pid (`kill`). No
+//! priority (`getpriority`, `setpriority`), signals by pid (`kill`), and on
+//! macOS a process's command line (`sysctl` KERN_PROCARGS2). No
 //! crate: these are a handful of POSIX calls with stable signatures, and the constants below
 //! are the two platforms Cadpole builds natively for.
 
@@ -25,6 +26,45 @@ mod imp {
         #[cfg(target_os = "macos")]
         fn __error() -> *mut c_int;
         fn kill(pid: c_int, sig: c_int) -> c_int;
+        #[cfg(target_os = "macos")]
+        fn sysctl(name: *mut c_int, namelen: u32, oldp: *mut u8, oldlenp: *mut usize, newp: *mut u8, newlen: usize) -> c_int;
+    }
+
+    /// `pid`'s argument vector (argv, without the executable path the kernel
+    /// keeps before it), from sysctl KERN_PROCARGS2: `argc` as an int, the
+    /// executable path, NUL padding, then argc NUL-terminated arguments.
+    /// `None` when the kernel will not say (gone, a zombie, or not ours).
+    #[cfg(target_os = "macos")]
+    pub fn args(pid: u32) -> Option<Vec<Vec<u8>>> {
+        const CTL_KERN: c_int = 1;
+        const KERN_ARGMAX: c_int = 8;
+        const KERN_PROCARGS2: c_int = 49;
+        let pid = c_int::try_from(pid).ok()?;
+        let mut argmax: c_int = 0;
+        let mut len = std::mem::size_of::<c_int>();
+        let mut mib = [CTL_KERN, KERN_ARGMAX];
+        // SAFETY: `argmax` is a c_int and `len` its size.
+        if unsafe { sysctl(mib.as_mut_ptr(), 2, (&mut argmax as *mut c_int).cast(), &mut len, std::ptr::null_mut(), 0) } != 0 {
+            return None;
+        }
+        let mut buf = vec![0u8; usize::try_from(argmax).ok()?.max(4096)];
+        let mut len = buf.len();
+        let mut mib = [CTL_KERN, KERN_PROCARGS2, pid];
+        // SAFETY: `buf` holds `len` bytes; the kernel writes at most that and
+        // sets `len` to what it wrote.
+        if unsafe { sysctl(mib.as_mut_ptr(), 3, buf.as_mut_ptr(), &mut len, std::ptr::null_mut(), 0) } != 0 {
+            return None;
+        }
+        let buf = buf.get(..len)?;
+        let argc = usize::try_from(i32::from_ne_bytes(buf.get(..4)?.try_into().ok()?)).ok()?;
+        let mut rest = &buf[4..];
+        // The executable path, then the padding after it.
+        let end = rest.iter().position(|&b| b == 0)?;
+        rest = &rest[end..];
+        let start = rest.iter().position(|&b| b != 0)?;
+        rest = &rest[start..];
+        let args: Vec<Vec<u8>> = rest.split(|&b| b == 0).take(argc).map(<[u8]>::to_vec).collect();
+        (args.len() == argc).then_some(args)
     }
 
     #[cfg(target_os = "linux")]
@@ -169,10 +209,10 @@ pub fn alive(pid: u32) -> bool {
     }
 }
 
-/// Whether `pid` is the job `id`'s process: on Linux its command line names
-/// the hidden subcommand and the id, so a recycled pid is never mistaken for
-/// a job (and never signalled as one). Elsewhere, being alive is all there
-/// is to go on.
+/// Whether `pid` is the job `id`'s process: on Linux and macOS its command
+/// line names the hidden subcommand and the id, so a recycled pid is never
+/// mistaken for a job (and never signalled as one). Elsewhere, being alive
+/// is all there is to go on.
 pub fn is_job_process(pid: u32, id: &str) -> bool {
     if !alive(pid) {
         return false;
@@ -187,7 +227,14 @@ pub fn is_job_process(pid: u32, id: &str) -> bool {
             Err(_) => false,
         }
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        match imp::args(pid) {
+            Some(args) => args.iter().any(|a| a == b"opt-job") && args.iter().any(|a| a == id.as_bytes()),
+            None => false,
+        }
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = id;
         true
@@ -240,6 +287,13 @@ mod tests {
         let me = std::process::id();
         assert!(alive(me));
         assert!(!is_job_process(me, "3f9a2c1b7e44"));
+        // The command line is really read: this test binary's own is found.
+        #[cfg(target_os = "macos")]
+        {
+            let args = imp::args(me).expect("this process's arguments");
+            let first = std::env::args_os().next().unwrap();
+            assert_eq!(args.first().map(Vec::as_slice), Some(first.as_encoded_bytes()));
+        }
         // A pid that cannot exist on any system Cadpole runs on.
         assert!(!alive(i32::MAX as u32 - 1));
         assert!(imp_refuses_groups());
