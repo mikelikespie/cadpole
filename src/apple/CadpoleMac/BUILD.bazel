@@ -62,6 +62,7 @@ file_types_expand(
 #   bazel test //src/apple/CadpoleMac:InfoPlistTests
 swift_test(
     name = "InfoPlistTests",
+    size = "small",
     srcs = ["InfoPlistTests.swift"],
     data = [
         ":info_plist",

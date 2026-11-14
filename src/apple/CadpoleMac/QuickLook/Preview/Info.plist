@@ -16,7 +16,10 @@
 			<false/>
 			<key>QLSupportedContentTypes</key>
 			<array>
+				<!-- The app's own (Info.plist.in), and Bambu Studio's: since 2.9.1
+				     it imports com.bambulab.3mf for .3mf, and Finder gives files that. -->
 				<string>org.3mf.3mf</string>
+				<string>com.bambulab.3mf</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>

@@ -187,7 +187,8 @@ user-selected-file entitlements (`CadpoleMac/CadpoleMac.entitlements`).
 
 The Mac app carries a Quick Look preview and a thumbnail extension for
 `.3mf` files (type `org.3mf.3mf`, which the app imports; the system declares
-none), in `src/apple/CadpoleMac/QuickLook`:
+none; and `com.bambulab.3mf`, which Bambu Studio 2.9.1 and later imports and
+Finder then gives `.3mf` files), in `src/apple/CadpoleMac/QuickLook`:
 
 - **Preview** (space bar): the project's plates on the printer's bed, in an
   orbitable SceneKit view. The bed is the project's `printable_area` (a

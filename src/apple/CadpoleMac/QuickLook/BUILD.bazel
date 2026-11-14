@@ -116,6 +116,7 @@ macos_command_line_application(
 
 swift_test(
     name = "PlatesTests",
+    size = "small",
     srcs = glob(["Tests/*.swift"]),
     copts = DARWIN_COPTS,
     target_compatible_with = MACOS,
