@@ -45,6 +45,8 @@ bazel build //src/web:dist                          # web UI
 bazel test //src/web:e2e_test                       # Playwright
 bazel run //src/web:devserver -- --port 7460 --hot  # dev server with per-file rebuilds
 bazel test //src/tools/listener:all                 # the limited-privilege listener
+node src/tools/illustrate/main.mjs examples/gear_toy.guide.json --out-dir /tmp/guide   # an illustrated assembly guide (docs/illustrations.md)
+bazel test //src/tools/illustrate:all               # annotations on renders, and guides built from them
 bazel test //spec/...                               # the Quint models
 bazel run //spec:quint_check -- --samples=20000 --steps=60   # a deeper model-check pass
 bazel run //spec/replay:listener_replay -- --traces=1000    # a longer replay of a model against the program

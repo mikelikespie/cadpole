@@ -320,6 +320,10 @@ depth range the projection maps; the renderers clip nothing. An animation
 writes one entry per frame, `t` in seconds. The same values are
 `RenderResponse.camera` and `AnimateResponse.cameras`.
 
+`src/tools/illustrate` reads this file to draw arrows, labels and dimensions
+on a render at points of the model, and to build step-by-step guides from
+such pictures (`docs/illustrations.md`).
+
 ## Choosing a backend
 
 `cadpole render --backend raster|path` picks which renderer draws the image.

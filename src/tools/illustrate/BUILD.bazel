@@ -1,0 +1,65 @@
+# Illustrated guides from a model (docs/illustrations.md): renders
+# annotated through the camera that drew them, laid out as a page.
+#
+#   bazel test //src/tools/illustrate:all
+#   bazel run  //src/tools/illustrate -- GUIDE.json --out-dir DIR --cadpole "$PWD/bazel-opt-bin/src/rust/cadpole-cli/cadpole"
+#   node src/tools/illustrate/main.mjs GUIDE.json --out-dir DIR      # the same, from a checkout
+#
+# Plain ESM with JSDoc types and no dependencies, as the listener is.
+
+load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
+
+package(default_visibility = ["//visibility:public"])
+
+js_library(
+    name = "illustrate_lib",
+    srcs = [
+        "annotate.mjs",
+        "guide.mjs",
+        "main.mjs",
+    ],
+)
+
+js_binary(
+    name = "illustrate",
+    entry_point = "main.mjs",
+    data = [":illustrate_lib"],
+)
+
+# The projection and every kind of annotation, on a camera worked by hand.
+js_test(
+    name = "annotate_test",
+    data = [":illustrate_lib"],
+    entry_point = "annotate_test.mjs",
+    timeout = "short",
+)
+
+# The stand-in for `cadpole render` the guide test drives.
+js_library(
+    name = "fake_cadpole_render",
+    srcs = ["fake_cadpole_render.mjs"],
+)
+
+# The builder against the stand-in: the renderer's arguments, what is kept
+# between runs, the page and the manifest. No binaries, no browser.
+js_test(
+    name = "guide_test",
+    data = [
+        ":fake_cadpole_render",
+        ":illustrate_lib",
+    ],
+    entry_point = "guide_test.mjs",
+    timeout = "short",
+)
+
+# The example guide is well formed.
+js_test(
+    name = "example_guide_test",
+    args = ["examples/gear_toy.guide.json", "--check"],
+    data = [
+        ":illustrate_lib",
+        "//examples:gear_toy_guide",
+    ],
+    entry_point = "main.mjs",
+    timeout = "short",
+)

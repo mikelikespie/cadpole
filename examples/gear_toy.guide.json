@@ -1,0 +1,284 @@
+{
+  "title": "Crank gear toy: putting it together",
+  "subtitle": "Three printed pieces and two M3 screws. About five minutes.",
+  "model": "gear_toy.star",
+  "units": "in",
+  "size": [
+    1500,
+    1000
+  ],
+  "intro": [
+    "The gear set comes off the bed already assembled: the ring, the three planets, the sun and the carousel are printed in place. The lid and the crank are printed beside it."
+  ],
+  "overview": [
+    {
+      "name": "pieces",
+      "title": "The three printed pieces",
+      "params": {
+        "explode": "40"
+      },
+      "camera": {
+        "target": [
+          0,
+          0,
+          70
+        ],
+        "direction": [
+          0.5,
+          -0.87,
+          0.5
+        ],
+        "distance": 640,
+        "fov": 24
+      },
+      "annotations": [
+        {
+          "type": "label",
+          "at": [
+            52,
+            -22,
+            12
+          ],
+          "text": "gear set (printed in place)",
+          "offset": [
+            150,
+            60
+          ],
+          "anchor": "start"
+        },
+        {
+          "type": "label",
+          "at": [
+            50,
+            -14,
+            62
+          ],
+          "text": "lid",
+          "offset": [
+            170,
+            -10
+          ],
+          "anchor": "start"
+        },
+        {
+          "type": "label",
+          "at": [
+            0,
+            35,
+            150
+          ],
+          "text": "crank with its knob",
+          "offset": [
+            170,
+            -40
+          ],
+          "anchor": "start"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "name": "free_gears",
+      "title": "Free the gears",
+      "text": "Hold the base and turn the hex post in the middle a few times, both ways. The first turn may take a firm twist to break the gears free; after that it runs smoothly.",
+      "params": {
+        "explode": "45"
+      },
+      "camera": {
+        "target": [
+          0,
+          0,
+          62
+        ],
+        "direction": [
+          0.45,
+          -0.8,
+          0.62
+        ],
+        "distance": 640,
+        "fov": 24
+      },
+      "annotations": [
+        {
+          "type": "label",
+          "at": [
+            0,
+            -6,
+            38
+          ],
+          "text": "hex post: turn it by hand",
+          "offset": [
+            -190,
+            120
+          ],
+          "anchor": "end"
+        },
+        {
+          "type": "note",
+          "text": "The lid and crank are off for this (shown lifted out of the way)."
+        }
+      ]
+    },
+    {
+      "name": "lid_on",
+      "title": "Screw the lid on",
+      "text": "Lower the lid over the post and turn it clockwise, about two turns, until it stops. The little figures should show through the two windows.",
+      "params": {
+        "explode": "28"
+      },
+      "camera": {
+        "target": [
+          0,
+          0,
+          48
+        ],
+        "direction": [
+          0.5,
+          -0.87,
+          0.5
+        ],
+        "distance": 560,
+        "fov": 24
+      },
+      "annotations": [
+        {
+          "type": "arrow",
+          "from": [
+            -62,
+            -36,
+            84
+          ],
+          "to": [
+            -62,
+            -36,
+            52
+          ],
+          "text": "down, then clockwise"
+        }
+      ]
+    },
+    {
+      "name": "lock_lid",
+      "title": "Lock the lid with a screw",
+      "text": "Drive an M3 screw into the small hole in the side of the lid until it bears on the base. It cuts its own thread. Now the lid cannot be unscrewed by small hands.",
+      "camera": {
+        "target": [
+          -20,
+          -12,
+          22
+        ],
+        "direction": [
+          -0.72,
+          -0.62,
+          0.3
+        ],
+        "distance": 330,
+        "fov": 24
+      },
+      "annotations": [
+        {
+          "type": "arrow",
+          "from": [
+            -78,
+            -45,
+            11.6
+          ],
+          "to": [
+            -49,
+            -28.3,
+            11.6
+          ],
+          "text": "M3 x 6 mm screw"
+        }
+      ]
+    },
+    {
+      "name": "crank_on",
+      "title": "Fit the crank",
+      "text": "Push the crank's hub down onto the hex post. Then drive the second M3 screw through the hole in the side of the hub, into the notch in the post, to hold it on.",
+      "params": {
+        "crank_lift": "30"
+      },
+      "camera": {
+        "target": [
+          0,
+          10,
+          62
+        ],
+        "direction": [
+          -0.66,
+          -0.7,
+          0.38
+        ],
+        "distance": 470,
+        "fov": 24
+      },
+      "annotations": [
+        {
+          "type": "arrow",
+          "from": [
+            30,
+            -34,
+            112
+          ],
+          "to": [
+            30,
+            -34,
+            80
+          ],
+          "text": "down onto the post"
+        },
+        {
+          "type": "label",
+          "at": [
+            0,
+            0,
+            56
+          ],
+          "text": "hex post",
+          "offset": [
+            190,
+            40
+          ],
+          "anchor": "start"
+        },
+        {
+          "type": "label",
+          "at": [
+            -13,
+            2,
+            73.4
+          ],
+          "text": "then an M3 x 8 mm screw in this hole",
+          "offset": [
+            -150,
+            -170
+          ],
+          "anchor": "middle"
+        },
+        {
+          "type": "note",
+          "text": "The knob is already on the crank: it was printed in place and spins on its pin."
+        }
+      ]
+    },
+    {
+      "name": "play",
+      "title": "Turn the crank",
+      "text": "Four turns of the crank take the carousel round once.",
+      "camera": {
+        "view": "az=30,el=36"
+      },
+      "annotations": []
+    }
+  ],
+  "sections": [
+    {
+      "title": "If the gears will not turn",
+      "text": [
+        "A first layer squashed too hard can bridge the gaps at the bottom. Slide a thin blade round the base of each gear, then try again. The gaps are drawn for 0.20 mm layers: do not print the gear set at another layer height."
+      ]
+    }
+  ]
+}
