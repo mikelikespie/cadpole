@@ -189,6 +189,24 @@ pub fn join(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options, notes: &mut
                     None
                 }
             };
+            // Two pieces the script each pinned its own way up are two
+            // pieces: joined, one of the pins would be dropped. Said, so a
+            // set meant to print in place can be given as one list.
+            let own_way = |p: &Pin| p.down.is_some() || p.keep;
+            let apart = matches!(kind, Some(JointKind::Captive(_) | JointKind::Resting(_)))
+                && own_way(&items[ii].pin)
+                && own_way(&items[ij].pin)
+                && (items[ii].pin.down != items[ij].pin.down || items[ii].pin.keep != items[ij].pin.keep);
+            if apart {
+                notes.push(format!(
+                    "{} and {} stand as a print-in-place pair ({} mm apart), but each is pinned its own way up: printed \
+                     apart; give them as one list to print them together",
+                    bodies[i].name,
+                    bodies[j].name,
+                    num(c.distance)
+                ));
+            }
+            let kind = if apart { None } else { kind };
             if let Some(kind) = kind {
                 joints.push(Joint { a: i, b: j, kind });
                 let (ri, rj) = (find(&mut parent, ii), find(&mut parent, ij));
@@ -297,6 +315,7 @@ fn merge_pin(into: &mut Pin, from: &Pin, first: bool) {
     }
     into.coupon |= from.coupon;
     into.plate = into.plate.or(from.plate);
+    into.at = into.at.or(from.at);
 }
 
 /// The share of the smaller body's surface that lies on the other: the area

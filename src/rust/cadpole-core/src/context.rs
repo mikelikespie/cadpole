@@ -841,6 +841,23 @@ pub struct ExportSpec {
     /// whose printer, process and filament settings the project carries,
     /// read when the script ran.
     pub template: Option<BambuTemplate>,
+    /// Set when every body of the call is a copy `print_plan` placed on one
+    /// plate: the bodies already stand where they print, in plate
+    /// coordinates, and the project writer leaves them there.
+    pub laid_out: Option<LaidOut>,
+}
+
+/// A plate `print_plan` laid out: its pieces stand where they print, in
+/// plate coordinates from the bed's front left corner, checked clear of
+/// each other and of the prime tower.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LaidOut {
+    /// Which planned plate: bodies with the same number were laid out
+    /// together, and only together is their layout good.
+    pub plan: u64,
+    /// The front left corner of the prime tower the layout leaves room for,
+    /// when the plate prints more than one filament.
+    pub tower: Option<[f64; 2]>,
 }
 
 /// What `export(..., template=)` takes from a saved Bambu Studio project,
@@ -992,6 +1009,11 @@ pub struct Context {
     pub render_defaults: Option<RenderDefaults>,
     pub diagnostics: Vec<Diagnostic>,
     pub exports: Vec<ExportSpec>,
+    /// The copies `print_plan` placed, each with the plate it was laid out
+    /// on, so an `export(...)` of them keeps the layout.
+    pub laid_out: Vec<(BodyId, LaidOut)>,
+    /// How many plates `print_plan` has laid out in this document.
+    pub laid_out_plates: u64,
     /// The script's `plate_images(...)` declarations, one per Bambu project
     /// path, in declaration order.
     pub plate_images: Vec<PlateImageSpec>,
@@ -1162,6 +1184,14 @@ impl Default for Context {
 }
 
 impl Context {
+    /// The plate `print_plan` laid `ids` out on, when every one of them is
+    /// a copy it placed and all on the same plate.
+    pub fn laid_out_together(&self, ids: &[BodyId]) -> Option<LaidOut> {
+        let of = |id: &BodyId| self.laid_out.iter().find(|(b, _)| b == id).map(|(_, l)| *l);
+        let first = of(ids.first()?)?;
+        ids.iter().all(|id| of(id).is_some_and(|l| l.plan == first.plan)).then_some(first)
+    }
+
     pub fn new() -> Context {
         // Kernel notes are scoped to an evaluation: anything a kernel call
         // outside a context left on this thread is not this document's.
@@ -1179,6 +1209,8 @@ impl Context {
             render_defaults: None,
             diagnostics: Vec::new(),
             exports: Vec::new(),
+            laid_out: Vec::new(),
+            laid_out_plates: 0,
             plate_images: Vec::new(),
             selection: Vec::new(),
             brep_face_budget: kernel::BREP_FACE_BUDGET,

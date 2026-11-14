@@ -2084,6 +2084,7 @@ impl KPrinter {
             material: cadpole_print::Material::parse(&self.material).unwrap_or_default(),
             build_direction: d.build_direction,
             chord_gap_fraction: d.chord_gap_fraction,
+            centre_bias: d.centre_bias,
             support: self.support,
         }
     }

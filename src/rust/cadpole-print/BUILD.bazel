@@ -12,6 +12,9 @@ rust_library(
 
 rust_test(
     name = "cadpole_print_test",
-    size = "small",  # 0.1 s
+    size = "medium",  # 10 s: the plating property tests pack a few dozen random plates
     crate = ":cadpole_print",
+    # The packer's inner loops are bit tests over rasters; unoptimised they
+    # take ten times as long, and the property tests with them.
+    rustc_flags = ["-Copt-level=2"],
 )

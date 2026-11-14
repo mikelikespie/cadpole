@@ -50,6 +50,7 @@ pub fn count(bodies: &[PlanBody<'_>], plan: &mut Plan, opts: &Options) {
         let plate = &mut plan.plates[p];
         plate.layers = layers;
         plate.colour_changes = changes;
+        plate.tower_height = if mono { 0.0 } else { mixed_height(&ranges, layers, lh) };
     }
 }
 
@@ -90,4 +91,21 @@ pub fn changes(ranges: &[(usize, f64, f64)], layers: usize, lh: f64, filaments: 
         });
     }
     total
+}
+
+/// The height of the highest layer more than one filament prints in: how
+/// tall the plate's prime tower grows. 0 when no layer mixes filaments.
+pub fn mixed_height(ranges: &[(usize, f64, f64)], layers: usize, lh: f64) -> f64 {
+    for l in (0..layers).rev() {
+        let z = (l as f64 + 0.5) * lh;
+        let mut first: Option<usize> = None;
+        for r in ranges.iter().filter(|r| r.1 <= z && z <= r.2) {
+            match first {
+                None => first = Some(r.0),
+                Some(f) if f != r.0 => return (l as f64 + 1.0) * lh,
+                Some(_) => {}
+            }
+        }
+    }
+    0.0
 }

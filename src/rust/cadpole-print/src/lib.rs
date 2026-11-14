@@ -153,6 +153,11 @@ pub struct Profile {
     /// gap to another body gets a warning. [`CHORD_GAP_FRACTION`], a third,
     /// unless a profile says otherwise; no printer does today.
     pub chord_gap_fraction: f64,
+    /// How strongly plating draws pieces to the middle of the bed, where
+    /// its heat is most even, the pieces likeliest to warp nearest it
+    /// (`plate::Options::centre_bias`). 1 by default; 0 turns it off; a
+    /// machine with an unevenly heated bed would set it higher.
+    pub centre_bias: f64,
     /// The support rules ([`support`], [`overhang`]): what a slicer prints
     /// without support and what it does not. Each is a Cadpole number with
     /// its reason on [`SupportRules`]; a printer profile carries them so a
@@ -241,6 +246,7 @@ impl Default for Profile {
             material: Material::PLA,
             build_direction: Vec3::Z,
             chord_gap_fraction: CHORD_GAP_FRACTION,
+            centre_bias: plate::DEFAULT_CENTRE_BIAS,
             support: SupportRules::default(),
         }
     }

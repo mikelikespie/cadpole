@@ -154,6 +154,7 @@ impl Printer {
             material: self.material,
             build_direction: crate::Vec3::Z,
             chord_gap_fraction: crate::CHORD_GAP_FRACTION,
+            centre_bias: crate::plate::DEFAULT_CENTRE_BIAS,
             // A tip within one of this machine's layers is not an island.
             support: crate::SupportRules { min_island: self.layer_height, ..crate::SupportRules::default() },
         }

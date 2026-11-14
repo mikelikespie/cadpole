@@ -44,6 +44,10 @@ pub struct PlateRequest {
     pub joint_gap: f64,
     pub max_bridge: f64,
     pub variants: Vec<Variant>,
+    /// The pull to the middle of the bed; `None` is the printer's.
+    pub centre_bias: Option<f64>,
+    /// What the choice of plates minimises.
+    pub prefer: plate::Prefer,
     /// Where the plan is written, as a Bambu project; `None` places the
     /// copies and records nothing.
     pub path: Option<String>,
@@ -64,6 +68,8 @@ impl Default for PlateRequest {
             joint_gap: plate::DEFAULT_JOINT_GAP,
             max_bridge: cadpole_print::overhang::DEFAULT_MAX_BRIDGE,
             variants: vec![Variant::Colour],
+            centre_bias: None,
+            prefer: plate::Prefer::default(),
             path: None,
             tolerance: None,
             layer: PRINT_LAYER.to_owned(),
@@ -112,7 +118,7 @@ pub const DEFAULT_PRINTER: &str = "bambu_x1c";
 
 /// Plan, place the copies, and (with a path) record the project's exports.
 pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Plated> {
-    let (options, printer) = options_for(req)?;
+    let (options, printer, tower_margin) = options_for(req)?;
 
     // The bodies, once each, in the order the items name them.
     let mut sources: Vec<BodyId> = Vec::new();
@@ -160,6 +166,21 @@ pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Pla
             span: req.span.clone(),
         })?;
     }
+    // Each planned plate's number in the document, and where its tower
+    // stands: the copies carry both, so the project writer leaves them
+    // where the plan put them. A piece too large for the plate is left to
+    // the writer, which says what is wrong with it.
+    let laid: Vec<Option<cadpole_core::context::LaidOut>> = plan
+        .plates
+        .iter()
+        .map(|p| {
+            ctx.laid_out_plates += 1;
+            (!p.oversize).then_some(cadpole_core::context::LaidOut {
+                plan: ctx.laid_out_plates,
+                tower: p.tower.map(|t| [t[0] + tower_margin, t[1] + tower_margin]),
+            })
+        })
+        .collect();
     let mut copies: Vec<Vec<BodyId>> = Vec::with_capacity(plan.placements.len());
     for pl in &plan.placements {
         let piece = &plan.pieces[pl.piece];
@@ -181,6 +202,9 @@ pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Pla
             for p in paints.iter().filter(|p| p.body_id == src_id) {
                 let args = cadpole_core::paint::args(&new_id, &p.faces, p.color, p.slot);
                 ctx.new_feature(cadpole_core::paint::KIND, None, vec![feature.clone()], args, req.span.clone())?;
+            }
+            if let Some(l) = laid[pl.plate] {
+                ctx.laid_out.push((id, l));
             }
             ids.push(id);
         }
@@ -204,6 +228,7 @@ pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Pla
                 printer: if req.template.is_some() { String::new() } else { printer.id.to_owned() },
                 bed: None,
                 template: req.template.clone(),
+                laid_out: laid[pl.plate],
             });
         }
     }
@@ -215,7 +240,7 @@ pub fn plate_bodies(ctx: &mut Context, req: &PlateRequest) -> anyhow::Result<Pla
 
 /// The planner's options for a request: the printer's (or the template's)
 /// machine, and the request's numbers.
-fn options_for(req: &PlateRequest) -> anyhow::Result<(Options, &'static cadpole_print::Printer)> {
+fn options_for(req: &PlateRequest) -> anyhow::Result<(Options, &'static cadpole_print::Printer, f64)> {
     let printer_id = if req.printer.is_empty() { DEFAULT_PRINTER } else { req.printer.as_str() };
     let printer = cadpole_print::printer(printer_id)
         .ok_or_else(|| anyhow::anyhow!("unknown printer {printer_id:?}; Cadpole knows {}", cadpole_print::printer_list()))?;
@@ -230,6 +255,7 @@ fn options_for(req: &PlateRequest) -> anyhow::Result<(Options, &'static cadpole_
         }
         None => (machine_of_printer(printer), cadpole_export_3mf::bambu_settings::tower_room(None)),
     };
+    let centre_bias = req.centre_bias.unwrap_or(profile.centre_bias);
     let options = Options {
         profile,
         max_bridge: req.max_bridge,
@@ -242,8 +268,13 @@ fn options_for(req: &PlateRequest) -> anyhow::Result<(Options, &'static cadpole_
         cell: 1.0,
         variants: if req.variants.is_empty() { vec![Variant::Colour] } else { req.variants.clone() },
         printer: printer.id.to_owned(),
+        centre_bias,
+        prefer: req.prefer,
+        hotends: machine.nozzles.iter().map(|n| n.hotends).sum::<u32>().max(1),
+        centre: Some(((machine.area[0] + machine.area[2]) * 0.5, (machine.area[1] + machine.area[3]) * 0.5)),
+        ..Options::default()
     };
-    Ok((options, printer))
+    Ok((options, printer, tower.map(|r| r.margin).unwrap_or(0.0)))
 }
 
 type Loaded = (Vec<(Mesh, Topology)>, Vec<String>, Vec<(Vec<String>, Vec<u8>)>);
@@ -315,7 +346,7 @@ impl Judged {
 /// print-in-place group stays one piece, and is not turned), each as it
 /// stands against the best orientation found.
 pub fn judge_orientation(ctx: &mut Context, ids: &[BodyId], req: &PlateRequest, along: Option<Vec3>) -> anyhow::Result<Vec<Judged>> {
-    let (options, _) = options_for(req)?;
+    let (options, _, _) = options_for(req)?;
     let paints = cadpole_core::paint::paints(ctx);
     let (meshes, names, colours) = load(ctx, ids, &paints, req.tolerance)?;
     let bodies: Vec<PlanBody<'_>> = (0..ids.len())
@@ -375,6 +406,9 @@ pub fn piece_rows(p: &Plated) -> Vec<BTreeMap<&'static str, String>> {
         row.insert("support_area", format!("{}", c.support_area));
         row.insert("modelled_support_area", base.map(|b| format!("{}", b.support_area)).unwrap_or_default());
         row.insert("spin", format!("{}", pl.spin));
+        row.insert("footprint_area", format!("{}", pl.area));
+        row.insert("x", format!("{}", (pl.footprint[0] + pl.footprint[2]) * 0.5));
+        row.insert("y", format!("{}", (pl.footprint[1] + pl.footprint[3]) * 0.5));
         row.insert("reason", piece.reason.clone());
         // Every orientation fully scored, best first: what the choice was
         // made from.

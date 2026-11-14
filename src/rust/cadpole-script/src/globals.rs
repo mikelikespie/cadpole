@@ -1808,7 +1808,13 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
     /// any orientation can. `spin=` is its turn about z in degrees, or
     /// `False` for none at all. `group=` names pieces that share a plate
     /// when they fit; `plate=` is the plate (1-based) of its plate set it
-    /// must go on; `coupon=True` prints it first, on the test-coupon plate.
+    /// must go on, and stays on: a piece that does not fit there is placed
+    /// elsewhere with a warning. `at=(x, y)` is where the middle of its
+    /// footprint stands, in mm from the bed's front left corner (with
+    /// `plate=`, on that plate); the other pieces are packed round it.
+    /// `coupon=True` prints it first, on the test-coupon plate. Pieces of
+    /// one `group=` are also laid out next to each other, and the plan warns
+    /// when a group does not fit one plate.
     fn print_part<'v>(
         #[starlark(require = pos)] bodies: Value<'v>,
         #[starlark(require = named)] name: Option<&str>,
@@ -1818,6 +1824,7 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] spin: Option<Value<'v>>,
         #[starlark(require = named)] group: Option<&str>,
         #[starlark(require = named)] plate: Option<i32>,
+        #[starlark(require = named)] at: Option<Value<'v>>,
         #[starlark(require = named, default = false)] coupon: bool,
         #[starlark(require = named, default = true)] together: bool,
         eval: &mut Evaluator<'v, '_, '_>,
@@ -1860,6 +1867,12 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             }
             pin.plate = Some(p as u32);
         }
+        if let Some(v) = at.filter(|v| !v.is_none()) {
+            let xy = <(UnpackFloat, UnpackFloat)>::unpack_value(v)
+                .map_err(|e| e.into_anyhow())?
+                .ok_or_else(|| anyhow::anyhow!("print_part: at= is (x, y) in mm from the bed's front left corner, got {}", v.get_type()))?;
+            pin.at = Some((xy.0.0, xy.1.0));
+        }
         Ok(crate::values::KPrintPart { bodies: ids, declared: together, pin })
     }
 
@@ -1889,11 +1902,28 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
     /// its objects or pictures); without it the project carries Cadpole's
     /// own settings for `printer`.
     ///
+    /// Which plate a piece goes on is chosen by cost: a plate costs thirty
+    /// minutes and a colour change forty seconds on every layer where a
+    /// plate mixes filaments (ten, with no purge, when the plate has no more
+    /// filaments than the printer has hotends), so filaments keep to plates
+    /// of their own when mixing costs more than the extra plate.
+    /// `prefer="plates"` packs the fewest plates whatever the changes,
+    /// `prefer="waste"` the fewest changes whatever the plates,
+    /// `"balanced"` (the default) the least time. On a plate the pieces are
+    /// laid out from the middle of the bed, where its heat is most even: the
+    /// pieces likeliest to lift (long, broad, low) nearest it, the prime
+    /// tower in a corner. `centre=` is the strength of that pull (1 by
+    /// default); `centre=False` packs from the front left corner and
+    /// centres the group. The finished layout is measured on the pieces'
+    /// real outlines -- none closer than `spacing`, all inside the plate,
+    /// none in the tower's square -- and the report says so.
+    ///
     /// The placed copies go on a hidden `layer` ("print"), so the model is
     /// untouched. Returns a dict: `report` (the text), `plates` (a dict per
     /// plate: `name`, `variant`, `pieces`, `filaments`, `colour_changes`,
-    /// `layers`), `pieces` (a dict per placed piece: `name`, `plate`, `kind`,
-    /// `orientation`, `support_area`, `modelled_support_area`, `spin`,
+    /// `purge`, `tower`, `closest`, `layers`), `pieces` (a dict per placed
+    /// piece: `name`, `plate`, `kind`, `orientation`, `support_area`,
+    /// `modelled_support_area`, `spin`, `x`, `y`, `footprint_area`,
     /// `reason`, `bodies`) and `bodies` (every placed copy).
     fn print_plan<'v>(
         #[starlark(require = pos)] items: Value<'v>,
@@ -1907,11 +1937,29 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
         #[starlark(require = named)] template: Option<Value<'v>>,
         #[starlark(require = named)] tolerance: Option<UnpackFloat>,
         #[starlark(require = named)] layer: Option<&str>,
+        #[starlark(require = named)] prefer: Option<&str>,
+        #[starlark(require = named)] centre: Option<Value<'v>>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<Value<'v>> {
         use starlark::values::dict::AllocDict;
         let heap = eval.heap();
         let mut req = crate::plating::PlateRequest { items: plate_items(items, heap)?, ..Default::default() };
+        if let Some(p) = prefer {
+            req.prefer = cadpole_print::plate::Prefer::parse(p)
+                .ok_or_else(|| anyhow::anyhow!("print_plan: prefer= is \"balanced\", \"plates\" or \"waste\", got {p:?}"))?;
+        }
+        if let Some(v) = centre.filter(|v| !v.is_none()) {
+            req.centre_bias = Some(if let Some(b) = v.unpack_bool() {
+                if b { cadpole_print::plate::DEFAULT_CENTRE_BIAS } else { 0.0 }
+            } else if let Some(w) = UnpackFloat::unpack_value(v).map_err(|e| e.into_anyhow())? {
+                if !(0.0..=100.0).contains(&w.0) {
+                    anyhow::bail!("print_plan: centre= is a weight from 0 to 100, or False, got {}", w.0);
+                }
+                w.0
+            } else {
+                anyhow::bail!("print_plan: centre= is a weight, or False, got {}", v.get_type());
+            });
+        }
         if let Some(p) = printer {
             req.printer = cadpole_print::printers::printer(p)
                 .ok_or_else(|| anyhow::anyhow!("print_plan: unknown printer {p:?}; Cadpole knows {}", cadpole_print::printer_list()))?
@@ -2003,7 +2051,7 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
             let mut entries: Vec<(Value<'v>, Value<'v>)> = Vec::new();
             for (k, v) in row {
                 let val = match k {
-                    "support_area" | "modelled_support_area" | "spin" => match v.parse::<f64>() {
+                    "support_area" | "modelled_support_area" | "spin" | "x" | "y" | "footprint_area" => match v.parse::<f64>() {
                         Ok(x) => heap.alloc(x),
                         Err(_) => Value::new_none(),
                     },
@@ -2030,6 +2078,18 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
                     (heap.alloc("pieces"), heap.alloc(pieces)),
                     (heap.alloc("filaments"), heap.alloc(filaments)),
                     (heap.alloc("colour_changes"), heap.alloc(p.colour_changes as i32)),
+                    (
+                        heap.alloc("purge"),
+                        heap.alloc(if plated.options.swaps(p.colours.len()) { 0.0 } else { p.colour_changes as f64 * plated.options.purge_per_change }),
+                    ),
+                    (heap.alloc("tower"), match p.tower {
+                        Some(t) => heap.alloc(t.to_vec()),
+                        None => Value::new_none(),
+                    }),
+                    (heap.alloc("closest"), match p.closest {
+                        Some(d) => heap.alloc(d),
+                        None => Value::new_none(),
+                    }),
                     (heap.alloc("layers"), heap.alloc(p.layers as i32)),
                 ]))
             })
@@ -2689,7 +2749,9 @@ pub(crate) fn cadpole_globals(builder: &mut GlobalsBuilder) {
                 Some(bt)
             }
         };
+        let laid_out = st.ctx.borrow().laid_out_together(&ids);
         st.ctx.borrow_mut().exports.push(cadpole_core::context::ExportSpec {
+            laid_out,
             bodies: ids,
             path: path.to_owned(),
             format,

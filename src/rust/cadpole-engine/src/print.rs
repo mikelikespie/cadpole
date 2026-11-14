@@ -1301,6 +1301,9 @@ pub struct PlatePlan {
     /// One per `export()` call, in `specs` order.
     pub calls: Vec<PlannedCall>,
     pub warnings: Vec<String>,
+    /// Per plate, set when `print_plan` laid it out: its pieces stay where
+    /// they stand.
+    pub planned: Vec<Option<cadpole_export_3mf::bambu::Planned>>,
 }
 
 impl PlatePlan {
@@ -1341,7 +1344,7 @@ impl PlatePlan {
 /// the view's boxes are at the document's, so the two agree to the chord
 /// tolerance.
 pub fn plate_plan(ctx: &mut Context, specs: &[cadpole_core::context::ExportSpec]) -> anyhow::Result<PlatePlan> {
-    use cadpole_export_3mf::bambu::{layout_plates, plate_label, Footprint};
+    use cadpole_export_3mf::bambu::{plate_label, Footprint};
     let mut warnings = Vec::new();
     let (plate_of, plate_names) = resolve_plates(specs);
     let path = specs.first().map(|s| s.path.clone()).unwrap_or_default();
@@ -1471,7 +1474,16 @@ pub fn plate_plan(ctx: &mut Context, specs: &[cadpole_core::context::ExportSpec]
         room: cadpole_export_3mf::bambu_settings::tower_room(template.as_ref().map(|(t, _)| t)),
         filaments,
     };
-    let layout = layout_plates(&machine, plate_names.len() as u32, &footprints, &towers);
+    // A plate is the planner's when every call on it was laid out on the
+    // same planned plate; mixed with anything else it is the script's.
+    let planned: Vec<Option<cadpole_export_3mf::bambu::Planned>> = (1..=plate_names.len() as u32)
+        .map(|plate| {
+            let mut on = specs.iter().zip(&plate_of).filter(|(_, p)| **p == plate).map(|(s, _)| s.laid_out);
+            let first = on.next()??;
+            on.all(|l| l.is_some_and(|l| l.plan == first.plan)).then_some(cadpole_export_3mf::bambu::Planned { tower: first.tower })
+        })
+        .collect();
+    let layout = cadpole_export_3mf::bambu::layout_plates_planned(&machine, plate_names.len() as u32, &footprints, &towers, &planned);
     let label = |n: u32| plate_label(n, plate_names.get(n as usize - 1).map(String::as_str).unwrap_or(""));
     let refusals: Vec<String> = layout.refusals(label).into_iter().map(|r| format!("export: {path}: {r}")).collect();
     warnings.extend(layout.warnings(label).into_iter().map(|w| format!("export: {path}: {w}")));
@@ -1507,7 +1519,7 @@ pub fn plate_plan(ctx: &mut Context, specs: &[cadpole_core::context::ExportSpec]
             });
         }
     }
-    Ok(PlatePlan { bed, machine, template, refusals, filaments: pal.filaments, plates, calls, warnings })
+    Ok(PlatePlan { bed, machine, template, refusals, filaments: pal.filaments, plates, calls, warnings, planned })
 }
 
 /// The machine of a project's printer table row: its printable
@@ -1691,7 +1703,7 @@ pub fn export_bambu_project(
         meshes.push(out);
     }
     let mut plates: Vec<Plate<'_>> =
-        plan.plates.iter().map(|p| Plate { name: p.name.clone(), ..Default::default() }).collect();
+        plan.plates.iter().zip(&plan.planned).map(|(p, planned)| Plate { name: p.name.clone(), planned: *planned, ..Default::default() }).collect();
     for (call, meshed) in plan.calls.iter().zip(&meshes) {
         let parts = |range: std::ops::Range<usize>| -> Vec<ProjectPart<'_>> {
             meshed[range]

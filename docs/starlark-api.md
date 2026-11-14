@@ -4820,14 +4820,18 @@ plate 2 "Colour 1": 5 pieces, 4 filaments (#2F6F8F, #F4F3EE, #FFCE1F, #161616), 
 
 `examples/print_plan.star` is the whole script, with tests of the plan.
 
-#### `print_plan(items, path=None, *, printer=None, ams=4, variants=["colour"], spacing=4, joint_gap=1, max_bridge=10, template=None, tolerance=None, layer="print")`
+#### `print_plan(items, path=None, *, printer=None, ams=4, variants=["colour"], spacing=4, joint_gap=1, max_bridge=10, template=None, tolerance=None, layer="print", prefer="balanced", centre=None)`
 
 `items` is a list of Bodies, lists of bodies, `print_part(...)`s and
 Instances or Assemblies (their bodies, loose). Returns a dict: `report`
 (the text above), `printer`, `plates` (per plate `name`, `variant`,
-`pieces`, `filaments`, `colour_changes`, `layers`), `pieces` (per placed
+`pieces`, `filaments`, `colour_changes`, `purge` in mm³, `tower` -- the
+square kept for the prime tower, `[x0, y0, x1, y1]`, or `None` --
+`closest`, the measured distance between its two closest pieces when they
+are near, and `layers`), `pieces` (per placed
 piece `name`, `plate`, `kind`, `orientation`, `support_area`,
-`modelled_support_area`, `spin`, `reason`, `considered` -- every
+`modelled_support_area`, `spin`, `x` and `y` -- the middle of its
+footprint on the plate -- `footprint_area`, `reason`, `considered` -- every
 orientation fully scored with its cost, support area and islands -- and
 `bodies`) and `bodies` (every placed copy). The report is also an info diagnostic. With `path` (a
 `.3mf`) the plates are recorded as Bambu exports, exactly as
@@ -4863,23 +4867,50 @@ more islands, are *the same print*, and the packer may use one of them to
 fit a plate before it opens another: a plate saved is never bought with
 support.
 
-**Plates.** Pieces are packed by raster bottom-left fill: each piece's
-outline seen from above at 1 mm, grown by half the `spacing`, placed at the
-lowest, then leftmost, spot that is clear, over the turns about z tried
-(0°, 90°, 180°, 270° and the two of its minimum-area rectangle). A plate is
-what every nozzle of the printer reaches (X 25–325 on an H2D or H2C), its
-excluded corners kept clear (the X1 and P1 cutter); a plate of more than
-one filament keeps a square for the prime tower at its back right. Plates
-are tried by colour affinity -- fewest new filaments, then most shared --
-and never take a piece that would put them past `ams` filaments
-(`ams=0`: no limit). Test coupons go first, on "Test coupons"; then the
-pieces, larger first, a `group=` together. `variants=["colour", "mono"]`
+**Plates.** Pieces are packed by their outlines, not their boxes: each
+piece's outline seen from above at 1 mm, kept at least `spacing` from
+every other, over the turns about z tried (0°, 90°, 180°, 270°, the
+quarter turns of its minimum-area rectangle, and for a piece nearly as
+long as the plate its two diagonals). Parts nest in each other's hollows
+and stand in the triangles beside a long part laid across the plate. A
+plate is what every nozzle of the printer reaches (X 25–325 on an H2D or
+H2C), its excluded corners kept clear (the X1 and P1 cutter); a plate of
+more than one filament keeps a corner square for the prime tower, the
+back right first.
+
+*Which plate* is chosen by cost, not only by fit: a plate costs thirty
+minutes, and a colour change forty seconds on every layer where a plate
+mixes filaments -- ten, and no purge, when the plate has no more filaments
+than the printer has hotends (2 on an H2D, 7 on an H2C). So filaments
+keep to plates of their own when mixing them would cost more than the
+extra plate, a one-filament plate has no prime tower at all, and the same
+model can plate differently for different printers. `prefer="plates"`
+packs the fewest plates whatever the changes; `prefer="waste"` the fewest
+changes whatever the plates; `"balanced"` (the default) the least time.
+A plate never takes a piece that would put it past `ams` filaments
+(`ams=0`: no limit).
+
+*Where on the plate*: from the middle of the bed outwards, where its heat
+is most even. The pieces likeliest to lift -- long, broad, low, sharp
+cornered: a two-layer panel -- are placed first and nearest the middle,
+small chunky parts round them, pieces of one filament and of one `group=`
+side by side, and the whole cluster is centred. `centre=` is the strength
+of that pull (the printer's by default, 1); `centre=False` packs from the
+front left corner and centres the group.
+
+After packing, the layout is measured on the pieces' real triangles: no
+two closer than `spacing`, all inside the plate, none in the tower's
+square or an excluded corner. The report says so, gives each plate's
+closest pair, its prime tower's height and its purge, and a note for
+anything it could not honour: a `plate=` or `at=` pin that does not fit, a
+`group=` split over plates, pins that cost colour changes.
+
+Test coupons go first, on "Test coupons". `variants=["colour", "mono"]`
 makes a set of plates each, named "Colour 1", "Mono 1", ...; one variant's
 plates are "Parts", or "Parts 1", "Parts 2". A mono plate prints every
-piece in filament 1. Each plate reports its filaments and an estimate of
-its colour changes: per layer, one fewer than the filaments that layer
-prints, plus one where it cannot start on the filament the last layer
-ended on.
+piece in filament 1. The colour-change estimate is, per layer, one fewer
+than the filaments that layer prints, plus one where it cannot start on
+the filament the last layer ended on.
 
 **The copies** go on the hidden `layer` (`"print"`, declared when the
 script has not), each with its source's paint; the model is untouched.
@@ -4890,7 +4921,7 @@ pictures or side files; without one the project carries Cadpole's own
 settings for `printer` (§6.1). `tolerance=` is the export's tessellation
 tolerance.
 
-#### `print_part(bodies, *, name=None, down=None, orient="auto", along=None, spin=None, group=None, plate=None, coupon=False, together=True)`
+#### `print_part(bodies, *, name=None, down=None, orient="auto", along=None, spin=None, group=None, plate=None, at=None, coupon=False, together=True)`
 
 What a script pins about a piece. `down=` is the model direction that
 faces the bed, `(x, y, z)` or `"-z"`, `"+x"`, `"top"`, `"bottom"`,
@@ -4899,10 +4930,25 @@ modelled. `along=` is the direction its fibres must run in -- a snap arm's
 length, which bends along the layers and breaks across them
 (`snap_fit()` in §6.2 gives its strain) -- kept within 30° of the bed plane
 when any orientation can. `spin=` is its turn about z in degrees, or
-`False` for none. `group=` names pieces that share a plate when they fit;
-`plate=` is the plate of its set it goes on; `coupon=True` prints it first.
-`together=False` leaves a list's bodies loose for the analysis. Every pin is
-reported as pinned.
+`False` for none. `group=` names pieces that share a plate when they fit
+and stand next to each other on it; the plan warns when a group does not
+fit one plate. `plate=` is the plate of its set it goes on, and stays on;
+`at=(x, y)` is where the middle of its footprint stands, in mm from the
+bed's front left corner, the other pieces packed round it. A piece that
+cannot stand where it is pinned is placed where it fits, with a warning.
+`coupon=True` prints it first. `together=False` leaves a list's bodies
+loose for the analysis. Every pin is reported as pinned, and two parts
+each given their own `down=` are never joined into one print-in-place
+piece.
+
+```python
+print_plan(
+    [print_part(keel, down="-y", spin=47, plate=1),                 # this way up, this turn, this plate
+     print_part(panel, orient="keep", at=(165, 160)),               # as modelled, in the middle of the bed
+     print_part(rib_l, group="ribs"), print_part(rib_r, group="ribs"),  # together, side by side
+     shell],                                                         # everything else is decided
+    "glider.3mf", printer="bambu_h2c", prefer="balanced")
+```
 
 #### `assert_orientation_optimal(body, *, printer=None, tolerance=5, along=None, max_bridge=None, msg=None)`
 

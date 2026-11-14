@@ -271,6 +271,26 @@ fn mm(v: f64) -> String {
 /// (`Model.plates`) places the bodies it already has with it, so the
 /// preview is the export, to the bounding boxes' tessellation.
 pub fn layout_plates(machine: &Machine, plates: u32, footprints: &[Footprint], towers: &TowerPlan) -> Layout {
+    layout_plates_planned(machine, plates, footprints, towers, &[])
+}
+
+/// A plate whose pieces a planner already placed, in plate coordinates,
+/// clear of each other by their real outlines and of the prime tower.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Planned {
+    /// The front left corner of the prime tower the planner left room
+    /// for; `None` on a plate it planned for one filament.
+    pub tower: Option<[f64; 2]>,
+}
+
+/// [`layout_plates`], with the plates a planner laid out (`planned`, plate
+/// 1 first; a missing or `None` entry is a plate arranged by the script).
+/// A planned plate's pieces are left exactly where they stand: they are not
+/// centred, not moved for the tower -- its spot is the planner's -- and not
+/// compared by bounding box, since pieces nested by their outlines have
+/// boxes that overlap. They are still held to the bed and to the height the
+/// machine prints.
+pub fn layout_plates_planned(machine: &Machine, plates: u32, footprints: &[Footprint], towers: &TowerPlan, planned: &[Option<Planned>]) -> Layout {
     let bed = machine.bed();
     let area = machine.area;
     let shared = machine.shared();
@@ -290,6 +310,73 @@ pub fn layout_plates(machine: &Machine, plates: u32, footprints: &[Footprint], t
                 }
             }
             let size = [hi[0] - lo[0], hi[1] - lo[1]];
+            if let Some(plan) = planned.get(plate as usize - 1).copied().flatten() {
+                let inside = |r: [f64; 4]| {
+                    lo[0] >= r[0] - REACH_SLACK && lo[1] >= r[1] - REACH_SLACK && hi[0] <= r[2] + REACH_SLACK && hi[1] <= r[3] + REACH_SLACK
+                };
+                if !inside(area) {
+                    problems.push(PlateProblem {
+                        plate,
+                        fatal: true,
+                        message: format!(
+                            "its pieces span x {} to {}, y {} to {} mm as planned, and the {} prints {} x {} mm",
+                            mm(lo[0]),
+                            mm(hi[0]),
+                            mm(lo[1]),
+                            mm(hi[1]),
+                            machine.name,
+                            mm(bed[0]),
+                            mm(bed[1])
+                        ),
+                    });
+                } else if !inside(shared) {
+                    problems.push(PlateProblem {
+                        plate,
+                        fatal: false,
+                        message: format!(
+                            "its pieces reach beyond the {} x {} mm every nozzle of the {} reaches; a filament the \
+                             slicer puts on one nozzle cannot print the part of a piece beyond that nozzle's reach",
+                            mm(shared[2] - shared[0]),
+                            mm(shared[3] - shared[1]),
+                            machine.name
+                        ),
+                    });
+                }
+                let tallest = mine.iter().map(|f| f.height).fold(0.0, f64::max);
+                if tallest > machine.height + REACH_SLACK {
+                    problems.push(PlateProblem {
+                        plate,
+                        fatal: true,
+                        message: format!(
+                            "a piece is {} mm tall and the {} prints {} mm; split it, or lay it on its side",
+                            mm(tallest),
+                            machine.name,
+                            mm(machine.height)
+                        ),
+                    });
+                } else if tallest > machine.shared_height() + REACH_SLACK {
+                    problems.push(PlateProblem {
+                        plate,
+                        fatal: false,
+                        message: format!(
+                            "a piece is {} mm tall; only one nozzle of the {} prints above {} mm, so all of its \
+                             filaments must go to that nozzle",
+                            mm(tallest),
+                            machine.name,
+                            mm(machine.shared_height())
+                        ),
+                    });
+                }
+                let mut tower = plan.tower;
+                if let (None, Some(room)) = (tower, towers.room) {
+                    let boxes: Vec<[f64; 4]> = mine.iter().map(|f| [f.lo[0], f.lo[1], f.hi[0], f.hi[1]]).collect();
+                    tower = crate::bambu_settings::tower_spot(machine, room, &boxes);
+                    if tower.is_none() && towers.needs(plate) {
+                        problems.push(PlateProblem { plate, fatal: true, message: no_room_for_tower(machine, room, size) });
+                    }
+                }
+                return PlatePlacement { plate, origin, shift: [0.0, 0.0], tower };
+            }
             let fits = |r: [f64; 4]| size[0] <= r[2] - r[0] + REACH_SLACK && size[1] <= r[3] - r[1] + REACH_SLACK;
             let region = if fits(shared) { shared } else { area };
             let mut shift = region_shift(region, lo, hi);
@@ -591,6 +678,8 @@ pub struct ProjectObject<'a> {
 pub struct Plate<'a> {
     pub name: String,
     pub objects: Vec<ProjectObject<'a>>,
+    /// Set when a planner placed this plate's objects ([`Planned`]).
+    pub planned: Option<Planned>,
     pub thumbnail: Option<Vec<u8>>,
     pub thumbnail_small: Option<Vec<u8>>,
 }
@@ -751,7 +840,8 @@ fn layout_of(project: &Project<'_>, objects: &[OutObj]) -> Layout {
         room: crate::bambu_settings::tower_room(project.template.as_ref().map(|(t, _)| t)),
         filaments,
     };
-    layout_plates(&project.machine, plates, &footprints, &towers)
+    let planned: Vec<Option<Planned>> = project.plates.iter().map(|p| p.planned).collect();
+    layout_plates_planned(&project.machine, plates, &footprints, &towers, &planned)
 }
 
 /// `Metadata/slice_info.config` for an unsliced project, naming the version

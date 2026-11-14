@@ -2306,6 +2306,7 @@ fn export_evaluated(
                         printer,
                         bed,
                         template,
+                        laid_out: None,
                     };
                     let images = req.plate_images.then(|| print::PlateImageOptions::from_request(req)).transpose()?;
                     let out = match print::export_bambu_project(ctx, &[spec], &stem, true, images.as_ref()) {

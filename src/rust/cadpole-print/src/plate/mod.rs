@@ -5,10 +5,11 @@
 //! something else, what is captive in something else); each piece is
 //! **oriented** by a cost in mm² of support equivalent built from the
 //! support rules `print_check` judges ([`score`]); pieces are **packed** by
-//! raster bottom-left fill onto plates the size of what every nozzle
-//! reaches, a plate never holding more filaments than the AMS has slots
-//! ([`pack`]); and every decision is written down with its numbers
-//! ([`Plan::report`]).
+//! their true outlines onto plates the size of what every nozzle reaches --
+//! which plate by what the plates and the colour changes cost, where on it
+//! from the middle of the bed outwards ([`pack`]); the layout's guarantees
+//! are then **checked** on the real geometry ([`verify`]); and every
+//! decision is written down with its numbers ([`Plan::report`]).
 //!
 //! Meshes in, a [`Plan`] out: nothing here knows about documents or
 //! scripts, and nothing is random or hash-ordered, so the same input gives
@@ -18,6 +19,7 @@ pub mod colour;
 pub mod pack;
 pub mod pieces;
 pub mod score;
+pub mod verify;
 
 use cadpole_core::geom::{Transform, Vec3};
 use cadpole_core::tessellate::{Mesh, Topology};
@@ -63,6 +65,9 @@ pub struct Pin {
     pub coupon: bool,
     /// The plate of its variant (1-based) it must go on.
     pub plate: Option<u32>,
+    /// Where the middle of its footprint's box must stand, in plate mm
+    /// from the bed's front left corner.
+    pub at: Option<(f64, f64)>,
     /// A name for the piece.
     pub name: Option<String>,
 }
@@ -140,6 +145,70 @@ pub struct Options {
     pub variants: Vec<Variant>,
     /// The printer's name, for the report.
     pub printer: String,
+    /// How strongly pieces are drawn to the middle of the bed, where its
+    /// heat is most even, the pieces likeliest to warp nearest it; 0 packs
+    /// from the front left corner and centres the pieces as a group.
+    pub centre_bias: f64,
+    /// What plate assignment minimises.
+    pub prefer: Prefer,
+    /// What one more plate costs, in seconds: clearing the bed and starting
+    /// again.
+    pub plate_seconds: f64,
+    /// What one colour change costs, in seconds, when the nozzle must be
+    /// purged: the swap, the purge, the wipe.
+    pub change_seconds: f64,
+    /// What one colour change costs, in seconds, when the machine swaps
+    /// hotends instead: a plate with no more filaments than `hotends`.
+    pub swap_seconds: f64,
+    /// Hotends the machine prints with, each keeping its own filament: 1
+    /// for a one-nozzle machine, 2 for two nozzles, 7 for a nozzle and a
+    /// rack of six. A plate of no more filaments than this changes colour
+    /// by changing hotend, without a purge.
+    pub hotends: u32,
+    /// The filament one purged colour change wastes, in mm³, for the
+    /// report.
+    pub purge_per_change: f64,
+    /// The middle of the bed, in plate mm, where its heat is most even;
+    /// `None` is the middle of `region`.
+    pub centre: Option<(f64, f64)>,
+}
+
+impl Options {
+    /// Whether a plate of `filaments` filaments changes colour by changing
+    /// hotend, with no purge.
+    pub fn swaps(&self, filaments: usize) -> bool {
+        filaments as u32 <= self.hotends
+    }
+
+    /// What one colour change costs on a plate of `filaments` filaments,
+    /// in seconds.
+    pub fn seconds_per_change(&self, filaments: usize) -> f64 {
+        if self.swaps(filaments) { self.swap_seconds } else { self.change_seconds }
+    }
+}
+
+/// What the choice of plates minimises.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Prefer {
+    /// The fewest plates, then the fewest colour changes.
+    Plates,
+    /// The fewest colour changes, then the fewest plates.
+    Waste,
+    /// The least time: plates at `plate_seconds`, changes at
+    /// `change_seconds`.
+    #[default]
+    Balanced,
+}
+
+impl Prefer {
+    pub fn parse(s: &str) -> Option<Prefer> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "plates" | "fewest plates" => Some(Prefer::Plates),
+            "waste" | "least waste" | "changes" => Some(Prefer::Waste),
+            "balanced" | "time" => Some(Prefer::Balanced),
+            _ => None,
+        }
+    }
 }
 
 impl Default for Options {
@@ -156,12 +225,31 @@ impl Default for Options {
             cell: 1.0,
             variants: vec![Variant::Colour],
             printer: "default".to_owned(),
+            centre_bias: DEFAULT_CENTRE_BIAS,
+            prefer: Prefer::default(),
+            plate_seconds: DEFAULT_PLATE_SECONDS,
+            change_seconds: DEFAULT_CHANGE_SECONDS,
+            swap_seconds: DEFAULT_SWAP_SECONDS,
+            hotends: 1,
+            purge_per_change: DEFAULT_PURGE,
+            centre: None,
         }
     }
 }
 
 /// Clear space between pieces on a plate, in mm.
 pub const DEFAULT_SPACING: f64 = 4.0;
+/// The pull to the middle of the bed ([`Options::centre_bias`]).
+pub const DEFAULT_CENTRE_BIAS: f64 = 1.0;
+/// An extra plate: half an hour of someone coming back, clearing the bed
+/// and starting again, and of the bed cooling and heating.
+pub const DEFAULT_PLATE_SECONDS: f64 = 1800.0;
+/// A colour change on a one-nozzle machine: the swap, the purge, the wipe.
+pub const DEFAULT_CHANGE_SECONDS: f64 = 40.0;
+/// A colour change by changing hotend: no purge, a short prime.
+pub const DEFAULT_SWAP_SECONDS: f64 = 10.0;
+/// The purge of an average colour change, in mm³.
+pub const DEFAULT_PURGE: f64 = 300.0;
 /// The widest gap a print-in-place joint is looked for across, in mm:
 /// print-in-place clearances are 0.2-0.6 mm, so 1 mm finds them all and
 /// keeps the pair search small.
@@ -234,6 +322,14 @@ pub struct Placement {
     pub spin: f64,
     /// Footprint on the plate, `[x0, y0, x1, y1]` in mm, without spacing.
     pub footprint: [f64; 4],
+    /// How much the piece wants the middle of the bed, 0..1
+    /// ([`pack::warp_need`]).
+    pub need: f64,
+    /// The area of its footprint, in mm².
+    pub area: f64,
+    /// Per filament it prints in, the heights it spans as it stands:
+    /// `(index into the piece's colours, z0, z1)`.
+    pub spans: Vec<(usize, f64, f64)>,
 }
 
 /// One plate.
@@ -250,8 +346,21 @@ pub struct Plate {
     pub colour_changes: usize,
     /// Layers the plate prints.
     pub layers: usize,
-    /// A free square kept for the prime tower.
-    pub tower: bool,
+    /// The square kept for the prime tower and its margins,
+    /// `[x0, y0, x1, y1]` in plate mm; `None` on a plate of one filament.
+    pub tower: Option<[f64; 4]>,
+    /// How tall the prime tower grows: the highest layer more than one
+    /// filament prints in, in mm.
+    pub tower_height: f64,
+    /// Its number in its set of plates, 1-based.
+    pub number: u32,
+    /// The box round its pieces, `[x0, y0, x1, y1]` in plate mm.
+    pub extent: [f64; 4],
+    /// The least distance between two of its pieces, measured on their
+    /// real outlines, when it is under the spacing plus [`verify::LOOK`].
+    pub closest: Option<f64>,
+    /// Holds one piece larger than the plate, and nothing else.
+    pub oversize: bool,
 }
 
 /// The whole plan.
@@ -262,6 +371,15 @@ pub struct Plan {
     pub placements: Vec<Placement>,
     /// Problems and remarks the report leads with.
     pub notes: Vec<String>,
+    /// Pieces whose pinned plate or position could not be honoured; each
+    /// has a note.
+    pub unpinned: Vec<usize>,
+    /// Per set of plates (the coupons', then each variant's), the least
+    /// number of plates the pieces' area and filaments allow.
+    pub floors: Vec<usize>,
+    /// Guarantees the finished layout breaks ([`verify`]); empty for every
+    /// plan the planner hands on without a note saying otherwise.
+    pub breaches: Vec<verify::Breach>,
 }
 
 /// Plan `items` of `bodies`.
@@ -311,10 +429,37 @@ pub fn plan(bodies: &[PlanBody<'_>], items: &[Item], opts: &Options) -> Plan {
         }
         out.push(piece);
     }
-    let (plates, placements) = pack::pack(bodies, &out, opts, &mut notes);
-    let mut plan = Plan { pieces: out, plates, placements, notes };
-    colour::count(bodies, &mut plan, opts);
-    plan
+    // Pack, then check the layout on the real geometry; a breach (the
+    // raster is conservative, so none is expected) is answered by packing
+    // again with a wider margin, and said in a note if it survives that.
+    let mut extra = 0;
+    loop {
+        let mut tried = notes.clone();
+        let packed = pack::pack(bodies, &out, opts, extra, &mut tried);
+        let mut plan = Plan {
+            pieces: out.clone(),
+            plates: packed.plates,
+            placements: packed.placements,
+            notes: tried,
+            unpinned: packed.unpinned,
+            floors: packed.floors,
+            breaches: Vec::new(),
+        };
+        plan.breaches = verify::check(bodies, &mut plan, opts);
+        if plan.breaches.is_empty() || extra == 2 {
+            for b in &plan.breaches {
+                plan.notes.push(format!(
+                    "the layout of plate {} breaks the {} rule ({}); move the piece with print_part(at=) or plate=",
+                    b.plate + 1,
+                    b.invariant,
+                    b.message
+                ));
+            }
+            colour::count(bodies, &mut plan, opts);
+            return plan;
+        }
+        extra += 1;
+    }
 }
 
 impl Plan {
@@ -337,6 +482,13 @@ impl Plan {
         for n in &self.notes {
             s.push_str(&format!("note: {n}\n"));
         }
+        if self.breaches.is_empty() {
+            s.push_str(&format!(
+                "checked on the pieces' real outlines: none closer than {} mm to another, all inside the plate, none in \
+                 a prime tower's square or an excluded corner.\n",
+                num(opts.spacing)
+            ));
+        }
         for (i, p) in self.plates.iter().enumerate() {
             let filaments = if p.variant == Some(Variant::Mono) { 1 } else { p.colours.len().max(1) };
             s.push_str(&format!(
@@ -355,6 +507,43 @@ impl Plan {
                 },
                 p.layers
             ));
+            if !p.oversize && !p.placements.is_empty() {
+                let mid = match opts.centre {
+                    Some((x, y)) => [x, y],
+                    None => [(opts.region[0] + opts.region[2]) * 0.5, (opts.region[1] + opts.region[3]) * 0.5],
+                };
+                let off = [(p.extent[0] + p.extent[2]) * 0.5 - mid[0], (p.extent[1] + p.extent[3]) * 0.5 - mid[1]];
+                s.push_str(&format!(
+                    "  layout: the pieces take {} x {} mm, {}; {}{}\n",
+                    num((p.extent[2] - p.extent[0]).round()),
+                    num((p.extent[3] - p.extent[1]).round()),
+                    if off[0].abs() < 5.0 && off[1].abs() < 5.0 {
+                        "centred on the bed".to_owned()
+                    } else {
+                        format!("{} x, {} y off the bed's centre", num(off[0].round()), num(off[1].round()))
+                    },
+                    match p.closest {
+                        _ if p.placements.len() < 2 => "nothing else on the plate".to_owned(),
+                        Some(d) => format!("the closest two are {} mm apart (at least {} asked)", num((d * 10.0).round() / 10.0), num(opts.spacing)),
+                        None => format!("no two closer than {} mm", num(opts.spacing + verify::LOOK)),
+                    },
+                    match p.tower {
+                        Some(t) if p.variant != Some(Variant::Mono) => format!(
+                            "; prime tower in the {} {} corner, {} mm tall, {}",
+                            if t[1] > mid[1] { "back" } else { "front" },
+                            if t[0] > mid[0] { "right" } else { "left" },
+                            num((p.tower_height * 10.0).round() / 10.0),
+                            if opts.swaps(p.colours.len()) {
+                                format!("its {} filaments each on a hotend of their own: changes without a purge", p.colours.len())
+                            } else {
+                                format!("~{} cm³ purged", num((p.colour_changes as f64 * opts.purge_per_change / 100.0).round() / 10.0))
+                            }
+                        ),
+                        _ if p.colours.len() <= 1 || p.variant == Some(Variant::Mono) => "; one filament: no prime tower, no purge".to_owned(),
+                        _ => String::new(),
+                    }
+                ));
+            }
             for &k in &p.placements {
                 let pl = &self.placements[k];
                 let piece = &self.pieces[pl.piece];

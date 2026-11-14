@@ -763,6 +763,7 @@ fn toy_like<'a>(meshes: &'a [Mesh]) -> Project<'a> {
         plates: vec![
             Plate {
                 name: "Core (print in place)".into(),
+                planned: None,
                 objects: vec![
                     ProjectObject {
                         name: "core".into(),
@@ -1647,4 +1648,30 @@ fn every_multi_filament_project_purges_between_every_two_filaments() {
         panic!("project_settings.config is a JSON object")
     };
     check_purge(&ps, 2);
+}
+
+/// A plate a planner laid out is left exactly as it stands: a long piece
+/// on the diagonal with another tucked beside it inside its bounding box is
+/// neither centred, nor moved for the tower, nor called an overlap, and the
+/// tower stands where the planner left room for it. The same footprints
+/// without the planner's word are the script's own arrangement, and are
+/// warned about.
+#[test]
+fn a_planned_plate_is_left_where_the_planner_put_it() {
+    let m = h2c_like();
+    let room = crate::bambu_settings::TowerRoom::for_width(35.0);
+    let keel = Footprint { plate: 1, lo: [30.0, 10.0], hi: [290.0, 250.0], height: 8.0 };
+    let tucked = Footprint { plate: 1, lo: [150.0, 20.0], hi: [280.0, 80.0], height: 2.0 };
+    let towers = TowerPlan { room: Some(room), filaments: vec![3] };
+    let planned = [Some(Planned { tower: Some([275.0, 270.0]) })];
+    let l = layout_plates_planned(&m, 1, &[keel, tucked], &towers, &planned);
+    assert!(l.problems.is_empty(), "{:?}", l.problems);
+    assert_eq!(l.placements[0].shift, [0.0, 0.0]);
+    assert_eq!(l.placements[0].tower, Some([275.0, 270.0]));
+    let l = layout_plates(&m, 1, &[keel, tucked], &towers);
+    assert!(l.warnings(|n| plate_label(n, "")).iter().any(|w| w.contains("overlap where they stand")), "{:?}", l.problems);
+    // A planned plate is still held to the bed.
+    let off = Footprint { plate: 1, lo: [300.0, 10.0], hi: [345.0, 40.0], height: 2.0 };
+    let l = layout_plates_planned(&m, 1, &[off], &towers, &planned);
+    assert_eq!(l.refusals(|n| plate_label(n, "")).len(), 1, "{:?}", l.problems);
 }

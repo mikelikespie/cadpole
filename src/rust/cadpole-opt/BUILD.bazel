@@ -31,3 +31,19 @@ rust_test(
     size = "medium",
     crate = ":cadpole_opt",
 )
+
+# The choice of print plates as a MILP, against the plate planner's own
+# (docs/plating.md, "Which plate"): the measure of whether the planner
+# should call a solver.
+rust_test(
+    name = "plate_assignment_test",
+    size = "medium",
+    srcs = ["tests/plate_assignment.rs"],
+    # The planner's inner loops are bit tests over rasters.
+    rustc_flags = ["-Copt-level=2"],
+    deps = [
+        ":cadpole_opt",
+        "//src/rust/cadpole-core:cadpole_core",
+        "//src/rust/cadpole-print:cadpole_print",
+    ],
+)
