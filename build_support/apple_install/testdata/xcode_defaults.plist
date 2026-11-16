@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DVTDeveloperAccountManagerAppleIDLists</key>
+	<dict>
+		<key>IDE.Identifiers.Prod</key>
+		<array>
+			<dict>
+				<key>identifier</key>
+				<string>00000000-AAAA-4BBB-8CCC-000000000001</string>
+			</dict>
+		</array>
+		<key>IDE.Prod</key>
+		<array>
+			<dict>
+				<key>username</key>
+				<string>fixture.person@example.com</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DVTDeveloperAccountUseKeychainService_2</key>
+	<true/>
+	<key>IDEProvisioningTeamByIdentifier</key>
+	<dict>
+		<key>00000000-AAAA-4BBB-8CCC-000000000001</key>
+		<array>
+			<dict>
+				<key>isFreeProvisioningTeam</key>
+				<true/>
+				<key>teamID</key>
+				<string>FREE5TEAM5</string>
+				<key>teamName</key>
+				<string>Fixture Person (Personal Team)</string>
+				<key>teamType</key>
+				<string>Personal Team</string>
+			</dict>
+			<dict>
+				<key>isFreeProvisioningTeam</key>
+				<false/>
+				<key>teamID</key>
+				<string>ABCDE12345</string>
+				<key>teamName</key>
+				<string>Fixture Team</string>
+				<key>teamType</key>
+				<string>Company/Organization</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

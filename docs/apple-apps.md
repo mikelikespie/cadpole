@@ -233,11 +233,23 @@ does not pick them up; name them. `--config=ios-sim` and `--config=ios`
 select the Simulator and device architectures. Pick a simulator your Xcode
 has (`xcrun simctl list devices available`).
 
-To run on your own device or sign the Mac app, use your own team: change
-`bundle_id` in `src/apple/CadpoleiOS/BUILD.bazel` and
-`src/apple/CadpoleMac/BUILD.bazel` to IDs you own, and add a
-`provisioning_profile` for the iOS app (the comment there says where). Do not
-commit those changes.
+To put the iOS app on your own iPhone or iPad, on a Mac with Xcode signed in
+to your Apple ID:
+
+```
+bazel run //src/apple/CadpoleiOS:doctor                            # checks the Mac, the device, the signing; changes nothing
+bazel run //src/apple/CadpoleiOS:install -- --team YOURTEAMID     # builds, signs here, installs, starts
+```
+
+It asks Xcode to register the device and make a development profile, signs
+the app with your development identity, and installs it with `devicectl`
+(several devices: it asks which, or `--device NAME`, `--all`). The bundle id
+must be one your team can register: if Apple refuses it, change `bundle_id`
+in `src/apple/CadpoleiOS/BUILD.bazel` (both places) to one you own, and do not
+commit that. The installer is in `build_support/apple_install`.
+
+To sign the Mac app, use your own team: change `bundle_id` in
+`src/apple/CadpoleMac/BUILD.bazel` to an ID you own. Do not commit that.
 
 On Linux:
 

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  NOT a provisioning profile. A stand-in so that rules_apple will build an
+  app or extension for a device when it has no profile of its own
+  (ios_install_profile(), ../private/device_app.bzl). It is plain XML, not
+  signed by Apple, names no real team, device or certificate, and no device
+  would accept it. install.sh replaces it with a development profile of the
+  Mac's before it signs each bundle.
+
+  rules_apple 4.5.3 reads a profile that starts with "<?xml" as it stands
+  (tools/provisioning_profile_tool, "back door for testing") and wants these
+  twelve keys.
+-->
+<plist version="1.0">
+<dict>
+	<key>AppIDName</key>
+	<string>Placeholder</string>
+	<key>ApplicationIdentifierPrefix</key>
+	<array>
+		<string>0000000000</string>
+	</array>
+	<key>CreationDate</key>
+	<date>2026-11-14T00:00:00Z</date>
+	<key>Entitlements</key>
+	<dict>
+		<key>application-identifier</key>
+		<string>0000000000.*</string>
+		<key>com.apple.developer.team-identifier</key>
+		<string>0000000000</string>
+		<key>get-task-allow</key>
+		<true/>
+	</dict>
+	<key>ExpirationDate</key>
+	<date>2099-01-01T00:00:00Z</date>
+	<key>Name</key>
+	<string>Placeholder, replaced by build_support/apple_install/install.sh</string>
+	<key>Platform</key>
+	<array>
+		<string>iOS</string>
+	</array>
+	<key>TeamIdentifier</key>
+	<array>
+		<string>0000000000</string>
+	</array>
+	<key>TeamName</key>
+	<string>Placeholder</string>
+	<key>TimeToLive</key>
+	<integer>26346</integer>
+	<key>UUID</key>
+	<string>00000000-0000-0000-0000-000000000000</string>
+	<key>Version</key>
+	<integer>1</integer>
+</dict>
+</plist>

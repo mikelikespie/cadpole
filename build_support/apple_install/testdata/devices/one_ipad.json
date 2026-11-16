@@ -1,0 +1,37 @@
+{
+ "info": {
+  "jsonVersion": 2,
+  "outcome": "success",
+  "commandType": "devicectl.list.devices"
+ },
+ "result": {
+  "devices": [
+   {
+    "identifier": "11111111-2222-4333-8444-11112222001E",
+    "visibilityClass": "default",
+    "connectionProperties": {
+     "pairingState": "paired",
+     "tunnelState": "connected",
+     "transportType": "wired"
+    },
+    "deviceProperties": {
+     "name": "Lab iPad",
+     "developerModeStatus": "enabled",
+     "osVersionNumber": "27.2",
+     "bootState": "booted"
+    },
+    "hardwareProperties": {
+     "deviceType": "iPad",
+     "marketingName": "iPad Pro 13-inch (M4)",
+     "platform": "iOS",
+     "productType": "iPad16,6",
+     "reality": "physical",
+     "udid": "00008103-000A11112222001E",
+     "cpuType": {
+      "name": "arm64e"
+     }
+    }
+   }
+  ]
+ }
+}

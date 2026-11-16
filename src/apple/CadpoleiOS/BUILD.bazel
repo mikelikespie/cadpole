@@ -1,6 +1,7 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 load("//build_support:file_types.bzl", "file_types_expand")
+load("//build_support/apple_install:defs.bzl", "ios_install", "ios_install_profile")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -36,7 +37,10 @@ ios_application(
     infoplists = [":info_plist"],
     minimum_os_version = "26.0",
     # Device / TestFlight builds: put the profile in //profiles and set
-    # provisioning_profile here. The Simulator needs none.
+    # it as the default below. The Simulator needs none. The build for
+    # :install takes a stand-in, which the installer replaces with the
+    # Mac's own development profile.
+    provisioning_profile = ios_install_profile(),
     version = "//src/apple:CadpoleVersion",
     deps = [":CadpoleiOSLib"],
 )
@@ -46,4 +50,26 @@ file_types_expand(
     name = "info_plist",
     src = "Info.plist.in",
     out = "Info.plist",
+)
+
+# Onto your own iPhone or iPad, signed on this Mac with your development
+# identity (Xcode makes the profile; your team, from Xcode's settings or
+# --team). On a Mac:
+#   bazel run //src/apple/CadpoleiOS:install
+#   bazel run //src/apple/CadpoleiOS:install -- --device NAME --team TEAMID
+#   bazel run //src/apple/CadpoleiOS:doctor          # the checks, changing nothing
+# The bundle id must be one your team can register (docs/apple-apps.md).
+ios_install(
+    name = "install",
+    app = ":CadpoleiOS",
+    bundle_id = "io.github.mikelikespie.cadpole.ios",
+    default_team = "",
+    device_app_name = "CadpoleiOSDevice",
+    display_name = "Cadpole",
+    doctor_name = "doctor",
+    families = [
+        "iphone",
+        "ipad",
+    ],
+    min_os = "26.0",
 )

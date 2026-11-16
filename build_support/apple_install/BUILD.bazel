@@ -1,0 +1,44 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+
+# `bazel run //src/apple/CadpoleiOS:install`: the iOS app onto your own iPhone
+# or iPad, signed on the Mac with your development identity.
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "install.sh",
+    "provision.py",
+    "app_test.sh",
+    "mac_test.sh",
+    # NOT a provisioning profile: the stand-in rules_apple embeds in a device
+    # build for the installer (ios_install_profile()); the installer replaces it.
+    "placeholder.mobileprovision",
+])
+
+filegroup(
+    name = "testdata",
+    srcs = glob(["testdata/**"]),
+)
+
+# Set only by device_app's transition: the app is being built for the installer.
+bool_flag(
+    name = "for_install",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "for_install_build",
+    flag_values = {":for_install": "True"},
+)
+
+# Cadpole builds its Apple apps on a Mac only (no remote Xcode): never true,
+# so the device build is skipped on a Linux host.
+bool_flag(
+    name = "remote_xcode",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "worker_xcode",
+    flag_values = {":remote_xcode": "True"},
+)

@@ -1,0 +1,3 @@
+  1) 3E0C5FE191BA1C090586970346C06D38183E5F37 "Apple Development: Fixture Person (AAAAAAAAAA)"
+  2) C1AF9A9A3CCF7CDEE17DBCB8A290B7F97DCFFECB "Apple Development: Other Person (BBBBBBBBBB)"
+     2 valid identities found

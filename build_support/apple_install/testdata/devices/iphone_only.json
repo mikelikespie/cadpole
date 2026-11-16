@@ -1,0 +1,231 @@
+{
+ "info": {
+  "commandType": "devicectl.list.devices",
+  "jsonVersion": 5,
+  "outcome": "success",
+  "arguments": [
+   "devicectl",
+   "list",
+   "devices",
+   "--json-output",
+   "devices.json"
+  ],
+  "environment": {},
+  "version": "651.32"
+ },
+ "result": {
+  "devices": [
+   {
+    "_deprecationNotice": {
+     "deprecatedFields": [
+      "hardwareProperties",
+      "deviceProperties",
+      "connectionProperties"
+     ],
+     "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+     "replacement": "properties"
+    },
+    "capabilities": [
+     {
+      "featureIdentifier": "com.apple.dt.coredevice.device.boot",
+      "name": "Boot Device"
+     },
+     {
+      "featureIdentifier": "com.apple.coredevice.feature.renamedevice",
+      "name": "Rename Device"
+     }
+    ],
+    "connectionProperties": {
+     "authenticationType": "implicit",
+     "isMobileDeviceOnly": false,
+     "lastConnectionDate": "2026-11-14T02:31:47.000Z",
+     "pairingState": "paired",
+     "potentialHostnames": [],
+     "transportType": "sameMachine",
+     "tunnelState": "disconnected"
+    },
+    "deviceProperties": {
+     "bootState": "shutdown",
+     "ddiServicesAvailable": false,
+     "hasInternalOSBuild": false,
+     "name": "iPad Pro 13-inch (M5)",
+     "osBuildUpdate": "24B8117",
+     "osVersionNumber": "27.2",
+     "provider": "com.apple.CoreSimulator.SimulatorCoreDevicePlugin"
+    },
+    "hardwareProperties": {
+     "cpuType": {
+      "name": "arm64",
+      "subType": 0,
+      "type": 16777228
+     },
+     "deviceType": "iPad",
+     "hardwareModel": "J821",
+     "marketingName": "iPad Pro 13-inch (M5)",
+     "platform": "iOS",
+     "productType": "iPad17,4",
+     "reality": "simulated",
+     "supportedCPUTypes": [
+      {
+       "name": "arm64",
+       "subType": 0,
+       "type": 16777228
+      }
+     ],
+     "udid": "9DA3ECB5-3636-4970-BAE8-7461D1A1FF9F"
+    },
+    "identifier": "9DA3ECB5-3636-4970-BAE8-7461D1A1FF9F",
+    "properties": {
+     "connection": {
+      "authenticationType": "implicit",
+      "lastConnectionDate": 816316307,
+      "pairingState": "paired",
+      "state": "disconnected",
+      "transportType": "sameMachine"
+     },
+     "hardware": {
+      "cpuType": {
+       "subtype": 0,
+       "type": 16777228
+      },
+      "deviceType": "iPad",
+      "hasActionButton": false,
+      "marketingName": "iPad Pro 13-inch (M5)",
+      "platform": "iOS",
+      "productType": "iPad17,4",
+      "reality": "simulated",
+      "supportedBiometrics": [
+       "faceID"
+      ],
+      "supportedCPUTypes": [
+       {
+        "subtype": 0,
+        "type": 16777228
+       }
+      ],
+      "supportsSiri": true,
+      "udid": "9DA3ECB5-3636-4970-BAE8-7461D1A1FF9F"
+     },
+     "software": {
+      "osBuildVersions": {
+       "buildVersion": {
+        "majorLetterComponent": "B",
+        "majorNumberComponent": 24,
+        "name": "24B8117",
+        "updateNumberComponent": 8117
+       }
+      },
+      "osVersionNumber": {
+       "components": [
+        27,
+        2,
+        0,
+        0,
+        0
+       ],
+       "originalComponentsCount": 2,
+       "stringValue": "27.2"
+      }
+     },
+     "state": {
+      "bootState": "shutdown",
+      "name": "iPad Pro 13-inch (M5)",
+      "preparednessState": 0,
+      "visibilityClass": "simulators"
+     }
+    },
+    "propertyDisplayNames": null,
+    "visibilityClass": "simulators"
+   },
+   {
+    "capabilities": [
+     {
+      "featureIdentifier": "com.apple.coredevice.feature.installapp",
+      "name": "Install Application"
+     }
+    ],
+    "identifier": "11111111-2222-4333-8444-55556666401C",
+    "visibilityClass": "default",
+    "_deprecationNotice": {
+     "deprecatedFields": [
+      "hardwareProperties",
+      "deviceProperties",
+      "connectionProperties"
+     ],
+     "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+     "replacement": "properties"
+    },
+    "connectionProperties": {
+     "authenticationType": "manualPairing",
+     "isMobileDeviceOnly": false,
+     "pairingState": "paired",
+     "potentialHostnames": [],
+     "tunnelState": "connected",
+     "transportType": "wired"
+    },
+    "deviceProperties": {
+     "bootState": "booted",
+     "ddiServicesAvailable": false,
+     "developerModeStatus": "enabled",
+     "hasInternalOSBuild": false,
+     "name": "Nora's iPhone",
+     "osBuildUpdate": "24B81",
+     "osVersionNumber": "27.2"
+    },
+    "hardwareProperties": {
+     "cpuType": {
+      "name": "arm64e",
+      "subType": 2,
+      "type": 16777228
+     },
+     "deviceType": "iPhone",
+     "marketingName": "iPhone 17 Pro",
+     "platform": "iOS",
+     "productType": "iPhone18,1",
+     "reality": "physical",
+     "udid": "00008150-000C55556666401C"
+    },
+    "properties": {
+     "connection": {
+      "authenticationType": "manualPairing",
+      "pairingState": "paired",
+      "state": "connected",
+      "transportType": "wired"
+     },
+     "hardware": {
+      "cpuType": {
+       "subtype": 2,
+       "type": 16777228
+      },
+      "deviceType": "iPhone",
+      "marketingName": "iPhone 17 Pro",
+      "platform": "iOS",
+      "productType": "iPhone18,1",
+      "reality": "physical",
+      "udid": "00008150-000C55556666401C"
+     },
+     "software": {
+      "osVersionNumber": {
+       "components": [
+        27,
+        2,
+        0,
+        0,
+        0
+       ],
+       "originalComponentsCount": 2,
+       "stringValue": "27.2"
+      }
+     },
+     "state": {
+      "bootState": "booted",
+      "name": "Nora's iPhone",
+      "preparednessState": 0,
+      "visibilityClass": "default",
+      "developerModeStatus": "enabled"
+     }
+    }
+   }
+  ]
+ }
+}
