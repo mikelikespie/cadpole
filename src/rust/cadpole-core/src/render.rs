@@ -40,6 +40,7 @@ use crate::tessellate::Mesh;
 mod aa;
 pub mod alpha;
 pub mod anim;
+pub mod beads;
 pub mod bvh;
 pub mod debug;
 mod lines;
@@ -61,6 +62,13 @@ pub use debug::DebugView;
 pub use presets::{lookup as material_preset, names as material_preset_names};
 pub use textures::{Kind as TextureKind, default_scale as texture_default_scale, kind as texture_kind, names as texture_names};
 pub use trace::PathTraceOptions;
+
+/// Path-trace `items` together with bead geometry ([`beads::BeadSet`]).
+/// Always the path tracer, whatever `opts.backend` says (the rasterizer
+/// draws triangles only); `opts.supersample` is not applied.
+pub fn render_beads(items: &[Item<'_>], beads: &beads::BeadSet, cam: &Camera, opts: &RenderOptions) -> (Image, RenderStats) {
+    trace::render_with_beads(items, Some(beads), cam, opts)
+}
 
 /// `Frame::item` value for "no item".
 pub const NO_ITEM: u16 = u16::MAX;
@@ -1505,6 +1513,23 @@ impl Scene {
         }
         let f = |v: Vec3| [v.x as f32, v.y as f32, v.z as f32];
         let (lo, hi) = (f(lo), f(hi));
+        let center = scale(add(lo, hi), 0.5);
+        let d = sub(hi, lo);
+        Scene { lo, hi, center, diag: dot(d, d).sqrt().max(1e-3), ground_z: lo[2] }
+    }
+
+    /// This scene grown to take in the box `lo..hi` as well; with `keep`
+    /// false the box replaces the (empty) scene.
+    pub fn including(&self, lo: [f32; 3], hi: [f32; 3], keep: bool) -> Scene {
+        let (lo, hi) = if keep {
+            ([self.lo[0].min(lo[0]), self.lo[1].min(lo[1]), self.lo[2].min(lo[2])], [
+                self.hi[0].max(hi[0]),
+                self.hi[1].max(hi[1]),
+                self.hi[2].max(hi[2]),
+            ])
+        } else {
+            (lo, hi)
+        };
         let center = scale(add(lo, hi), 0.5);
         let d = sub(hi, lo);
         Scene { lo, hi, center, diag: dot(d, d).sqrt().max(1e-3), ground_z: lo[2] }

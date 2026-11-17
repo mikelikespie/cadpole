@@ -38,6 +38,7 @@
 use std::collections::HashMap;
 
 use super::aa::{band_rows, bloom, par_bands2, resolve, resolve_threads, tonemap_rgb};
+use super::beads::BeadSet;
 use super::bvh::{Bvh, BvhStats, Hit, ShadowHits};
 use super::shading::{Lights, STUDIO_LIGHT_DEGREES, dielectric_f0, env, fresnel_schlick};
 use super::{
@@ -94,6 +95,10 @@ const MAX_SHADOW_INTERFACES: usize = 32;
 const NEE_MIN_DIFFUSE: f32 = 0.1;
 /// Bins of the environment sampler's table over `dir.z` ([`EnvSampler`]).
 const ENV_BINS: usize = 64;
+/// `Surf::tri` of a bead hit: not a triangle slot, not the ground.
+const BEAD_TRI: u32 = u32::MAX - 1;
+/// Scattering events a subsurface walk takes before it is abandoned.
+const MAX_WALK: u32 = 256;
 
 // ---------------------------------------------------------------------------
 // Options.
@@ -292,6 +297,10 @@ pub struct Pbr {
     /// chain from the eye (`!caustic`), so a guide is still seen through a
     /// clear guide and in a mirror.
     pub shadow: bool,
+    /// Mean free path in mm of light scattering under an opaque surface
+    /// (a bead material's [`super::beads::BeadMaterial::subsurface`]);
+    /// 0 is a plain Lambert diffuse lobe. See `Tracer::subsurface_walk`.
+    pub subsurface: f32,
 }
 
 impl Default for Pbr {
@@ -314,6 +323,7 @@ impl Default for Pbr {
             groove: [0.0; 3],
             slope_var: 0.0,
             shadow: true,
+            subsurface: 0.0,
         }
     }
 }
@@ -389,6 +399,7 @@ pub fn material_for(m: &Material) -> Pbr {
         groove: [0.0; 3],
         slope_var: 0.0,
         shadow: m.shadow,
+        subsurface: 0.0,
     }
 }
 
@@ -706,6 +717,13 @@ struct Bsdf {
     diff: f32,
     /// `n_incident / n_transmitted` from the side `wo` is on.
     eta: f32,
+    /// The diffuse lobe is a subsurface random walk: `eval` leaves it out
+    /// (the light it carries leaves the surface somewhere else), and the
+    /// integrator, not `sample`, follows it.
+    sss: bool,
+    /// A pure Lambert lobe of albedo 1 and nothing else: where a
+    /// subsurface walk comes back out.
+    lambert: bool,
 }
 
 struct BsdfSample {
@@ -753,7 +771,26 @@ impl Bsdf {
         let diff = (1.0 - m.metallic) * (1.0 - m.transmission);
         let f0 = lerp3([dielectric_f0(m.ior); 3], m.base_color, m.metallic);
         let eta = if entering { 1.0 / m.ior } else { m.ior };
-        Bsdf { albedo: m.base_color, f0, ax, ay, metallic: m.metallic, trans, diff, eta }
+        let sss = m.subsurface > 0.0 && trans <= 1e-4 && diff > 1e-4;
+        Bsdf { albedo: m.base_color, f0, ax, ay, metallic: m.metallic, trans, diff, eta, sss, lambert: false }
+    }
+
+    /// The lobe light leaves a subsurface walk by: cosine-distributed about
+    /// the normal it exits through, albedo 1 (the walk's throughput already
+    /// holds the colour).
+    fn lambert() -> Bsdf {
+        Bsdf {
+            albedo: [1.0; 3],
+            f0: [0.0; 3],
+            ax: 1.0,
+            ay: 1.0,
+            metallic: 0.0,
+            trans: 0.0,
+            diff: 1.0,
+            eta: 1.0,
+            sss: false,
+            lambert: true,
+        }
     }
 
     #[inline]
@@ -823,12 +860,15 @@ impl Bsdf {
     /// zero here, which is what makes next-event estimation on a mirror a
     /// no-op instead of a bias.
     fn eval(&self, wo: [f32; 3], wi: [f32; 3]) -> ([f32; 3], f32) {
+        if self.lambert {
+            return if wi[2] > 0.0 { (scale(self.albedo, INV_PI), wi[2] * INV_PI) } else { ([0.0; 3], 0.0) };
+        }
         let (p_diff, p_micro) = self.lobe_probs(wo);
         let transmissive = self.trans > 1e-4;
         let mut f = [0.0f32; 3];
         let mut pdf = 0.0f32;
         if wi[2] > 0.0 {
-            if self.diff > 1e-4 {
+            if self.diff > 1e-4 && !self.sss {
                 let fr = self.fresnel(wi[2]);
                 let kd = [1.0 - fr[0], 1.0 - fr[1], 1.0 - fr[2]];
                 f = add(f, mul(scale(self.albedo, self.diff * INV_PI), kd));
@@ -911,6 +951,10 @@ impl Bsdf {
 
         // --- Diffuse.
         if u_lobe < p_diff {
+            if self.sss {
+                // The integrator walks this lobe (`Tracer::subsurface_walk`).
+                return None;
+            }
             let wi = cosine_hemisphere(u1, u2);
             let (f, pdf) = self.eval(wo, wi);
             if pdf <= 0.0 {
@@ -1649,6 +1693,30 @@ pub(crate) struct Tracer<'a> {
     bvh_stats: BvhStats,
     /// [`RenderOptions::haze`].
     haze: Option<super::Haze>,
+    /// Bead geometry ([`super::beads`]), drawn beside the triangles.
+    beads: Option<&'a BeadSet>,
+    /// Per bead material: the tracer's material.
+    bead_mats: Vec<Pbr>,
+    /// Per bead material: a shadow ray stops at it.
+    bead_opaque: Vec<bool>,
+    /// Per bead material: light travels inside it (it refracts, or it has a
+    /// subsurface walk), so a crossing buried in a neighbour is not a
+    /// surface.
+    bead_solid: Vec<bool>,
+    /// Per bead material: the single-scattering albedo of its subsurface
+    /// walk (see [`walk_albedo`]).
+    bead_walk_albedo: Vec<[f32; 3]>,
+    /// Some bead material is see-through.
+    bead_clear: bool,
+    /// Some bead material is `bead_solid`.
+    bead_any_solid: bool,
+}
+
+thread_local! {
+    /// Scratch for the union-of-beads searches: the intervals along a ray
+    /// and their spans, reused across every ray a thread traces.
+    static BEAD_SCRATCH: std::cell::RefCell<(Vec<(f32, f32, u32)>, Vec<super::beads::Span>)> =
+        const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
 }
 
 /// The smallest offset that moves a point of `scene` to a different f32:
@@ -1830,7 +1898,232 @@ impl<'a> Tracer<'a> {
             far: scene.diag * 1e4 + 1e4,
             bvh_stats,
             haze: opts.haze.filter(|h| h.half_distance > 0.0 && h.half_distance.is_finite()),
+            beads: None,
+            bead_mats: Vec::new(),
+            bead_opaque: Vec::new(),
+            bead_solid: Vec::new(),
+            bead_walk_albedo: Vec::new(),
+            bead_clear: false,
+            bead_any_solid: false,
         }
+    }
+
+    /// Add bead geometry. Beads are a fraction of a millimetre, so the ray
+    /// offsets drop to what f32 resolves at the scene's coordinates: an
+    /// offset sized to the scene would step a bounce clean over the groove
+    /// between two beads.
+    fn with_beads(mut self, beads: Option<&'a BeadSet>, scene: &Scene) -> Self {
+        let Some(bs) = beads else { return self };
+        self.bead_mats = bs
+            .materials
+            .iter()
+            .map(|m| {
+                let mut p = material_for(&m.material);
+                p.subsurface = if m.subsurface.is_finite() { m.subsurface.max(0.0) } else { 0.0 };
+                p
+            })
+            .collect();
+        if self.bead_mats.is_empty() {
+            self.bead_mats.push(Pbr::default());
+        }
+        self.bead_opaque = self.bead_mats.iter().map(|m| !m.is_transmissive()).collect();
+        self.bead_solid = self.bead_mats.iter().map(|m| m.is_transmissive() || m.subsurface > 0.0).collect();
+        self.bead_walk_albedo = self.bead_mats.iter().map(|m| walk_albedo(m.base_color)).collect();
+        self.bead_clear = self.bead_mats.iter().any(|m| m.is_transmissive());
+        self.bead_any_solid = self.bead_solid.iter().any(|s| *s);
+        self.has_transmissive |= self.bead_clear;
+        self.eps = self.eps.min(magnitude_eps(scene).max(1e-4));
+        self.beads = Some(bs);
+        self
+    }
+
+    #[inline]
+    fn bead_material(&self, bead: u32) -> usize {
+        self.beads.map_or(0, |b| b.bead(bead).material as usize)
+    }
+
+    /// Nearest bead crossing in `(tmin, tmax)` that is the surface of the
+    /// beads' union: where see-through or scattering beads overlap, a
+    /// crossing buried inside a neighbour is not a surface. Their union's
+    /// surface is found from every interval along a window of the ray
+    /// (`beads::union_spans`), widened until the answer is inside it.
+    fn bead_hit(&self, o: [f32; 3], d: [f32; 3], tmin: f32, tmax: f32) -> Option<(super::beads::BeadHit, [f32; 3])> {
+        let bs = self.beads?;
+        let at = |h: super::beads::BeadHit| (h, add(o, scale(d, h.t)));
+        if !self.bead_any_solid {
+            return bs.intersect(o, d, tmin, tmax).map(at);
+        }
+        let solid = |j: u32| self.bead_solid[self.bead_material(j)];
+        let plain = bs.intersect_where(o, d, tmin, tmax, |j| !solid(j));
+        let limit = plain.map_or(tmax, |h| h.t);
+        let Some(first) = bs.intersect_where(o, d, tmin, limit, solid) else { return plain.map(at) };
+        let mut win = (first.t + 1.0).min(limit);
+        BEAD_SCRATCH.with(|cell| {
+            let (iv, spans) = &mut *cell.borrow_mut();
+            loop {
+                iv.clear();
+                bs.intervals_where(o, d, tmin, win, solid, iv);
+                super::beads::union_spans(iv, spans);
+                for sp in spans.iter() {
+                    if sp.t_in > tmin {
+                        return if sp.t_in < limit { Some(at(super::beads::BeadHit { t: sp.t_in, bead: sp.b_in })) } else { plain.map(at) };
+                    }
+                    if sp.t_out > tmin && sp.t_out < win {
+                        return if sp.t_out < limit { Some(at(super::beads::BeadHit { t: sp.t_out, bead: sp.b_out })) } else { plain.map(at) };
+                    }
+                    if sp.t_out >= win {
+                        break;
+                    }
+                }
+                if win >= limit {
+                    return plain.map(at);
+                }
+                win = (tmin + (win - tmin) * 4.0).min(limit);
+            }
+        })
+    }
+
+    /// The surface record of a bead hit.
+    fn bead_surf(&self, h: super::beads::BeadHit, p: [f32; 3], d: [f32; 3], travelled: f32, view: &View) -> Surf {
+        let bs = self.beads.expect("a bead hit has beads");
+        let bead = bs.bead(h.bead);
+        let ng = bead.normal(p);
+        let entering = dot(d, ng) < 0.0;
+        let mut ns = if entering { ng } else { scale(ng, -1.0) };
+        let mut mat = self.bead_mats[(bead.material as usize).min(self.bead_mats.len() - 1)];
+        // Anisotropy on a bead runs along it: the smooth axis is the
+        // direction the nozzle moved.
+        mat.groove = if mat.anisotropy > 0.0 { bead.tangent() } else { [0.0; 3] };
+        if mat.texture != textures::Kind::None {
+            let footprint = RESOLVE_PIXELS * view.footprint((travelled + h.t).max(1e-4)) / dot(ng, d).abs().max(0.25);
+            if mat.texture == textures::Kind::Stipple {
+                let t = textures::stipple(mat.texture_scale, p, ns, footprint);
+                mat.base_color = mul(mat.base_color, t.albedo);
+                mat.roughness = (mat.roughness + t.roughness_delta).clamp(0.03, 1.0);
+                ns = normalize(add(ns, t.bump));
+            } else if !mat.texture.is_relief() {
+                let t = textures::sample(mat.texture, mat.texture_scale, p, ns, footprint);
+                mat.base_color = mul(mat.base_color, t.albedo);
+                mat.roughness = (mat.roughness + t.roughness_delta).clamp(0.03, 1.0);
+            }
+        }
+        Surf { p, ng, ns, entering, mat, tri: BEAD_TRI }
+    }
+
+    /// Transmittance of a shadow ray through the beads, 0 when an opaque
+    /// one is in the way. Each
+    /// stretch of their union it crosses tints it by the wall's
+    /// transmission where it goes in and comes out, and by Beer-Lambert
+    /// over the length inside, as [`Tracer::visibility_stepwise`] does
+    /// through triangles. `start` is the medium the ray begins in.
+    fn bead_tint(&self, o: [f32; 3], d: [f32; 3], dist: f32, start: Option<Medium>) -> [f32; 3] {
+        let Some(bs) = self.beads else { return [1.0; 3] };
+        let t0 = self.eps;
+        BEAD_SCRATCH.with(|cell| {
+            let (iv, spans) = &mut *cell.borrow_mut();
+            iv.clear();
+            // One walk of the tree gathers every bead the ray crosses; an
+            // opaque one among them ends it.
+            bs.intervals_where(o, d, t0, dist, |_| true, iv);
+            if iv.iter().any(|&(_, _, b)| self.bead_opaque[self.bead_material(b)]) {
+                return [0.0; 3];
+            }
+            super::beads::union_spans(iv, spans);
+            let mut tint = [1.0f32; 3];
+            for sp in spans.iter() {
+                let m = &self.bead_mats[self.bead_material(sp.b_in)];
+                let inside_at_start = sp.t_in <= t0;
+                let med = if inside_at_start { start.or_else(|| Medium::new(m)) } else { Medium::new(m) };
+                let a = sp.t_in.max(t0);
+                let b = sp.t_out.min(dist);
+                if let Some(med) = med {
+                    tint = mul(tint, med.transmittance((b - a).max(0.0)));
+                }
+                let crossings = u8::from(!inside_at_start) + u8::from(sp.t_out < dist);
+                for _ in 0..crossings {
+                    tint = scale(tint, m.transmission);
+                }
+                if max3(tint) < 1e-4 {
+                    return [0.0; 3];
+                }
+            }
+            tint
+        })
+    }
+
+    /// A random walk under the surface of a scattering bead, from the
+    /// point `s` where light went in to the point where it comes back out.
+    ///
+    /// The walk enters cosine-distributed about the inward normal, flies
+    /// exponential distances of mean `mfp`, scatters isotropically with
+    /// single-scattering albedo `alpha` at each event, and ends at the first
+    /// crossing of the beads' union. Returns that point, the outward normal
+    /// there and the throughput, or `None` when the light was absorbed, ran
+    /// past [`MAX_WALK`] events, or left through the floor the beads stand
+    /// on. One grey extinction for all three channels keeps the free flight
+    /// exact; the colour is all in `alpha`.
+    fn subsurface_walk(&self, s: &Surf, smp: &mut Sampler) -> Option<([f32; 3], [f32; 3], [f32; 3])> {
+        let bs = self.beads?;
+        // `subsurface` is the mean free path of a white material. A darker
+        // one absorbs more on the way, which shortens how far light gets:
+        // without this a black bead thinner than the path would pass light
+        // straight through, uncollided and so unabsorbed.
+        let mfp = (s.mat.subsurface * luminance(s.mat.base_color).clamp(0.02, 1.0).sqrt()).max(1e-4);
+        let alpha = walk_albedo(s.mat.base_color);
+        let n_in = scale(s.ng, if s.entering { -1.0 } else { 1.0 });
+        let (u1, u2) = smp.next2();
+        let mut d = Onb::layer_aligned(n_in).to_world(cosine_hemisphere(u1, u2));
+        let e = self.fine_eps(s.p);
+        let mut o = add(s.p, scale(n_in, e * 4.0));
+        let mut beta = [1.0f32; 3];
+        let solid = |j: u32| self.bead_solid[self.bead_material(j)];
+        for step in 0..MAX_WALK {
+            let u = smp.next();
+            let t = -(1.0 - u).max(1e-9).ln() * mfp;
+            // The nearest crossing of the union within the flight.
+            let exit = BEAD_SCRATCH.with(|cell| {
+                let (iv, spans) = &mut *cell.borrow_mut();
+                iv.clear();
+                bs.intervals_where(o, d, e, t, solid, iv);
+                super::beads::union_spans(iv, spans);
+                let sp = spans.iter().find(|sp| sp.t_out > e)?;
+                // Normally the walk is inside the first span and leaves at its
+                // end; a walk that has slipped outside meets its start.
+                let (th, bead) = if sp.t_in > e { (sp.t_in, sp.b_in) } else { (sp.t_out, sp.b_out) };
+                if th >= t {
+                    return None;
+                }
+                let p = add(o, scale(d, th));
+                let bead = bs.bead(bead);
+                let n = bead.normal(p);
+                Some((p, if dot(n, d) < 0.0 { scale(n, -1.0) } else { n }, bead.rz))
+            });
+            if let Some((p, n, rz)) = exit {
+                if let Some(fz) = bs.floor_z {
+                    if n[2] < -0.3 && p[2] < fz + 0.5 * rz {
+                        return None;
+                    }
+                }
+                return Some((p, n, beta));
+            }
+            o = add(o, scale(d, t));
+            beta = mul(beta, alpha);
+            let (v1, v2) = smp.next2();
+            let z = 1.0 - 2.0 * v1;
+            let r = (1.0 - z * z).max(0.0).sqrt();
+            let phi = TAU * v2;
+            d = [r * phi.cos(), r * phi.sin(), z];
+            if step >= 8 {
+                let q = max3(beta).clamp(0.05, 1.0);
+                if q < 1.0 {
+                    if smp.next() > q {
+                        return None;
+                    }
+                    beta = scale(beta, 1.0 / q);
+                }
+            }
+        }
+        None
     }
 
     // --- intersection ------------------------------------------------------
@@ -1889,6 +2182,10 @@ impl<'a> Tracer<'a> {
             let (mat, ns) = self.shade_material(tri.item as usize, face, tri.tri, p, ns, footprint);
             best = Some(Surf { p, ng, ns, entering, mat, tri: h.tri });
         }
+        if let Some((h, p)) = self.bead_hit(o, d, tmin, tbest) {
+            tbest = h.t;
+            best = Some(self.bead_surf(h, p, d, travelled, view));
+        }
         if let Some(g) = self.ground {
             if d[2].abs() > 1e-9 {
                 let t = (self.ground_z - o[2]) / d[2];
@@ -1926,6 +2223,11 @@ impl<'a> Tracer<'a> {
     /// Whether anything a shadow ray stops at lies in `(tmin, tmax)`.
     #[inline]
     fn occluded_light(&self, o: [f32; 3], d: [f32; 3], tmin: f32, tmax: f32) -> bool {
+        if let Some(bs) = self.beads {
+            if bs.occluded_where(o, d, tmin, tmax, |j| self.bead_opaque[self.bead_material(j)]) {
+                return true;
+            }
+        }
         match &self.guide {
             None => self.bvh.occluded(o, d, tmin, tmax),
             Some(g) => self.bvh.occluded_where(o, d, tmin, tmax, |slot| !g[self.bvh.item_of(slot) as usize]),
@@ -1997,6 +2299,11 @@ impl<'a> Tracer<'a> {
             n = normalize(add(n, r.bump));
             m.groove = r.groove;
             m.slope_var = r.slope_var;
+        } else if m.texture == textures::Kind::Stipple {
+            let t = textures::stipple(m.texture_scale, p, n, footprint);
+            m.base_color = mul(m.base_color, t.albedo);
+            m.roughness = (m.roughness + t.roughness_delta).clamp(0.03, 1.0);
+            n = normalize(add(n, t.bump));
         } else if m.texture != textures::Kind::None {
             // The same call, with the same arguments, as
             // `shading::surface_for`, so the two renderers see identical texels.
@@ -2045,6 +2352,43 @@ impl<'a> Tracer<'a> {
         if !self.has_transmissive {
             return if self.occluded_light(o, d, self.eps, dist) { [0.0; 3] } else { [1.0; 3] };
         }
+        if self.beads.is_some() {
+            // Beads first: opaque ones block, see-through ones tint, and
+            // what is left is the triangles' answer times that tint.
+            let tint = if self.bead_clear {
+                self.bead_tint(o, d, dist, start)
+            } else if self.beads.is_some_and(|bs| bs.occluded_where(o, d, self.eps, dist, |_| true)) {
+                [0.0; 3]
+            } else {
+                [1.0; 3]
+            };
+            if is_black(tint) {
+                return tint;
+            }
+            let rest = if self.opaque.iter().any(|o| !*o) {
+                self.visibility_triangles(o, d, dist, start, hits)
+            } else if self.occluded_tri(o, d, self.eps, dist) {
+                [0.0; 3]
+            } else {
+                [1.0; 3]
+            };
+            return mul(tint, rest);
+        }
+        self.visibility_triangles(o, d, dist, start, hits)
+    }
+
+    /// Whether a triangle a shadow ray stops at lies in `(tmin, tmax)`.
+    #[inline]
+    fn occluded_tri(&self, o: [f32; 3], d: [f32; 3], tmin: f32, tmax: f32) -> bool {
+        match &self.guide {
+            None => self.bvh.occluded(o, d, tmin, tmax),
+            Some(g) => self.bvh.occluded_where(o, d, tmin, tmax, |slot| !g[self.bvh.item_of(slot) as usize]),
+        }
+    }
+
+    /// [`Tracer::visibility`] through the triangles alone, see-through
+    /// ones included.
+    fn visibility_triangles(&self, o: [f32; 3], d: [f32; 3], dist: f32, start: Option<Medium>, hits: &mut Vec<Hit>) -> [f32; 3] {
         // One traversal collects every see-through crossing up to the first
         // opaque one, rather than a closest-hit search per interface: most
         // shadow rays through a thin glass shell cross two walls and then
@@ -2526,6 +2870,52 @@ impl<'a> Tracer<'a> {
             // --- BSDF sampling
             let (ul, u1) = smp.next2();
             let u2 = smp.next();
+
+            // --- subsurface: the diffuse lobe of a scattering bead is a
+            // random walk under its surface, and the path goes on from
+            // wherever the walk comes back out.
+            if forced.is_none() && bsdf.sss && s.tri == BEAD_TRI {
+                let (p_diff, _) = bsdf.lobe_probs(wo);
+                if ul < p_diff {
+                    let fr = luminance(bsdf.fresnel(wo[2])).clamp(0.0, 1.0);
+                    beta = scale(beta, bsdf.diff * (1.0 - fr) / p_diff.max(1e-6));
+                    let Some((pe, ne, thr)) = self.subsurface_walk(&s, smp) else { break };
+                    beta = mul(beta, thr);
+                    let exit = Surf { p: pe, ng: ne, ns: ne, entering: false, mat: s.mat, tri: BEAD_TRI };
+                    let lam = Bsdf::lambert();
+                    let eonb = Onb::layer_aligned(ne);
+                    let direct = self.next_event_at(&exit, &lam, &eonb, [0.0, 0.0, 1.0], smp, None, hits);
+                    if !is_black(direct) {
+                        *l = add(*l, indirect(depth, mul(beta, direct)));
+                    }
+                    let (v1, v2) = smp.next2();
+                    let wl = cosine_hemisphere(v1, v2);
+                    let wi = eonb.to_world(wl);
+                    o = self.offset_origin(&exit, wi);
+                    tmin = self.eps;
+                    d = wi;
+                    prev_pdf = wl[2] * INV_PI;
+                    specular = false;
+                    through = false;
+                    caustic = true;
+                    nee = true;
+                    depth += 1;
+                    if depth > 3 {
+                        let q = max3(beta).clamp(0.25, 1.0);
+                        if q < 1.0 {
+                            if smp.next() > q {
+                                break;
+                            }
+                            beta = scale(beta, 1.0 / q);
+                        }
+                    }
+                    if max3(beta) <= 0.0 || !max3(beta).is_finite() {
+                        break;
+                    }
+                    continue;
+                }
+            }
+
             let bs = match forced {
                 Some(b) => b,
                 None => match bsdf.sample(wo, ul, u1, u2) {
@@ -2825,6 +3215,19 @@ impl<'a> Tracer<'a> {
     }
 }
 
+/// The single-scattering albedo a random walk needs for its surface to
+/// come out with diffuse albedo `a`, per channel: the inversion of the
+/// multiple-scattering albedo of a semi-infinite isotropic medium (van de
+/// Hulst's similarity relation, as fitted for random-walk subsurface
+/// scattering in production renderers).
+fn walk_albedo(a: [f32; 3]) -> [f32; 3] {
+    a.map(|a| {
+        let a = a.clamp(0.0, 0.999);
+        let k = 4.09712 + 4.20863 * a - (9.59217 + 41.6808 * a + 17.7126 * a * a).sqrt();
+        (1.0 - k * k).clamp(0.0, 0.9999)
+    })
+}
+
 #[inline]
 fn clamped(c: [f32; 3], limit: f32) -> [f32; 3] {
     let m = max3(c);
@@ -3002,7 +3405,13 @@ pub(crate) fn denoise(hdr: &mut Vec<[f32; 3]>, g: &Guides, w: u32, h: u32, threa
 /// `(x, y, sample, seed)`, so the image is byte-identical for any thread
 /// count and on wasm32, where the pool is one thread.
 pub fn render(items: &[Item<'_>], cam: &Camera, opts: &RenderOptions) -> (Image, RenderStats) {
-    let Layers { mut model, coverage, through, shadow, backdrop, guides, mut stats } = trace_layers(items, cam, opts, opts.path.denoise);
+    render_with_beads(items, None, cam, opts)
+}
+
+/// [`render`] with bead geometry ([`super::beads`]) beside the triangles.
+pub fn render_with_beads(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Camera, opts: &RenderOptions) -> (Image, RenderStats) {
+    let Layers { mut model, coverage, through, shadow, backdrop, guides, mut stats } =
+        trace_layers(items, beads, cam, opts, opts.path.denoise);
     let (w, h) = (opts.width.max(1), opts.height.max(1));
     if let Some(g) = &guides {
         let t0 = super::aa::now_ms();
@@ -3079,7 +3488,7 @@ pub(crate) fn trace_hdr_guided(
     opts: &RenderOptions,
     want_guides: bool,
 ) -> (Vec<[f32; 3]>, Vec<u8>, Option<Guides>, RenderStats) {
-    let l = trace_layers(items, cam, opts, want_guides);
+    let l = trace_layers(items, None, cam, opts, want_guides);
     let hdr = l.model.iter().zip(&l.coverage).zip(&l.backdrop).map(|((m, &c), b)| add(scale(*m, c), scale(*b, 1.0 - c))).collect();
     let mask = l.coverage.iter().map(|&c| u8::from(c <= 0.0)).collect();
     (hdr, mask, l.guides, l.stats)
@@ -3128,15 +3537,18 @@ struct Aux {
 
 /// The tracer proper. Recording the [`Guides`] costs a few stores per
 /// path, and is only done when asked, so the ordinary render is untouched.
-pub(crate) fn trace_layers(items: &[Item<'_>], cam: &Camera, opts: &RenderOptions, want_guides: bool) -> Layers {
+pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Camera, opts: &RenderOptions, want_guides: bool) -> Layers {
     let (w, h) = (opts.width.max(1), opts.height.max(1));
-    let scene = Scene::from_items(items);
+    let mut scene = Scene::from_items(items);
+    if let Some((lo, hi)) = beads.and_then(|b| b.bounds()) {
+        scene = scene.including(lo, hi, !items.is_empty());
+    }
     let view = View::new(cam, w, h).with_dof(opts.path.dof_f_number);
     let threads = resolve_threads(opts.threads);
     let samples = opts.samples.max(1);
 
     let t0 = super::aa::now_ms();
-    let tracer = Tracer::new(items, &scene, opts, view.azimuth()).with_subject_distance(&scene, view.focus);
+    let tracer = Tracer::new(items, &scene, opts, view.azimuth()).with_subject_distance(&scene, view.focus).with_beads(beads, &scene);
     let t1 = super::aa::now_ms();
 
     let n = (w as usize) * (h as usize);
@@ -3257,6 +3669,48 @@ mod tests {
     use super::super::{Backdrop, Backend, Image, Lighting, ToneMap, render_with_stats};
     use super::*;
     use crate::geom::Vec3;
+
+    fn bead_tracer_scene(mats: Vec<super::super::beads::BeadMaterial>) -> (super::super::beads::BeadSet, Scene) {
+        use super::super::beads::{Bead, BeadSet};
+        // A scattering bead at y = 0, two overlapping see-through ones at
+        // y = 5, a plain opaque one at y = 10.
+        let bead = |y: f32, x0: f32, x1: f32, m: u32| Bead { a: [x0, y, 0.1], b: [x1, y, 0.1], rx: 0.25, rz: 0.12, material: m };
+        let set = BeadSet::new(
+            vec![bead(0.0, 0.0, 10.0, 0), bead(5.0, 0.0, 5.2, 1), bead(5.0, 4.8, 10.0, 1), bead(10.0, 0.0, 10.0, 2)],
+            mats,
+            0.0,
+        );
+        let (lo, hi) = set.bounds().unwrap();
+        let scene = Scene::from_items(&[]).including(lo, hi, false);
+        (set, scene)
+    }
+
+    #[test]
+    fn bead_hits_find_plain_beads_beside_scattering_ones_and_skip_buried_crossings() {
+        use super::super::beads::BeadMaterial;
+        let mut sss = BeadMaterial::new(Material::default());
+        sss.subsurface = 0.3;
+        let mut clear = BeadMaterial::new(Material::default());
+        clear.material.transmission = 1.0;
+        let plain = BeadMaterial::new(Material::default());
+        let (set, scene) = bead_tracer_scene(vec![sss, clear, plain]);
+        let opts = RenderOptions { backend: Backend::Path, ..RenderOptions::default() };
+        let t = Tracer::new(&[], &scene, &opts, 0.0).with_beads(Some(&set), &scene);
+        let down = [0.0, 0.0, -1.0];
+        // Straight down onto each bead: its top, 0.22 above the axis.
+        for y in [0.0, 5.0, 10.0] {
+            let (h, p) = t.bead_hit([3.0, y, 10.0], down, 1e-4, 1e9).unwrap_or_else(|| panic!("nothing at y = {y}"));
+            assert!((p[2] - 0.22).abs() < 1e-3 && (h.t - 9.78).abs() < 1e-3, "y = {y}: {p:?}");
+        }
+        // Along the see-through pair from inside the first: the joint at
+        // x = 5 is buried, the union's end at x = 10.25 is the surface.
+        let (_, p) = t.bead_hit([1.0, 5.0, 0.1], [1.0, 0.0, 0.0], 1e-4, 1e9).unwrap();
+        assert!((p[0] - 10.25).abs() < 1e-3, "{p:?}");
+        // Shadow rays: the plain bead blocks, the clear pair only tints.
+        assert_eq!(t.bead_tint([3.0, 10.0, 5.0], down, 10.0, None), [0.0; 3]);
+        let tint = t.bead_tint([3.0, 5.0, 5.0], down, 10.0, None);
+        assert!(tint.iter().all(|v| *v > 0.5), "{tint:?}");
+    }
 
     /// A path-traced render whose numbers are scene-linear radiance, not
     /// sRGB: every physical assertion below is made on these.

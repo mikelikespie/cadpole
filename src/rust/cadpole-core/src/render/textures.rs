@@ -34,6 +34,11 @@ pub enum Kind {
     /// the body's axis and planes square to it — and `Milled` on the rest:
     /// a billet part, which is one body with both finishes on it.
     Machined,
+    /// A fine random grain with relief: a powder-coated or textured sheet.
+    /// Speckles the albedo and the roughness and tilts the normal while the
+    /// grains are larger than a pixel ([`stipple`]); beyond that it is the
+    /// rougher, evenly toned surface the grains average to.
+    Stipple,
 }
 
 impl Kind {
@@ -48,7 +53,7 @@ impl Kind {
 /// Every texture name a script may use, in documentation order (`""` for
 /// none is always accepted and is not listed).
 pub fn names() -> &'static [&'static str] {
-    &["checker", "stripes", "noise", "wood", "dots", "turned", "milled", "machined"]
+    &["checker", "stripes", "noise", "wood", "dots", "turned", "milled", "machined", "stipple"]
 }
 
 /// `""` -> `Some(Kind::None)`; unknown names -> `None` (the script reports
@@ -64,6 +69,7 @@ pub fn kind(name: &str) -> Option<Kind> {
         "turned" => Some(Kind::Turned),
         "milled" => Some(Kind::Milled),
         "machined" | "billet" => Some(Kind::Machined),
+        "stipple" => Some(Kind::Stipple),
         _ => None,
     }
 }
@@ -129,6 +135,10 @@ pub fn sample(kind: Kind, scale_mm: f32, pos: [f32; 3], n: [f32; 3], footprint: 
         Kind::Noise => noise_texel(u, f),
         Kind::Wood => wood(u, f),
         Kind::Dots => grey(dots(u, f)),
+        Kind::Stipple => {
+            let t = stipple(scale, pos, n, footprint);
+            Texel { albedo: t.albedo, roughness_delta: t.roughness_delta }
+        }
     };
     Texel {
         albedo: [
@@ -137,6 +147,64 @@ pub fn sample(kind: Kind, scale_mm: f32, pos: [f32; 3], n: [f32; 3], footprint: 
             finite_clamp(texel.albedo[2], 0.0, 1.0, 1.0),
         ],
         roughness_delta: finite_clamp(texel.roughness_delta, -0.3, 0.3, 0.0),
+    }
+}
+
+// ------------------------------------------------------------------ stipple
+
+/// What [`stipple`] does to a surface.
+pub struct Grain {
+    /// Albedo multiplier.
+    pub albedo: [f32; 3],
+    pub roughness_delta: f32,
+    /// Added to the unit shading normal (then renormalised): the slope of
+    /// the grains, in the surface's tangent plane.
+    pub bump: [f32; 3],
+}
+
+/// Height of the grains as a share of their size: a slope of about 0.35 at
+/// the steepest, which is a textured sheet you can feel with a fingernail.
+const STIPPLE_RELIEF: f32 = 0.35;
+
+/// A fine random grain `scale_mm` across, as a sprayed or textured sheet
+/// has: two octaves of value noise for the height, whose gradient tilts the
+/// normal, and the same field speckling the albedo by about 8 % and the
+/// roughness by about 0.1, with the hollows darker and rougher than the
+/// tops. Band-limited by the pixel `footprint`: as the grains shrink below
+/// a pixel the tilt and the speckle fade out and the roughness they stood
+/// for is added instead, so a far sheet is an even matte and a near one
+/// glitters. Pure and free of NaN.
+pub fn stipple(scale_mm: f32, pos: [f32; 3], n: [f32; 3], footprint: f32) -> Grain {
+    let scale = if scale_mm.is_finite() && scale_mm > 0.0 { scale_mm } else { 0.3 };
+    let inv = 1.0 / scale;
+    let u = [san(pos[0]) * inv, san(pos[1]) * inv, san(pos[2]) * inv];
+    let f = if footprint.is_finite() { (footprint * inv).clamp(0.0, COORD_LIMIT) } else { 0.0 };
+    // Visibility of the grains: 1 while a grain spans several pixels.
+    let vis = 1.0 - smoothstep(0.3, 1.5, f);
+    let h = |q: [f32; 3]| value_noise(q) + 0.5 * value_noise([q[0] * 2.03 + 17.1, q[1] * 2.03 - 5.3, q[2] * 2.03 + 9.7]);
+    let h0 = h(u);
+    let mut bump = [0.0f32; 3];
+    if vis > 0.0 {
+        // Central differences in the noise's own units, over a fifth of a
+        // grain; the slope is per grain, times the relief.
+        let e = 0.2f32;
+        let g = [
+            (h([u[0] + e, u[1], u[2]]) - h([u[0] - e, u[1], u[2]])) / (2.0 * e),
+            (h([u[0], u[1] + e, u[2]]) - h([u[0], u[1] - e, u[2]])) / (2.0 * e),
+            (h([u[0], u[1], u[2] + e]) - h([u[0], u[1], u[2] - e])) / (2.0 * e),
+        ];
+        let n = [san(n[0]), san(n[1]), san(n[2])];
+        let gn = g[0] * n[0] + g[1] * n[1] + g[2] * n[2];
+        let k = -STIPPLE_RELIEF * vis / 1.5;
+        bump = [(g[0] - gn * n[0]) * k, (g[1] - gn * n[1]) * k, (g[2] - gn * n[2]) * k];
+    }
+    // h0 is 0..1.5 with mean 0.75.
+    let c = (h0 / 1.5 - 0.5) * vis;
+    let tone = finite_clamp(1.0 + 0.16 * c, 0.0, 1.0, 1.0);
+    Grain {
+        albedo: [tone; 3],
+        roughness_delta: finite_clamp(-0.2 * c + 0.12 * (1.0 - vis), -0.3, 0.3, 0.0),
+        bump: bump.map(|v| if v.is_finite() { v } else { 0.0 }),
     }
 }
 
@@ -614,7 +682,28 @@ mod tests {
             Kind::Dots => [DOTS_MEAN; 3],
             // The relief kinds leave the albedo alone.
             Kind::None | Kind::Turned | Kind::Milled | Kind::Machined => [1.0; 3],
+            Kind::Stipple => [1.0; 3],
         }
+    }
+
+    #[test]
+    fn stipple_tilts_the_normal_up_close_and_is_an_even_rougher_matte_far_away() {
+        let n = [0.0, 0.0, 1.0];
+        let mut tilted = 0;
+        for i in 0..2000u32 {
+            let p = point(i);
+            let near = stipple(0.3, p, n, 0.01);
+            let far = stipple(0.3, p, n, 5.0);
+            assert!(near.bump.iter().all(|v| v.is_finite()) && near.bump[2].abs() < 1e-6, "bump stays in the plane: {:?}", near.bump);
+            if near.bump[0].abs() + near.bump[1].abs() > 0.02 {
+                tilted += 1;
+            }
+            assert_eq!(far.bump, [0.0; 3]);
+            assert_eq!(far.albedo, [1.0; 3]);
+            assert!(far.roughness_delta > 0.1);
+            assert!((0.8..=1.0).contains(&near.albedo[0]));
+        }
+        assert!(tilted > 1500, "most points up close are on a slope: {tilted}");
     }
 
     #[test]
