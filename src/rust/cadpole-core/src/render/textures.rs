@@ -162,9 +162,9 @@ pub struct Grain {
     pub bump: [f32; 3],
 }
 
-/// Height of the grains as a share of their size: a slope of about 0.45 at
+/// Height of the grains as a share of their size: a slope of about 0.3 at
 /// the steepest, which is a textured sheet you can feel with a fingernail.
-const STIPPLE_RELIEF: f32 = 0.45;
+const STIPPLE_RELIEF: f32 = 0.32;
 
 /// A fine random grain `scale_mm` across, as a sprayed or textured sheet
 /// has: two octaves of value noise for the height, whose gradient tilts the

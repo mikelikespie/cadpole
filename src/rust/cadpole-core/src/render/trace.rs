@@ -3363,7 +3363,9 @@ const DENOISE_PASSES: u32 = 4;
 /// colour — measured against the grain the pixel's own samples say it has,
 /// so a difference of a few standard deviations is signal and less is
 /// noise — in first-hit normal, in first-hit depth and in first-hit albedo.
-/// A silhouette, a crease, a change of material or a change of tone stops
+/// It filters the light rather than the surface (each pixel divided by its
+/// albedo first and multiplied back after), so texture finer than the
+/// filter is kept. A silhouette, a crease, a change of material or a change of tone stops
 /// the filter; a flat expanse of one surface is averaged over up to about
 /// 30 pixels.
 ///
@@ -3379,7 +3381,19 @@ pub(crate) fn denoise(hdr: &mut Vec<[f32; 3]>, g: &Guides, w: u32, h: u32, threa
     if hdr.len() < w * h || w < 2 || h < 2 {
         return;
     }
-    let mut src = hdr.clone();
+    // Filter the light, not the surface: each pixel is divided by its
+    // first-hit albedo before filtering and multiplied by it after, so a
+    // texture finer than the filter (a powder coat's grain, glitter, the
+    // speckle of a stone-look filament) comes through exactly and only the
+    // noise in the lighting on it is averaged. The grain each pixel's
+    // samples measured is scaled the same way.
+    //
+    // By the albedo's luminance, not per channel: a saturated colour has a
+    // channel near zero, and dividing by it would blow that channel's noise
+    // up past what the colour test calls grain.
+    let demod: Vec<f32> = g.albedo.iter().map(|a| luminance(*a).max(DEMOD_FLOOR)).collect();
+    let sigma: Vec<f32> = g.sigma.iter().zip(&demod).map(|(s, a)| s / a).collect();
+    let mut src: Vec<[f32; 3]> = hdr.iter().zip(&demod).map(|(c, a)| scale(*c, 1.0 / a)).collect();
     let mut dst = vec![[0.0f32; 3]; w * h];
     for pass in 0..DENOISE_PASSES {
         let step = 1usize << pass;
@@ -3394,7 +3408,7 @@ pub(crate) fn denoise(hdr: &mut Vec<[f32; 3]>, g: &Guides, w: u32, h: u32, threa
                     let idx = y0 * w + i;
                     let (x, y) = (idx % w, idx / w);
                     let c0 = src[idx];
-                    let (n0, a0, z0, s0) = (g.normal[idx], g.albedo[idx], g.depth[idx], g.sigma[idx]);
+                    let (n0, a0, z0, s0) = (g.normal[idx], g.albedo[idx], g.depth[idx], sigma[idx]);
                     let l0 = luminance(c0);
                     let mut acc = [0.0f32; 3];
                     let mut wsum = 0.0f32;
@@ -3415,8 +3429,8 @@ pub(crate) fn denoise(hdr: &mut Vec<[f32; 3]>, g: &Guides, w: u32, h: u32, threa
                             // tone, so a converged image still filters
                             // nothing but its own noise floor).
                             let l = luminance(c);
-                            let sigma = (s0 + g.sigma[j]) * noise_scale + 0.02 * (l0 + l) + 1e-4;
-                            let dl = (l - l0).abs() / (2.0 * sigma);
+                            let sig = (s0 + sigma[j]) * noise_scale + 0.02 * (l0 + l) + 1e-4;
+                            let dl = (l - l0).abs() / (2.0 * sig);
                             let w_c = (-(dl * dl)).exp();
                             // Normal: a crease or a curvature change.
                             let w_n = dot(n0, g.normal[j]).max(0.0).powi(32);
@@ -3445,8 +3459,13 @@ pub(crate) fn denoise(hdr: &mut Vec<[f32; 3]>, g: &Guides, w: u32, h: u32, threa
         }
         std::mem::swap(&mut src, &mut dst);
     }
-    *hdr = src;
+    *hdr = src.iter().zip(&demod).map(|(c, a)| scale(*c, *a)).collect();
 }
+
+/// The smallest albedo [`denoise`] divides by: a surface darker than this
+/// is filtered as if it were this dark, so a black pixel's noise is not
+/// blown up past what the colour test can judge.
+const DEMOD_FLOOR: f32 = 0.02;
 
 // ---------------------------------------------------------------------------
 // Driver.
