@@ -191,7 +191,20 @@ pub struct PathTraceOptions {
     /// Run the edge-aware à-trous denoiser on the finished image (default
     /// false; see [`denoise`]).
     pub denoise: bool,
+    /// Adaptive sampling: a pixel stops taking samples once the standard
+    /// error of its mean, in a perceptual (square-root) scale of luminance,
+    /// is below this (default 0, off: every pixel takes every sample).
+    /// About 0.004 is one 8-bit step. A pixel never stops before
+    /// [`ADAPTIVE_MIN`] samples or an eighth of the budget, and it is
+    /// checked every [`ADAPTIVE_STEP`] samples, so the image is still a pure
+    /// function of the pixel and the seed.
+    pub adaptive_error: f32,
 }
+
+/// The fewest samples an adaptive pixel takes.
+pub const ADAPTIVE_MIN: u32 = 8;
+/// How often an adaptive pixel checks whether it is done.
+const ADAPTIVE_STEP: u32 = 4;
 
 impl Default for PathTraceOptions {
     fn default() -> Self {
@@ -211,6 +224,7 @@ impl Default for PathTraceOptions {
             direct_scale: 1.0,
             env_sampling: false,
             denoise: false,
+            adaptive_error: 0.0,
         }
     }
 }
@@ -1697,18 +1711,13 @@ pub(crate) struct Tracer<'a> {
     beads: Option<&'a BeadSet>,
     /// Per bead material: the tracer's material.
     bead_mats: Vec<Pbr>,
-    /// Per bead material: a shadow ray stops at it.
-    bead_opaque: Vec<bool>,
-    /// Per bead material: light travels inside it (it refracts, or it has a
-    /// subsurface walk), so a crossing buried in a neighbour is not a
-    /// surface.
-    bead_solid: Vec<bool>,
     /// Per bead material: the single-scattering albedo of its subsurface
     /// walk (see [`walk_albedo`]).
     bead_walk_albedo: Vec<[f32; 3]>,
     /// Some bead material is see-through.
     bead_clear: bool,
-    /// Some bead material is `bead_solid`.
+    /// Some bead is see-through or scatters under its surface
+    /// ([`super::beads::CLASS_SOLID`]).
     bead_any_solid: bool,
 }
 
@@ -1900,8 +1909,6 @@ impl<'a> Tracer<'a> {
             haze: opts.haze.filter(|h| h.half_distance > 0.0 && h.half_distance.is_finite()),
             beads: None,
             bead_mats: Vec::new(),
-            bead_opaque: Vec::new(),
-            bead_solid: Vec::new(),
             bead_walk_albedo: Vec::new(),
             bead_clear: false,
             bead_any_solid: false,
@@ -1926,11 +1933,9 @@ impl<'a> Tracer<'a> {
         if self.bead_mats.is_empty() {
             self.bead_mats.push(Pbr::default());
         }
-        self.bead_opaque = self.bead_mats.iter().map(|m| !m.is_transmissive()).collect();
-        self.bead_solid = self.bead_mats.iter().map(|m| m.is_transmissive() || m.subsurface > 0.0).collect();
         self.bead_walk_albedo = self.bead_mats.iter().map(|m| walk_albedo(m.base_color)).collect();
-        self.bead_clear = self.bead_mats.iter().any(|m| m.is_transmissive());
-        self.bead_any_solid = self.bead_solid.iter().any(|s| *s);
+        self.bead_clear = bs.has(super::beads::CLASS_CLEAR);
+        self.bead_any_solid = bs.has(super::beads::CLASS_SOLID);
         self.has_transmissive |= self.bead_clear;
         self.eps = self.eps.min(magnitude_eps(scene).max(1e-4));
         self.beads = Some(bs);
@@ -1953,16 +1958,24 @@ impl<'a> Tracer<'a> {
         if !self.bead_any_solid {
             return bs.intersect(o, d, tmin, tmax).map(at);
         }
-        let solid = |j: u32| self.bead_solid[self.bead_material(j)];
-        let plain = bs.intersect_where(o, d, tmin, tmax, |j| !solid(j));
+        use super::beads::{CLASS_PLAIN, CLASS_SOLID};
+        let plain = bs.intersect_mask(o, d, tmin, tmax, CLASS_PLAIN);
         let limit = plain.map_or(tmax, |h| h.t);
-        let Some(first) = bs.intersect_where(o, d, tmin, limit, solid) else { return plain.map(at) };
+        let Some(first) = bs.intersect_mask(o, d, tmin, limit, CLASS_SOLID) else { return plain.map(at) };
+        // From outside the union, the nearest crossing is its surface: a
+        // crossing buried in a neighbour lies behind that neighbour's own
+        // entry. Camera rays and every ray leaving a surface outward are
+        // that case, and need no window of intervals.
+        let entry = bs.bead(first.bead).interval(o, d).is_some_and(|(t0, _)| t0 > tmin);
+        if entry && !bs.inside_other(o, u32::MAX, CLASS_SOLID) {
+            return Some(at(first));
+        }
         let mut win = (first.t + 1.0).min(limit);
         BEAD_SCRATCH.with(|cell| {
             let (iv, spans) = &mut *cell.borrow_mut();
             loop {
                 iv.clear();
-                bs.intervals_where(o, d, tmin, win, solid, iv);
+                bs.intervals_mask(o, d, tmin, win, CLASS_SOLID, iv);
                 super::beads::union_spans(iv, spans);
                 for sp in spans.iter() {
                     if sp.t_in > tmin {
@@ -1997,7 +2010,7 @@ impl<'a> Tracer<'a> {
         if mat.texture != textures::Kind::None {
             let footprint = RESOLVE_PIXELS * view.footprint((travelled + h.t).max(1e-4)) / dot(ng, d).abs().max(0.25);
             if mat.texture == textures::Kind::Stipple {
-                let t = textures::stipple(mat.texture_scale, p, ns, footprint);
+                let t = textures::stipple(mat.texture_scale, p, ns, footprint / RESOLVE_PIXELS);
                 mat.base_color = mul(mat.base_color, t.albedo);
                 mat.roughness = (mat.roughness + t.roughness_delta).clamp(0.03, 1.0);
                 ns = normalize(add(ns, t.bump));
@@ -2005,6 +2018,30 @@ impl<'a> Tracer<'a> {
                 let t = textures::sample(mat.texture, mat.texture_scale, p, ns, footprint);
                 mat.base_color = mul(mat.base_color, t.albedo);
                 mat.roughness = (mat.roughness + t.roughness_delta).clamp(0.03, 1.0);
+            }
+        }
+        if let Some(bm) = bs.materials.get(bead.material as usize) {
+            match bm.finish_at(p, ng) {
+                super::beads::Finish::Base { tone } => {
+                    if tone != 1.0 {
+                        mat.base_color = scale(mat.base_color, tone).map(|c| c.clamp(0.0, 1.0));
+                    }
+                }
+                super::beads::Finish::Flake { normal } => {
+                    // A flake is a small metal mirror at the surface: no
+                    // light goes under it, and its tilt is its own.
+                    let f = bm.flakes.expect("a flake comes from flakes");
+                    mat.metallic = 1.0;
+                    mat.base_color = f.color.map(|c| c.clamp(0.0, 1.0));
+                    mat.roughness = f.roughness.clamp(0.03, 1.0);
+                    mat.anisotropy = 0.0;
+                    mat.groove = [0.0; 3];
+                    mat.subsurface = 0.0;
+                    ns = if entering { normal } else { scale(normal, -1.0) };
+                }
+                super::beads::Finish::Particle => {
+                    mat.base_color = bm.speckle.expect("a particle comes from speckle").color.map(|c| c.clamp(0.0, 1.0));
+                }
             }
         }
         Surf { p, ng, ns, entering, mat, tri: BEAD_TRI }
@@ -2022,12 +2059,13 @@ impl<'a> Tracer<'a> {
         BEAD_SCRATCH.with(|cell| {
             let (iv, spans) = &mut *cell.borrow_mut();
             iv.clear();
-            // One walk of the tree gathers every bead the ray crosses; an
-            // opaque one among them ends it.
-            bs.intervals_where(o, d, t0, dist, |_| true, iv);
-            if iv.iter().any(|&(_, _, b)| self.bead_opaque[self.bead_material(b)]) {
+            // An opaque bead anywhere ends it: an any-hit search over the
+            // opaque beads alone, then one walk gathering the see-through
+            // beads the ray crosses.
+            if bs.occluded_mask(o, d, t0, dist, super::beads::CLASS_OPAQUE) {
                 return [0.0; 3];
             }
+            bs.intervals_mask(o, d, t0, dist, super::beads::CLASS_CLEAR, iv);
             super::beads::union_spans(iv, spans);
             let mut tint = [1.0f32; 3];
             for sp in spans.iter() {
@@ -2076,7 +2114,6 @@ impl<'a> Tracer<'a> {
         let e = self.fine_eps(s.p);
         let mut o = add(s.p, scale(n_in, e * 4.0));
         let mut beta = [1.0f32; 3];
-        let solid = |j: u32| self.bead_solid[self.bead_material(j)];
         for step in 0..MAX_WALK {
             let u = smp.next();
             let t = -(1.0 - u).max(1e-9).ln() * mfp;
@@ -2084,7 +2121,7 @@ impl<'a> Tracer<'a> {
             let exit = BEAD_SCRATCH.with(|cell| {
                 let (iv, spans) = &mut *cell.borrow_mut();
                 iv.clear();
-                bs.intervals_where(o, d, e, t, solid, iv);
+                bs.intervals_mask(o, d, e, t, super::beads::CLASS_SOLID, iv);
                 super::beads::union_spans(iv, spans);
                 let sp = spans.iter().find(|sp| sp.t_out > e)?;
                 // Normally the walk is inside the first span and leaves at its
@@ -2224,7 +2261,7 @@ impl<'a> Tracer<'a> {
     #[inline]
     fn occluded_light(&self, o: [f32; 3], d: [f32; 3], tmin: f32, tmax: f32) -> bool {
         if let Some(bs) = self.beads {
-            if bs.occluded_where(o, d, tmin, tmax, |j| self.bead_opaque[self.bead_material(j)]) {
+            if bs.occluded_mask(o, d, tmin, tmax, super::beads::CLASS_OPAQUE) {
                 return true;
             }
         }
@@ -2300,7 +2337,13 @@ impl<'a> Tracer<'a> {
             m.groove = r.groove;
             m.slope_var = r.slope_var;
         } else if m.texture == textures::Kind::Stipple {
-            let t = textures::stipple(m.texture_scale, p, n, footprint);
+            // A random grain has no period to beat against the pixel grid,
+            // so the tracer filters it over one pixel and lets its own
+            // samples average the rest: grains a little smaller than a
+            // pixel still glint, as a textured sheet does at arm's length,
+            // where the rasterizer's wider filter has already made them an
+            // even matte.
+            let t = textures::stipple(m.texture_scale, p, n, footprint / RESOLVE_PIXELS);
             m.base_color = mul(m.base_color, t.albedo);
             m.roughness = (m.roughness + t.roughness_delta).clamp(0.03, 1.0);
             n = normalize(add(n, t.bump));
@@ -2357,7 +2400,7 @@ impl<'a> Tracer<'a> {
             // what is left is the triangles' answer times that tint.
             let tint = if self.bead_clear {
                 self.bead_tint(o, d, dist, start)
-            } else if self.beads.is_some_and(|bs| bs.occluded_where(o, d, self.eps, dist, |_| true)) {
+            } else if self.beads.is_some_and(|bs| bs.occluded_mask(o, d, self.eps, dist, super::beads::CLASS_ALL)) {
                 [0.0; 3]
             } else {
                 [1.0; 3]
@@ -2794,7 +2837,17 @@ impl<'a> Tracer<'a> {
             if wo[2] <= 0.0 {
                 break;
             }
-            let bsdf = Bsdf::new(&s.mat, s.ns, s.entering);
+            // Light that has already scattered off something matte sees a
+            // scattering bead as the Lambert surface its walk averages to
+            // (the walk inverts the base colour for exactly that albedo).
+            // The soft, translucent edge the walk draws is what the camera
+            // sees directly; indirect light cannot resolve it, and the walk
+            // is most of the cost of a scattering print.
+            let bsdf = if caustic && s.mat.subsurface > 0.0 {
+                Bsdf::new(&Pbr { subsurface: 0.0, ..s.mat }, s.ns, s.entering)
+            } else {
+                Bsdf::new(&s.mat, s.ns, s.entering)
+            };
 
             // --- next-event estimation, inside a solid as well as outside
             // it: the shadow ray goes straight out through the wall with its
@@ -3533,6 +3586,8 @@ struct Aux {
     dist: f32,
     /// Standard deviation of the model's mean luminance.
     sigma: f32,
+    /// Samples the pixel took (fewer than asked when adaptive).
+    samples: u32,
 }
 
 /// The tracer proper. Recording the [`Guides`] costs a few stores per
@@ -3561,6 +3616,8 @@ pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Ca
     // One Halton point per sample index, shared by every pixel.
     let halton: Vec<[f32; 16]> = (0..samples).map(halton_row).collect();
     let shown = opts.path.show_environment && !opts.transparent;
+    let adaptive = if opts.path.adaptive_error.is_finite() { opts.path.adaptive_error.max(0.0) } else { 0.0 };
+    let min_adaptive = ADAPTIVE_MIN.max(samples / 8);
     par_bands2(&mut hdr, &mut aux, wi, rows, threads, |y0, band, aux| {
         // Scratch for `Tracer::radiance`, allocated once per band instead of
         // once per camera ray. `MAX_SPLITS` and `MAX_SHADOW_INTERFACES`
@@ -3576,7 +3633,22 @@ pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Ca
             let mut hits = 0u32;
             let mut through = 0.0f32;
             let (mut caught, mut lit, mut open) = (0u32, 0.0f32, 0.0f32);
+            // Every sample's luminance, hit or not, for adaptive sampling.
+            let (mut all1, mut all2) = (0.0f32, 0.0f32);
+            let mut taken = samples;
             for si in 0..samples {
+                if adaptive > 0.0 && si >= min_adaptive && si % ADAPTIVE_STEP == 0 {
+                    let n = si as f32;
+                    let mean = all1 / n;
+                    let var = (all2 / n - mean * mean).max(0.0);
+                    // d(sqrt L) = dL / (2 sqrt L), with a floor so a black
+                    // pixel is not held to an impossible relative error.
+                    let err = (var / n).sqrt() / (2.0 * mean.max(1e-3).sqrt());
+                    if err < adaptive {
+                        taken = si;
+                        break;
+                    }
+                }
                 let mut smp = Sampler::new(x, y, w, si, seed, &halton[si as usize]);
                 let (jx, jy) = smp.next2();
                 // The lens takes two more dimensions, and only when there
@@ -3599,6 +3671,9 @@ pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Ca
                     lit += seen.lit;
                     open += seen.open;
                 }
+                let lc = luminance(if hit { c } else if shown { c } else { flat });
+                all1 += lc;
+                all2 += lc * lc;
                 if !hit {
                     // Nothing but the environment, when it is shown.
                     missed = add(missed, c);
@@ -3618,11 +3693,12 @@ pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Ca
                     }
                 }
             }
-            a.backdrop = if shown && hits < samples { scale(missed, 1.0 / (samples - hits) as f32) } else { flat };
+            a.backdrop = if shown && hits < taken { scale(missed, 1.0 / (taken - hits) as f32) } else { flat };
+            a.samples = taken;
             if hits > 0 {
                 let inv = 1.0 / hits as f32;
                 *px = scale(sum, inv);
-                a.coverage = hits as f32 / samples as f32;
+                a.coverage = hits as f32 / taken as f32;
                 a.through = (through * inv).clamp(0.0, 1.0);
                 // Var(mean) = (E[l²] − E[l]²) / n over the samples that
                 // make the mean.
@@ -3630,7 +3706,7 @@ pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Ca
                 a.sigma = ((lum2 * inv - m * m).max(0.0) * inv).sqrt();
             }
             if caught > 0 && open > 0.0 {
-                a.shadow = caught as f32 / samples as f32 * (1.0 - lit / open).clamp(0.0, 1.0);
+                a.shadow = caught as f32 / taken as f32 * (1.0 - lit / open).clamp(0.0, 1.0);
             }
         }
     });
@@ -3643,7 +3719,9 @@ pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Ca
     let t2 = super::aa::now_ms();
 
     let bs = tracer.bvh_stats;
+    let samples_taken: u64 = aux.iter().map(|a| a.samples as u64).sum();
     let stats = RenderStats {
+        mean_samples: samples_taken as f32 / n.max(1) as f32,
         geometry_ms: t1 - t0,
         shade_ms: t2 - t1,
         threads_used: threads,
@@ -5708,5 +5786,158 @@ mod tests {
         let custom = RenderOptions { backdrop: Some(Backdrop::Color([0.0, 0.0, 0.2])), ..opts.clone() };
         let t = Tracer::new(&[], &Scene::from_items(&[]), &custom, 0.0);
         assert!(t.cones.is_empty() && env(&t.lights, [1.0, 0.0, 0.0])[2] > 0.1);
+    }
+
+    fn lcg(s: &mut u64) -> f32 {
+        *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((*s >> 40) as f32) / ((1u64 << 24) as f32)
+    }
+
+    /// The denoiser averages neighbours with normalised weights, so it may
+    /// move light around within a surface but must not make or lose any:
+    /// each region's mean survives, and its grain goes down.
+    #[test]
+    fn the_denoiser_moves_no_energy_and_removes_grain() {
+        let (w, h) = (96u32, 64u32);
+        let n = (w * h) as usize;
+        let mut s = 7u64;
+        // Two materials side by side, a dark one and a light one, each with
+        // grain of a quarter of its level.
+        let level = |x: u32| if x < w / 2 { 0.05f32 } else { 0.6f32 };
+        let mut img: Vec<[f32; 3]> = (0..n)
+            .map(|i| {
+                let v = level(i as u32 % w) * (1.0 + 0.5 * (lcg(&mut s) - 0.5) * 3.46 * 0.5);
+                [v, v * 0.9, v * 0.8]
+            })
+            .collect();
+        let g = Guides {
+            normal: vec![[0.0, 0.0, 1.0]; n],
+            albedo: (0..n).map(|i| if (i as u32 % w) < w / 2 { [0.1; 3] } else { [0.8; 3] }).collect(),
+            depth: vec![100.0; n],
+            sigma: (0..n).map(|i| level(i as u32 % w) * 0.25).collect(),
+        };
+        let stats = |img: &[[f32; 3]], left: bool| {
+            let px: Vec<f32> = (0..n).filter(|&i| ((i as u32 % w) < w / 2) == left).map(|i| luminance(img[i])).collect();
+            let m = px.iter().sum::<f32>() / px.len() as f32;
+            let v = px.iter().map(|x| (x - m) * (x - m)).sum::<f32>() / px.len() as f32;
+            (m, v.sqrt())
+        };
+        let before = [stats(&img, true), stats(&img, false)];
+        denoise(&mut img, &g, w, h, 4);
+        let after = [stats(&img, true), stats(&img, false)];
+        for k in 0..2 {
+            assert!((after[k].0 - before[k].0).abs() < 0.01 * before[k].0, "region {k}: mean {} -> {}", before[k].0, after[k].0);
+            assert!(after[k].1 < 0.5 * before[k].1, "region {k}: grain {} -> {}", before[k].1, after[k].1);
+        }
+        // A grain-free image is left as it is.
+        let flat = vec![[0.3f32, 0.2, 0.1]; n];
+        let mut out = flat.clone();
+        denoise(&mut out, &Guides { sigma: vec![0.0; n], ..g }, w, h, 2);
+        assert!(out.iter().zip(&flat).all(|(a, b)| (0..3).all(|k| (a[k] - b[k]).abs() < 1e-6)));
+    }
+
+    /// The bead golden: three small printed towers, a scattering red, a
+    /// translucent teal and a dark one with flakes, on the default floor
+    /// under the product rig, with adaptive sampling and the denoiser on.
+    fn golden_beads() -> (super::super::beads::BeadSet, Camera, RenderOptions) {
+        use super::super::beads::{Bead, BeadMaterial, BeadSet, Flakes};
+        let mut beads = Vec::new();
+        for (k, x0) in [0.0f32, 9.0, 18.0].into_iter().enumerate() {
+            for layer in 0..20 {
+                let z = 0.1 + 0.2 * layer as f32;
+                for wall in 0..2 {
+                    let i = 0.45 * wall as f32;
+                    let c = [[x0 + i, i], [x0 + 6.0 - i, i], [x0 + 6.0 - i, 6.0 - i], [x0 + i, 6.0 - i]];
+                    for e in 0..4 {
+                        let (a, b) = (c[e], c[(e + 1) % 4]);
+                        beads.push(Bead { a: [a[0], a[1], z], b: [b[0], b[1], z], rx: 0.24, rz: 0.13, material: k as u32 });
+                    }
+                }
+            }
+        }
+        let mut red = BeadMaterial::new(Material { base_color: [0.55, 0.04, 0.03], roughness: 0.36, anisotropy: 0.35, ..Material::default() });
+        red.subsurface = 0.3;
+        let teal = BeadMaterial::new(Material {
+            base_color: [0.05, 0.4, 0.36],
+            roughness: 0.12,
+            transmission: 1.0,
+            attenuation_distance: 8.0,
+            scatter_distance: 3.0,
+            scatter_g: 0.5,
+            ior: 1.57,
+            ..Material::default()
+        });
+        let mut dark = BeadMaterial::new(Material { base_color: [0.03, 0.025, 0.05], roughness: 0.4, ..Material::default() });
+        dark.flakes = Some(Flakes { density: 0.4, size: 0.12, tilt_degrees: 35.0, roughness: 0.12, color: [0.8; 3] });
+        let set = BeadSet::new(beads, vec![red, teal, dark], 3.0);
+        let cam = Camera {
+            eye: Vec3::new(4.0, -26.0, 16.0),
+            target: Vec3::new(12.0, 3.0, 2.0),
+            up: Vec3::new(0.0, 0.0, 1.0),
+            fov_degrees: 30.0,
+            orthographic: false,
+            shift: 0.0,
+        };
+        let mut opts = RenderOptions { width: 64, height: 40, samples: 24, threads: 0, backend: Backend::Path, lighting: Lighting::Product, ..Default::default() };
+        opts.path.max_bounces = 12;
+        opts.path.denoise = true;
+        opts.path.adaptive_error = 0.02;
+        (set, cam, opts)
+    }
+
+    /// 4x4 block means of the image, sRGB bytes.
+    fn blocks(img: &Image) -> Vec<u8> {
+        let (bw, bh) = (img.width / 4, img.height / 4);
+        let mut out = Vec::new();
+        for by in 0..bh {
+            for bx in 0..bw {
+                for k in 0..3 {
+                    let mut sum = 0u32;
+                    for y in 0..4 {
+                        for x in 0..4 {
+                            sum += img.rgba[(((by * 4 + y) * img.width + bx * 4 + x) * 4 + k) as usize] as u32;
+                        }
+                    }
+                    out.push(((sum + 8) / 16) as u8);
+                }
+            }
+        }
+        out
+    }
+
+    /// The bead golden, 16 x 10 blocks of 4 x 4 pixels, sRGB hex. Re-take
+    /// it with `CADPOLE_BLESS=1` when the renderer changes on purpose.
+    const BEAD_GOLDEN: &str = concat!(
+        "8f8f9390909490919492929592939693949794949794959895959896969996979a97989b98999c999a9c999a9d9a9a9d",
+        "8e8f928f8f928f8f928f8f9390909390919491919491929592939693939694949795959896969997979a97989a98989b",
+        "8d8d918d8d918d8d918e8e918e8f928f8f9390909491919492929592939693949794959899999d96969a969699969699",
+        "8d8b8f94898c9d8385a48a8b9986898c8c8f849293829495809495869092706f7a615e6d3b3747595666939299929396",
+        "af8381c05650c65b56c6524cbc69678585886b888676969576979573908f505a653e3c504a46574e4a5b3a3649848488",
+        "bd817eca615cd26d67d26f68cd716b5f5f626985847597957496957295944c5d623433463d394c3e3a4d3f3b4d86878a",
+        "a77675cb6661cd6a65cc6963cc6f6a474a4c5a6f6f7293927493926d878768727562636960606763646a7a7b7e88898d",
+        "8b6f70bb6966b56e6ba66b6a9e747478797d787b7e7b7c807a7c807c7e817b7c807a7b7f7b7c7f7d7e8185868a88898c",
+        "7673777774787775787a787c7d7d817e7f837f808480818581828682838783848884858985868a87878b87888b88898c",
+        "79777a7a797d7b7a7e7f7f8281818582828682838682838783848884858885868986878a87888b88898c88888c89898d",
+    );
+
+    #[test]
+    fn the_bead_golden_holds_within_a_tolerance() {
+        let (set, cam, opts) = golden_beads();
+        let (img, stats) = render_with_beads(&[], Some(&set), &cam, &opts);
+        assert!(stats.mean_samples >= ADAPTIVE_MIN as f32 && stats.mean_samples <= 24.0, "{}", stats.mean_samples);
+        let got = blocks(&img);
+        let hex: String = got.iter().map(|b| format!("{b:02x}")).collect();
+        if std::env::var_os("CADPOLE_BLESS").is_some() || BEAD_GOLDEN.is_empty() {
+            panic!("bead golden: {hex}");
+        }
+        let want: Vec<u8> = (0..BEAD_GOLDEN.len() / 2).map(|i| u8::from_str_radix(&BEAD_GOLDEN[2 * i..2 * i + 2], 16).unwrap()).collect();
+        assert_eq!(want.len(), got.len());
+        let diffs: Vec<i32> = got.iter().zip(&want).map(|(a, b)| (*a as i32 - *b as i32).abs()).collect();
+        let mean = diffs.iter().sum::<i32>() as f32 / diffs.len() as f32;
+        let worst = *diffs.iter().max().unwrap();
+        assert!(mean <= 2.0 && worst <= 16, "the bead golden moved: mean {mean:.2}, worst {worst} levels\n{hex}");
+        // The same image for any thread count, adaptive sampling included.
+        let (one, _) = render_with_beads(&[], Some(&set), &cam, &RenderOptions { threads: 1, ..opts.clone() });
+        assert_eq!(fnv1a64(&one.rgba), fnv1a64(&img.rgba));
     }
 }

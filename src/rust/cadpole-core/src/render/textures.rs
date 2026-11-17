@@ -162,18 +162,19 @@ pub struct Grain {
     pub bump: [f32; 3],
 }
 
-/// Height of the grains as a share of their size: a slope of about 0.35 at
+/// Height of the grains as a share of their size: a slope of about 0.45 at
 /// the steepest, which is a textured sheet you can feel with a fingernail.
-const STIPPLE_RELIEF: f32 = 0.35;
+const STIPPLE_RELIEF: f32 = 0.45;
 
 /// A fine random grain `scale_mm` across, as a sprayed or textured sheet
 /// has: two octaves of value noise for the height, whose gradient tilts the
-/// normal, and the same field speckling the albedo by about 8 % and the
+/// normal, and the same field speckling the albedo by about 12 % and the
 /// roughness by about 0.1, with the hollows darker and rougher than the
-/// tops. Band-limited by the pixel `footprint`: as the grains shrink below
-/// a pixel the tilt and the speckle fade out and the roughness they stood
-/// for is added instead, so a far sheet is an even matte and a near one
-/// glitters. Pure and free of NaN.
+/// tops, over clouds four grains across that shade it by about 8 %.
+/// Band-limited by the pixel `footprint`: as the grains shrink below a
+/// pixel the tilt and the speckle fade out and the roughness they stood
+/// for is added instead, so a far sheet is an evenly clouded matte and a
+/// near one glitters. Pure and free of NaN.
 pub fn stipple(scale_mm: f32, pos: [f32; 3], n: [f32; 3], footprint: f32) -> Grain {
     let scale = if scale_mm.is_finite() && scale_mm > 0.0 { scale_mm } else { 0.3 };
     let inv = 1.0 / scale;
@@ -200,7 +201,13 @@ pub fn stipple(scale_mm: f32, pos: [f32; 3], n: [f32; 3], footprint: f32) -> Gra
     }
     // h0 is 0..1.5 with mean 0.75.
     let c = (h0 / 1.5 - 0.5) * vis;
-    let tone = finite_clamp(1.0 + 0.16 * c, 0.0, 1.0, 1.0);
+    // A sprayed coat is uneven on a larger scale too: clouds of a few
+    // grains a little lighter or darker, which stay visible after the
+    // grains themselves have averaged out.
+    let fc = f * 0.25;
+    let vis_c = 1.0 - smoothstep(0.3, 1.5, fc);
+    let m = (value_noise([u[0] * 0.25 + 31.7, u[1] * 0.25 - 12.9, u[2] * 0.25 + 5.3]) - 0.5) * vis_c;
+    let tone = finite_clamp((1.0 + 0.24 * c) * (1.0 + 0.16 * m), 0.0, 1.0, 1.0);
     Grain {
         albedo: [tone; 3],
         roughness_delta: finite_clamp(-0.2 * c + 0.12 * (1.0 - vis), -0.3, 0.3, 0.0),
@@ -381,7 +388,7 @@ fn quintic(t: f32) -> f32 {
 
 /// Trilinear value noise in 0..1 with a quintic fade. `p` must already be
 /// finite (`fbm_filtered` sanitises once for the whole octave stack).
-fn value_noise(p: [f32; 3]) -> f32 {
+pub(crate) fn value_noise(p: [f32; 3]) -> f32 {
     let fl = [p[0].floor(), p[1].floor(), p[2].floor()];
     let c = cell_corners([fl[0] as i32, fl[1] as i32, fl[2] as i32]);
     let t = [quintic(p[0] - fl[0]), quintic(p[1] - fl[1]), quintic(p[2] - fl[2])];

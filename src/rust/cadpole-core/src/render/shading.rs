@@ -144,6 +144,21 @@ impl Lights {
         }
     }
 
+    /// The product rig with its key, fill and rim placed by hand
+    /// ([`super::RenderOptions::rig`]), relative to the camera's azimuth.
+    pub fn product_rig(azimuth: f32, rig: &[super::RigLight; 3]) -> Lights {
+        let az = azimuth.to_degrees();
+        let light = |r: &super::RigLight| {
+            let (a, e) = ((az + r.azimuth_degrees).to_radians(), r.elevation_degrees.clamp(-89.0, 89.0).to_radians());
+            Light {
+                dir: normalize([a.sin() * e.cos(), -a.cos() * e.cos(), e.sin()]),
+                radiance: [if r.intensity.is_finite() { r.intensity.max(0.0) } else { 0.0 }; 3],
+                radius_degrees: if r.radius_degrees.is_finite() { r.radius_degrees.clamp(0.5, 60.0) } else { 14.0 },
+            }
+        };
+        Lights { key: light(&rig[0]), fill: light(&rig[1]), rim: light(&rig[2]), ..Lights::product(azimuth) }
+    }
+
     /// No rig: the three lights off and a black environment
     /// ([`Lighting::None`]). A backdrop, a sun or the scene's own emissive
     /// bodies are then the only light.
@@ -210,7 +225,10 @@ impl Lights {
     pub fn for_options(opts: &RenderOptions, azimuth: f32) -> Lights {
         let rig = match opts.lighting {
             Lighting::Studio => Lights::studio(),
-            Lighting::Product => Lights::product(azimuth),
+            Lighting::Product => match &opts.rig {
+                Some(r) => Lights::product_rig(azimuth, r),
+                None => Lights::product(azimuth),
+            },
             Lighting::None => Lights::none(),
         };
         if opts.backdrop.is_some_and(|b| b.is_sky()) {

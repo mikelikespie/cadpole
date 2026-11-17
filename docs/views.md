@@ -139,7 +139,7 @@ analysis views fall back to the CPU rasterizer with a note.
 | `--backdrop` | `studio` (a grey cyclorama with a soft top light), `white`, `black`, `#rrggbb`, or `sky` (daylight; see **Daylight**). The environment the path tracer shows and reflects, its floor's colour, and, unless `--background` is given, the rasterizer's background, so the two backends agree. With `--background` as well, the backdrop still lights and reflects in the model, and the pixels it does not cover are the background colour in both backends, edge pixels mixing with it. Unset keeps the rig's own gradient and the dark floor. |
 | `--lighting` | `studio` (default; the engineering rig, fixed in world space), `product` (a neutral catalogue rig locked to the camera), or `none` (no rig and a black environment; see **A dark room**). |
 | `--floor` | Path only: `matte` (default), `gloss` (a faint reflection of the part), `none`. |
-| `--tonemap` | `aces` (default), `neutral` (Khronos PBR Neutral: hue-preserving, exact for base colours), `none` (a plain clamp). |
+| `--tonemap` | `aces` (default), `neutral` (Khronos PBR Neutral: hue-preserving, exact for base colours), `agx` (a log encoding and sigmoid: saturated highlights roll off toward white; path tracer and rasterizer, drawn as `aces` by the GPU backend), `none` (a plain clamp). |
 | `--dof <f-number>`, `--bloom` | Path only. `--dof` is a thin lens sized for the field of view, focused on the model; `--bloom` lets highlights over display white spill a little. Both off by default. |
 | `--edge-break [<mm>]` | Path only: shades every crease with a deburred round of that radius (0.25 if the value is left off). |
 | `--denoise` | Path only: an edge-aware à-trous filter over the finished image. Off by default. |

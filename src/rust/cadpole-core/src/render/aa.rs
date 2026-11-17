@@ -658,6 +658,69 @@ fn inv_neutral(d: [f32; 3]) -> [f32; 3] {
     c.map(|v| (v + offset) as f32)
 }
 
+/// AgX's inset: linear Rec. 709 into the slightly narrower primaries the
+/// curve is applied in (row-major).
+const AGX_IN: [[f64; 3]; 3] = [
+    [0.842479062253094, 0.0784335999999992, 0.0792237451477643],
+    [0.0423282422610123, 0.878468636469772, 0.0791661274605434],
+    [0.0423756549057051, 0.0784336, 0.879142973793104],
+];
+/// And back out (the inverse of [`AGX_IN`]).
+const AGX_OUT: [[f64; 3]; 3] = [
+    [1.19687900512017, -0.0980208811401368, -0.0990297440797205],
+    [-0.0528968517574562, 1.15190312990417, -0.0989611768448433],
+    [-0.0529716355144438, -0.0980434501171241, 1.15107367264116],
+];
+/// The log range the curve spans, in stops about scene-linear 1.
+const AGX_MIN_EV: f64 = -12.47393;
+const AGX_MAX_EV: f64 = 4.026069;
+
+#[inline]
+fn mat3(m: &[[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
+    [0, 1, 2].map(|r| m[r][0] * v[0] + m[r][1] * v[1] + m[r][2] * v[2])
+}
+
+/// AgX's sigmoid on the normalised log value: the sixth-order fit of the
+/// default contrast.
+#[inline]
+fn agx_curve(x: f64) -> f64 {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232
+}
+
+fn agx(c: [f32; 3]) -> [f32; 3] {
+    let v = c.map(|v| if v.is_finite() { (v as f64).max(0.0) } else { 0.0 });
+    let v = mat3(&AGX_IN, v).map(|x| {
+        let ev = x.max(1e-10).log2().clamp(AGX_MIN_EV, AGX_MAX_EV);
+        agx_curve((ev - AGX_MIN_EV) / (AGX_MAX_EV - AGX_MIN_EV))
+    });
+    // The curve's output is display-encoded; back to display-linear for
+    // the shared resolve.
+    mat3(&AGX_OUT, v).map(|x| x.clamp(0.0, 1.0).powf(2.2) as f32)
+}
+
+/// Inverse of [`agx`] for a display colour inside the curve's output: each
+/// step is undone in turn, the sigmoid by bisection (it is monotone on 0..1).
+fn inv_agx(d: [f32; 3]) -> [f32; 3] {
+    let enc = d.map(|v| (v as f64).clamp(0.0, 1.0).powf(1.0 / 2.2));
+    let y = mat3(&AGX_IN, enc);
+    let lin = y.map(|y| {
+        let (mut lo, mut hi) = (0.0f64, 1.0f64);
+        for _ in 0..48 {
+            let mid = 0.5 * (lo + hi);
+            if agx_curve(mid) < y {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        let ev = 0.5 * (lo + hi) * (AGX_MAX_EV - AGX_MIN_EV) + AGX_MIN_EV;
+        if ev <= AGX_MIN_EV + 1e-9 { 0.0 } else { ev.exp2() }
+    });
+    mat3(&AGX_OUT, lin).map(|v| v.max(0.0) as f32)
+}
+
 /// Exposure then the tone curve `tm`, clamped to 0..1. Monotone;
 /// `tonemap_rgb(0) == 0`. [`ToneMap::None`] is the plain clamp the tests and
 /// the debug views use, and applies no exposure, as it never did.
@@ -665,6 +728,7 @@ pub fn tonemap_rgb(c: [f32; 3], exposure: f32, tm: ToneMap) -> [f32; 3] {
     match tm {
         ToneMap::Aces => c.map(|v| aces(v * exposure)),
         ToneMap::Neutral => neutral(c.map(|v| v * exposure)),
+        ToneMap::Agx => agx(c.map(|v| v * exposure)),
         ToneMap::None => c.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 }),
     }
 }
@@ -677,6 +741,7 @@ pub fn inverse_tonemap_rgb(d: [f32; 3], exposure: f32, tm: ToneMap) -> [f32; 3] 
     match tm {
         ToneMap::Aces => d.map(|v| (inv_aces(v as f64) / e) as f32),
         ToneMap::Neutral => inv_neutral(d).map(|v| (v as f64 / e) as f32),
+        ToneMap::Agx => inv_agx(d).map(|v| (v as f64 / e) as f32),
         ToneMap::None => d,
     }
 }
@@ -938,6 +1003,32 @@ mod tests {
             let img = resolve(&acc, n, 2, 2, Some(bg));
             for p in img.rgba.chunks_exact(4) {
                 assert_eq!(&p[..3], &bg.map(to_srgb8), "n={n}");
+            }
+        }
+    }
+
+    #[test]
+    fn agx_is_monotone_keeps_greys_grey_and_inverts_inside_its_range() {
+        let mut prev = -1.0f32;
+        let mut x = 0.0f32;
+        while x <= 64.0 {
+            let y = tonemap_rgb([x; 3], 1.0, ToneMap::Agx);
+            assert!(y[0] >= prev, "not monotone at {x}");
+            assert!((y[0] - y[1]).abs() < 5e-4 && (y[1] - y[2]).abs() < 5e-4, "{y:?}");
+            prev = y[0];
+            x += 0.01 + x * 0.01;
+        }
+        assert_eq!(tonemap_rgb([0.0; 3], 1.0, ToneMap::Agx), [0.0; 3]);
+        // Mid grey lands near the middle of the display range.
+        let g = tonemap_rgb([0.18; 3], 1.0, ToneMap::Agx)[0];
+        assert!((0.12..0.3).contains(&g), "{g}");
+        // AgX's output gamut is inset: a display colour it can produce
+        // comes back to itself (a fully saturated one it never produces).
+        for x in [[0.02f32, 0.3, 0.7], [0.5, 0.5, 0.5], [0.9, 0.1, 0.05], [0.05, 0.05, 0.05], [3.0, 1.0, 0.2]] {
+            let c = tonemap_rgb(x, 1.3, ToneMap::Agx);
+            let back = tonemap_rgb(inverse_tonemap_rgb(c, 1.3, ToneMap::Agx), 1.3, ToneMap::Agx);
+            for k in 0..3 {
+                assert!((back[k] - c[k]).abs() < 2e-3, "{c:?} -> {back:?}");
             }
         }
     }

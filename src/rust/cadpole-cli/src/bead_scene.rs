@@ -15,7 +15,7 @@ use cadpole_engine::cadpole_core::context::Material;
 use cadpole_engine::cadpole_core::geom::Vec3;
 use cadpole_engine::cadpole_core::render::beads::{self, BeadMaterial, BeadSet};
 use cadpole_engine::cadpole_core::render::{
-    Backend, Camera, Item, RenderOptions, material_preset, render_beads, texture_kind,
+    Backend, Camera, Item, RenderOptions, RigLight, material_preset, render_beads, texture_kind,
 };
 use cadpole_engine::cadpole_core::tessellate::Mesh;
 use serde::Deserialize;
@@ -73,6 +73,49 @@ struct MaterialSpec {
     /// Subsurface mean free path in mm (beads only).
     #[serde(default)]
     subsurface: Option<f32>,
+    /// Embedded flakes: glitter, metal fill, the glints of cut fibre
+    /// (beads only).
+    #[serde(default)]
+    flakes: Option<FlakesSpec>,
+    /// Suspended particles of another colour (beads only).
+    #[serde(default)]
+    speckle: Option<SpeckleSpec>,
+    /// Layer-to-layer tone variation, 0..1 (beads only).
+    #[serde(default)]
+    streak: Option<f32>,
+}
+
+#[derive(Deserialize, Debug, Default, Clone)]
+#[serde(deny_unknown_fields)]
+struct FlakesSpec {
+    density: f32,
+    /// Spacing in mm.
+    size: f32,
+    #[serde(default)]
+    tilt_degrees: Option<f32>,
+    #[serde(default)]
+    roughness: Option<f32>,
+    /// `#rrggbb`, the flake's reflectance.
+    #[serde(default)]
+    color: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Default, Clone)]
+#[serde(deny_unknown_fields)]
+struct SpeckleSpec {
+    density: f32,
+    size: f32,
+    color: String,
+}
+
+#[derive(Deserialize, Debug, Default, Clone)]
+#[serde(deny_unknown_fields)]
+struct LightSpec {
+    azimuth_degrees: f32,
+    elevation_degrees: f32,
+    intensity: f32,
+    #[serde(default)]
+    radius_degrees: Option<f32>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -126,6 +169,17 @@ struct RenderSpec {
     /// `#rrggbb` behind the subject when no backdrop is shown.
     #[serde(default)]
     background: Option<String>,
+    /// `aces` (the default), `agx`, `neutral` or `none`.
+    #[serde(default)]
+    tonemap: Option<String>,
+    /// Adaptive sampling's error target (see `PathTraceOptions::
+    /// adaptive_error`); 0 takes every sample in every pixel. Default 0.004.
+    #[serde(default)]
+    adaptive: Option<f32>,
+    /// The product rig's key, fill and rim placed by hand, in that order,
+    /// relative to the camera.
+    #[serde(default)]
+    lights: Option<Vec<LightSpec>>,
 }
 
 /// What the command may override on the scene's own settings.
@@ -145,6 +199,36 @@ fn srgb_hex(s: &str) -> anyhow::Result<[f64; 3]> {
     };
     let lin = |v: u8| cadpole_engine::cadpole_core::paint::srgb_to_linear(v as f64 / 255.0);
     Ok([lin(byte(0)?), lin(byte(2)?), lin(byte(4)?)])
+}
+
+fn bead_material(spec: &MaterialSpec) -> anyhow::Result<BeadMaterial> {
+    let (material, subsurface) = material(spec)?;
+    let fin = |v: f32, lo: f32, hi: f32| if v.is_finite() { v.clamp(lo, hi) } else { lo };
+    let flakes = match &spec.flakes {
+        None => None,
+        Some(f) => Some(beads::Flakes {
+            density: fin(f.density, 0.0, 1.0),
+            size: fin(f.size, 0.005, 10.0),
+            tilt_degrees: fin(f.tilt_degrees.unwrap_or(25.0), 0.0, 80.0),
+            roughness: fin(f.roughness.unwrap_or(0.15), 0.03, 1.0),
+            color: srgb_hex(f.color.as_deref().unwrap_or("#d8d8d8"))?.map(|v| v as f32),
+        }),
+    };
+    let speckle = match &spec.speckle {
+        None => None,
+        Some(s) => Some(beads::Speckle {
+            density: fin(s.density, 0.0, 1.0),
+            size: fin(s.size, 0.005, 10.0),
+            color: srgb_hex(&s.color)?.map(|v| v as f32),
+        }),
+    };
+    Ok(BeadMaterial {
+        material,
+        subsurface,
+        flakes,
+        speckle,
+        streak: fin(spec.streak.unwrap_or(0.0), 0.0, 1.0),
+    })
 }
 
 fn material(spec: &MaterialSpec) -> anyhow::Result<(Material, f32)> {
@@ -275,12 +359,7 @@ pub fn run(scene_path: &Path, out: &PathBuf, ov: Overrides) -> anyhow::Result<()
     let mats = scene
         .materials
         .iter()
-        .map(|s| {
-            material(s).map(|(m, sss)| BeadMaterial {
-                material: m,
-                subsurface: sss,
-            })
-        })
+        .map(bead_material)
         .collect::<anyhow::Result<Vec<_>>>()?;
     let t_load = t0.elapsed().as_secs_f64();
     let mut set = BeadSet::new(list, mats, scene.max_len.unwrap_or(3.0));
@@ -329,13 +408,33 @@ pub fn run(scene_path: &Path, out: &PathBuf, ov: Overrides) -> anyhow::Result<()
         let c = srgb_hex(bg)?;
         opts.background = [c[0] as f32, c[1] as f32, c[2] as f32];
     }
+    opts.path.adaptive_error = r
+        .adaptive
+        .filter(|a| a.is_finite())
+        .unwrap_or(0.004)
+        .max(0.0);
     let look = cadpole_engine::Look::parse(
         r.lighting.as_deref().unwrap_or("product"),
         r.backdrop.as_deref().unwrap_or(""),
         r.floor.as_deref().unwrap_or(""),
-        "",
+        r.tonemap.as_deref().unwrap_or(""),
     )?;
     look.apply(&mut opts, keep_background);
+    if let Some(ls) = &r.lights {
+        if ls.len() != 3 {
+            bail!(
+                "render.lights is the key, fill and rim: three lights, not {}",
+                ls.len()
+            );
+        }
+        let l = |s: &LightSpec| RigLight {
+            azimuth_degrees: s.azimuth_degrees,
+            elevation_degrees: s.elevation_degrees,
+            intensity: s.intensity,
+            radius_degrees: s.radius_degrees.unwrap_or(20.0),
+        };
+        opts.rig = Some([l(&ls[0]), l(&ls[1]), l(&ls[2])]);
+    }
 
     let c = &scene.camera;
     let v = |a: [f64; 3]| Vec3::new(a[0], a[1], a[2]);
@@ -353,7 +452,7 @@ pub fn run(scene_path: &Path, out: &PathBuf, ov: Overrides) -> anyhow::Result<()
     std::fs::write(out, img.to_png()).with_context(|| format!("writing {}", out.display()))?;
     let bs = set.stats;
     eprintln!(
-        "{{\"beads_in\":{},\"beads\":{},\"bvh_nodes\":{},\"bvh_depth\":{},\"bead_mb\":{:.1},\"build_ms\":{:.0},\"load_s\":{:.2},\"trace_s\":{:.2},\"shade_ms\":{:.0},\"denoise_ms\":{:.0},\"samples\":{},\"threads\":{},\"width\":{},\"height\":{}}}",
+        "{{\"beads_in\":{},\"beads\":{},\"bvh_nodes\":{},\"bvh_depth\":{},\"bead_mb\":{:.1},\"build_ms\":{:.0},\"load_s\":{:.2},\"trace_s\":{:.2},\"shade_ms\":{:.0},\"denoise_ms\":{:.0},\"samples\":{},\"mean_samples\":{:.1},\"threads\":{},\"width\":{},\"height\":{}}}",
         bs.input,
         bs.beads,
         bs.nodes,
@@ -365,6 +464,7 @@ pub fn run(scene_path: &Path, out: &PathBuf, ov: Overrides) -> anyhow::Result<()
         stats.shade_ms,
         stats.resolve_ms,
         opts.samples,
+        stats.mean_samples,
         stats.threads_used,
         opts.width,
         opts.height

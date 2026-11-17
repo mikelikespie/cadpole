@@ -13,7 +13,7 @@ cadpole render-beads scene.json -o thumb.png --size 640x640 --samples 16
 ```
 
 Timings and sizes go to stderr as one JSON line (`beads`, `bvh_nodes`,
-`bead_mb`, `build_ms`, `trace_s`, ...). The command reads the two files it is
+`bead_mb`, `build_ms`, `trace_s`, `mean_samples`, ...). The command reads the two files it is
 given and nothing else; it is a command-line tool, not a server operation.
 
 ## The bead
@@ -55,7 +55,11 @@ The scene file:
   "max_len": 3,
   "camera": {"eye": [40, -180, 120], "target": [175, 160, 10], "up": [0, 0, 1], "fov_degrees": 28},
   "render": {"width": 1600, "height": 1000, "samples": 96, "threads": 12,
-             "denoise": true, "f_number": 0, "lighting": "product", "exposure": 1}
+             "denoise": true, "f_number": 0, "lighting": "product", "exposure": 1,
+             "backdrop": "#d9d7d2", "tonemap": "agx", "adaptive": 0.004,
+             "lights": [{"azimuth_degrees": -42, "elevation_degrees": 48, "intensity": 2.7, "radius_degrees": 26},
+                        {"azimuth_degrees": 62, "elevation_degrees": 18, "intensity": 0.7, "radius_degrees": 34},
+                        {"azimuth_degrees": 168, "elevation_degrees": 26, "intensity": 2.6, "radius_degrees": 12}]}
 }
 ```
 
@@ -73,26 +77,64 @@ The scene file:
   beads overlap, a crossing buried inside a neighbour is not a surface: the
   beads are one solid, and the gaps between beads that do not touch are real
   interfaces that scatter light, as they do in a printed part.
+- `flakes` (beads only): small tilted mirrors in the plastic, for glitter,
+  metal-filled and "galaxy" filaments and the faint glints of cut carbon
+  fibre: `{"density", "size", "tilt_degrees", "roughness", "color"}`. Flakes
+  sit on a lattice `size` mm apart; `density` is the share of lattice cells
+  that hold one, a flake is a little over half a cell across, tilted from the
+  surface by up to `tilt_degrees`, and reflects like a metal of `color`. A
+  flake lights up only where it mirrors a light toward the camera, so below a
+  pixel they are a sparkle the samples average, as glitter is.
+- `speckle` (beads only): particles of another colour in the plastic, the
+  grains of a stone-look filament or the fibres of a wood-filled one:
+  `{"density", "size", "color"}` on the same kind of lattice.
+- `streak` (beads only): how much the tone wanders from layer to layer, 0..1,
+  in bands a layer or two tall that drift slowly along the layers.
 - `boxes`: axis-aligned boxes with a material, to stand the beads on.
 - `floor_z`: the plane the beads stand on; subsurface light that reaches the
   bottom of the first layer goes into it.
 - `max_len`: beads longer than this (mm) are cut into pieces for the tree.
-- `render.lighting`, `backdrop`, `floor`: as `cadpole render` (`docs/views.md`).
-  `f_number` is a thin lens focused on the camera target.
+- `render.lighting`, `backdrop`, `floor`, `tonemap`: as `cadpole render`
+  (`docs/views.md`); `tonemap` also takes `agx`, a log encoding and sigmoid
+  that rolls saturated highlights off toward white and keeps the separation
+  in deep shadows. `f_number` is a thin lens focused on the camera target.
+- `render.lights`: the product rig's key, fill and rim, in that order, placed
+  by hand: degrees around the subject from the camera (positive to the
+  right), degrees up, irradiance, and angular radius. A black print shows its
+  shape mostly by reflection: a large soft key high in front lays a broad
+  highlight along its tops, and a rim behind draws its silhouette.
+- `render.adaptive`: adaptive sampling. A pixel stops once the standard error
+  of its mean, on a square-root scale of luminance, is below this (0.004, the
+  default, is about one 8-bit step; 0 takes every sample everywhere). It
+  never stops before eight samples or an eighth of `samples`, and the image
+  is the same for any thread count.
 
 ## Cost
 
-Beads are kept in a binary bounding volume hierarchy built with a binned
-surface area heuristic: 36 bytes a bead and 32 a node, about 55 bytes a bead
-in all. A million and a half beads build in about a second on one core. Opaque beads
-cost about what triangles do; see-through beads cost several times more per
-path, because a ray inside them crosses many bead walls.
+Beads are kept in a bounding volume hierarchy built with a binned surface
+area heuristic, as a binary tree whose top levels are split one after
+another and whose subtrees below 16 384 beads are built in parallel (the
+tree is the same for any thread count), then collapsed into a four-wide tree
+whose nodes test four child boxes at once: 36 bytes a bead and 128 a node,
+about 60 bytes a bead in all. A million and a half beads build in under half
+a second on a desktop. Each child box records the kinds of bead under it
+(opaque, see-through, scattering), so a shadow ray looks only at the opaque
+beads and then only at the see-through ones, and never descends into a
+subtree with neither.
+
+Opaque beads cost about what triangles do. Scattering beads cost a random
+walk where the camera sees them; light that has already bounced sees them as
+the Lambert surface the walk averages to. See-through beads cost several
+times more per path, because a ray inside them crosses many bead walls.
 
 ## The `stipple` texture
 
 A fine random grain with relief, for a powder-coated or textured sheet
 (`texture="stipple"`, `texture_scale` the grain size in mm). Up close it
-tilts the normal and speckles the colour and roughness; once a grain is
-smaller than a pixel it is the even, slightly rougher surface the grains
-average to. Both renderers draw its colour; the path tracer also draws its
-relief.
+tilts the normal and speckles the colour and roughness, over clouds a few
+grains across; once a grain is smaller than the filter it is the evenly
+clouded, slightly rougher surface the grains average to. Both renderers draw
+its colour; the path tracer also draws its relief, and filters the grain
+over one pixel rather than three, because a random grain has no period to
+beat against the pixel grid: grains a little smaller than a pixel still
+glint, as a textured sheet does at arm's length.

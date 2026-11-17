@@ -522,6 +522,12 @@ pub enum ToneMap {
     /// unit light, invertible in closed form. The product-shot default,
     /// because a catalogue image's job is to show the colour the part is.
     Neutral,
+    /// AgX (Sobotka's curve, as the common minimal fit): a log encoding
+    /// in a slightly inset gamut and a sigmoid. Saturated highlights roll
+    /// off toward white instead of skewing in hue or clipping, and the
+    /// deep shadows keep their separation, which suits a dark print lit for
+    /// its rim.
+    Agx,
 }
 
 impl ToneMap {
@@ -529,6 +535,7 @@ impl ToneMap {
         match s {
             "" | "aces" => Some(ToneMap::Aces),
             "neutral" | "pbr-neutral" | "pbr_neutral" => Some(ToneMap::Neutral),
+            "agx" => Some(ToneMap::Agx),
             "none" | "clamp" | "off" => Some(ToneMap::None),
             _ => None,
         }
@@ -539,20 +546,22 @@ impl ToneMap {
             ToneMap::None => "none",
             ToneMap::Aces => "aces",
             ToneMap::Neutral => "neutral",
+            ToneMap::Agx => "agx",
         }
     }
 
     /// The names `parse` accepts, for a diagnostic.
     pub fn names() -> &'static [&'static str] {
-        &["aces", "neutral", "none"]
+        &["aces", "neutral", "agx", "none"]
     }
 
     /// The curve as a small integer, for a shader uniform: 0 none, 1 ACES,
-    /// 2 Neutral (`cadpole-render-wgpu`'s `G.background.w`).
+    /// 2 Neutral (`cadpole-render-wgpu`'s `G.background.w`). The GPU port
+    /// has no AgX and draws it as ACES, the nearer of its two curves.
     pub fn index(self) -> u32 {
         match self {
             ToneMap::None => 0,
-            ToneMap::Aces => 1,
+            ToneMap::Aces | ToneMap::Agx => 1,
             ToneMap::Neutral => 2,
         }
     }
@@ -839,6 +848,9 @@ pub struct RenderOptions {
     /// The light rig. Both backends read it; the wgpu port knows only
     /// [`Lighting::Studio`].
     pub lighting: Lighting,
+    /// Key, fill and rim of [`Lighting::Product`] placed and sized by hand
+    /// instead of the rig's own; `None` is the rig as it is.
+    pub rig: Option<[RigLight; 3]>,
     /// The surround, or `None` for the rig's own gradient and the default
     /// floor and `background` (see [`Backdrop`]).
     pub backdrop: Option<Backdrop>,
@@ -890,6 +902,22 @@ pub struct RenderOptions {
     /// the cost there is the same, and the rasterizer's fixed patterns are
     /// multiplied.
     pub supersample: u32,
+}
+
+/// One light of a hand-placed product rig ([`RenderOptions::rig`]):
+/// where it is relative to the camera, how strong and how large.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RigLight {
+    /// Degrees around the subject from the camera, positive to the right as
+    /// the camera looks (the product key sits at -40, its rim at 155).
+    pub azimuth_degrees: f32,
+    /// Degrees above the horizon.
+    pub elevation_degrees: f32,
+    /// Irradiance on a surface square to the light (the product key is 3.2).
+    pub intensity: f32,
+    /// Angular radius in degrees: the softness of its shadow and the size
+    /// of its highlight.
+    pub radius_degrees: f32,
 }
 
 /// A sun for a render: the unit vector *toward* it in model space and its
@@ -1040,6 +1068,7 @@ impl Default for RenderOptions {
             exposure: 1.0,
             tonemap: ToneMap::Aces,
             lighting: Lighting::Studio,
+            rig: None,
             backdrop: None,
             bloom: false,
             backend: Backend::Raster,
@@ -1772,6 +1801,9 @@ pub struct RenderStats {
     pub triangles: usize,
     /// Nodes in that BVH.
     pub bvh_nodes: usize,
+    /// Mean samples a pixel took (the path tracer's adaptive sampling
+    /// stops a converged pixel early; 0 for the rasterizer).
+    pub mean_samples: f32,
 }
 
 /// Render items into an image.
