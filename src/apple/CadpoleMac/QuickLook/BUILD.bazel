@@ -109,6 +109,8 @@ swift_library(
 # The preview's loader and view outside Quick Look: timings, frame times.
 macos_command_line_application(
     name = "plate_viewer",
+    bundle_id = "io.github.mikelikespie.cadpole.mac.plate-viewer",
+    infoplists = ["Tool/Info.plist"],
     minimum_os_version = "26.0",
     tags = ["manual"],
     deps = [":ToolLib"],

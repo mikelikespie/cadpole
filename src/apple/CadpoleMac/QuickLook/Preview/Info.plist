@@ -6,6 +6,11 @@
 	<string>Cadpole Plates Preview</string>
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
+	<!-- The 3D view takes fingers on a touch display itself
+	     (View/TouchRecognizer.swift): no made-up mouse clicks and scrolls
+	     from them (Apple's TN3212). -->
+	<key>NSIsTouchNative</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Apache-2.0</string>
 	<key>NSExtension</key>

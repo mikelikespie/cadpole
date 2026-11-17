@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Embedded in the binary: `plate_viewer window` takes fingers on a
+	     touch display the way the preview does (Preview/Info.plist). -->
+	<key>NSIsTouchNative</key>
+	<true/>
+</dict>
+</plist>

@@ -199,8 +199,12 @@ Finder then gives `.3mf` files), in `src/apple/CadpoleMac/QuickLook`:
   filament's colour, and painted faces in the colour they were painted.
   Drag to orbit; on a trackpad, two fingers pan (the model follows them,
   with the trackpad's own momentum) and shift + two fingers orbit; pinch or
-  a mouse wheel zooms; double-click reframes. The rates live in
-  `CameraFeel`.
+  a mouse wheel zooms; double-click reframes. On a touch display, one
+  finger orbits; two pan, pinch to zoom and twist to turn, all at once; a
+  double-tap reframes. Fingers reach the view only through a gesture
+  recognizer (`View/TouchRecognizer.swift`), and the
+  extension is `NSIsTouchNative`, so AppKit sends no made-up clicks or
+  scrolls for them. The rates live in `CameraFeel`.
 - **Thumbnail**: a render of that first plate.
 
 `CadpolePlates` reads the package: the ZIP's central directory, the plate

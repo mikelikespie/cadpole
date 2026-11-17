@@ -35,7 +35,8 @@ public struct CameraFeel: Sendable {
 }
 
 /// An orbiting camera around a target: azimuth, elevation and distance,
-/// driven by drags (orbit), two-finger scrolls (pan), pinches (zoom), with gentle inertia, and gliding
+/// driven by drags and one finger (orbit), two-finger scrolls and two
+/// fingers (pan), pinches (zoom), a two-finger twist (turn), with gentle inertia, and gliding
 /// to a new framing when the plate changes. Updated from the render loop.
 final class OrbitCamera: @unchecked Sendable {
     var feel = CameraFeel()
@@ -168,6 +169,17 @@ final class OrbitCamera: @unchecked Sendable {
             velocity = .zero
             azimuth -= Double(delta.width) * k
             pose.elevation = elevation - Double(delta.height) * k
+        }
+        apply()
+    }
+
+    /// Turns the camera about the target's vertical axis (two fingers
+    /// twisting on a touch display).
+    func turn(degrees: Double) {
+        lock.withLock {
+            glide = nil
+            velocity = .zero
+            azimuth += degrees
         }
         apply()
     }

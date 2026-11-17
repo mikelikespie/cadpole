@@ -83,6 +83,12 @@ public final class PlateBrowserViewController: NSViewController {
         let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(reframe))
         doubleClick.numberOfClicksRequired = 2
         scnView.addGestureRecognizer(doubleClick)
+
+        // Fingers on a touch display (macOS 27): they reach a view only
+        // through a gesture recognizer.
+        let touches = TouchRecognizer(target: nil, action: nil)
+        touches.onChange = { [weak self] before, after, time in self?.touchesChanged(before, after, time) }
+        scnView.addGestureRecognizer(touches)
         layout()
     }
 
@@ -266,6 +272,100 @@ public final class PlateBrowserViewController: NSViewController {
 
     func orbitMagnify(_ event: NSEvent) {
         orbit?.pinch(event.magnification)
+    }
+
+    // MARK: - Touch display
+
+    /// The fingers on the view, as a gesture: one finger orbits (and flicks,
+    /// like the mouse); two or more pan with their middle, pinch to zoom and
+    /// twist to turn, all at once. Once a second finger has come down, the
+    /// gesture stays a two-finger one until every finger lifts, so lifting
+    /// one of two does not set the model spinning. A quick tap twice
+    /// reframes, like a double-click.
+    private struct TouchGesture {
+        var multi = false
+        var lastMove: TimeInterval?
+        var tapStart: (time: TimeInterval, at: CGPoint)?
+    }
+
+    private var touchGesture = TouchGesture()
+    private var lastTap: (time: TimeInterval, at: CGPoint)?
+
+    private static let tapSeconds = 0.25
+    private static let tapSlop: CGFloat = 12
+    private static let doubleTapSeconds = 0.35
+
+    private func touchesChanged(_ before: [Int: CGPoint], _ after: [Int: CGPoint], _ time: TimeInterval) {
+        guard let orbit else { return }
+        if before.count != after.count {
+            log.debug("touch: \(before.count, privacy: .public) -> \(after.count, privacy: .public) fingers")
+        }
+        if before.isEmpty {
+            orbit.stop()
+            touchGesture = TouchGesture()
+            if let p = after.values.first, after.count == 1 { touchGesture.tapStart = (time, p) }
+        }
+        if after.count > 1 {
+            touchGesture.multi = true
+            touchGesture.tapStart = nil
+        }
+
+        // Only the fingers down both before and after move anything; one
+        // coming down or lifting changes nothing by itself.
+        let ids = before.keys.filter { after[$0] != nil }.sorted()
+        if !touchGesture.multi, ids.count == 1, let a = before[ids[0]], let b = after[ids[0]] {
+            let delta = CGSize(width: b.x - a.x, height: b.y - a.y)
+            if let tap = touchGesture.tapStart, hypot(b.x - tap.at.x, b.y - tap.at.y) > Self.tapSlop {
+                touchGesture.tapStart = nil
+            }
+            if touchGesture.tapStart == nil {
+                let dt = touchGesture.lastMove.map { time - $0 } ?? 0
+                touchGesture.lastMove = time
+                orbit.drag(delta, dt: dt, viewWidth: scnView.bounds.width)
+            }
+        } else if ids.count >= 2 {
+            let old = ids.compactMap { before[$0] }
+            let new = ids.compactMap { after[$0] }
+            func middle(_ ps: [CGPoint]) -> CGPoint {
+                let n = CGFloat(ps.count)
+                return ps.reduce(.zero) { CGPoint(x: $0.x + $1.x / n, y: $0.y + $1.y / n) }
+            }
+            func spread(_ ps: [CGPoint], _ m: CGPoint) -> CGFloat {
+                ps.reduce(0) { $0 + hypot($1.x - m.x, $1.y - m.y) } / CGFloat(ps.count)
+            }
+            let m0 = middle(old), m1 = middle(new)
+            // The model follows the fingers' middle (pan takes AppKit's
+            // scrolling delta, y down).
+            orbit.pan(CGSize(width: m1.x - m0.x, height: -(m1.y - m0.y)), viewHeight: scnView.bounds.height)
+            let s0 = spread(old, m0), s1 = spread(new, m1)
+            if s0 > 1, s1 > 1 { orbit.zoom(Double(s0 / s1)) }
+            // The first two fingers' line turning: clockwise on the screen
+            // turns the model clockwise, the way the near side would go
+            // under a drag.
+            let a0 = atan2(old[1].y - old[0].y, old[1].x - old[0].x)
+            let a1 = atan2(new[1].y - new[0].y, new[1].x - new[0].x)
+            var d = a1 - a0
+            if d > .pi { d -= 2 * .pi } else if d < -.pi { d += 2 * .pi }
+            orbit.turn(degrees: -Double(d) * 180 / .pi)
+        }
+
+        if after.isEmpty {
+            if let tap = touchGesture.tapStart, time - tap.time < Self.tapSeconds {
+                if let last = lastTap, time - last.time < Self.doubleTapSeconds,
+                   hypot(tap.at.x - last.at.x, tap.at.y - last.at.y) < Self.tapSlop * 3 {
+                    lastTap = nil
+                    reframe()
+                } else {
+                    lastTap = (time, tap.at)
+                }
+            } else if !touchGesture.multi {
+                // A pause before lifting means no flick.
+                let stale = touchGesture.lastMove.map { time - $0 > 0.08 } ?? true
+                orbit.release(stale: stale)
+                if !stale { animate(for: feel.inertiaTimeConstant * 5) }
+            }
+            touchGesture = TouchGesture()
+        }
     }
 
     /// For the harness: keeps the view rendering every frame.
