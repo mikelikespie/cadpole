@@ -197,8 +197,10 @@ Finder then gives `.3mf` files), in `src/apple/CadpoleMac/QuickLook`:
   more than one; arrow keys move between them. It opens on the first plate
   with objects on it; empty plates come last. Each part is drawn in its
   filament's colour, and painted faces in the colour they were painted.
-  Drag to orbit, pinch or scroll to zoom, double-click to reframe; the
-  rates live in `CameraFeel`.
+  Drag to orbit; on a trackpad, two fingers pan (the model follows them,
+  with the trackpad's own momentum) and shift + two fingers orbit; pinch or
+  a mouse wheel zooms; double-click reframes. The rates live in
+  `CameraFeel`.
 - **Thumbnail**: a render of that first plate.
 
 `CadpolePlates` reads the package: the ZIP's central directory, the plate

@@ -8,8 +8,8 @@ public struct CameraFeel: Sendable {
     public var fullWidthDragDegrees: Double = 180
     /// ...but never faster than this per point, in a wide view.
     public var maxDegreesPerPoint: Double = 0.25
-    /// Two-finger trackpad scroll turns the camera at this fraction of the
-    /// drag rate.
+    /// Shift + two-finger trackpad scroll turns the camera at this fraction
+    /// of the drag rate. (Without shift, two fingers pan.)
     public var scrollRateFraction: Double = 0.5
     /// After a flick, the camera keeps this fraction of the release speed...
     public var inertiaVelocityScale: Double = 0.5
@@ -35,7 +35,7 @@ public struct CameraFeel: Sendable {
 }
 
 /// An orbiting camera around a target: azimuth, elevation and distance,
-/// driven by drags, scrolls and pinches, with gentle inertia, and gliding
+/// driven by drags (orbit), two-finger scrolls (pan), pinches (zoom), with gentle inertia, and gliding
 /// to a new framing when the plate changes. Updated from the render loop.
 final class OrbitCamera: @unchecked Sendable {
     var feel = CameraFeel()
@@ -141,7 +141,26 @@ final class OrbitCamera: @unchecked Sendable {
         lock.withLock { velocity = .zero }
     }
 
-    /// Two-finger trackpad scroll: a slower orbit.
+    /// Two-finger trackpad scroll: moves the target in the view's plane so
+    /// the model follows the fingers, the way a Mac trackpad moves content.
+    /// `delta` is AppKit's scrolling delta (y down), in points.
+    func pan(_ delta: CGSize, viewHeight: CGFloat) {
+        let fov = Double(node.camera?.fieldOfView ?? 30) * .pi / 180
+        lock.withLock {
+            glide = nil
+            velocity = .zero
+            // World units per point at the target's depth.
+            let k = 2 * distance * tan(fov / 2) / Double(max(viewHeight, 1))
+            let a = azimuth * .pi / 180
+            let e = elevation * .pi / 180
+            let right = SIMD3(cos(a), 0, -sin(a))
+            let up = SIMD3(-sin(a) * sin(e), cos(e), -cos(a) * sin(e))
+            target += (up * Double(delta.height) - right * Double(delta.width)) * k
+        }
+        apply()
+    }
+
+    /// Shift + two-finger trackpad scroll: a slower orbit.
     func scroll(_ delta: CGSize, viewWidth: CGFloat) {
         let k = degreesPerPoint(viewWidth) * feel.scrollRateFraction
         lock.withLock {

@@ -253,8 +253,12 @@ public final class PlateBrowserViewController: NSViewController {
     }
 
     func orbitScroll(_ event: NSEvent) {
-        if event.hasPreciseScrollingDeltas {
+        // Trackpad: two fingers pan, as on the web viewer; with shift, orbit.
+        // A mouse wheel zooms.
+        if event.hasPreciseScrollingDeltas, event.modifierFlags.contains(.shift) {
             orbit?.scroll(CGSize(width: -event.scrollingDeltaX, height: event.scrollingDeltaY), viewWidth: scnView.bounds.width)
+        } else if event.hasPreciseScrollingDeltas {
+            orbit?.pan(CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY), viewHeight: scnView.bounds.height)
         } else {
             orbit?.zoom(pow(1 - feel.wheelZoomPerLine, Double(event.scrollingDeltaY)))
         }
