@@ -560,7 +560,7 @@ appearance fields on the body and returns it.
 | `color` | `(r, g, b)` in 0..1 or `"#rrggbb"` | grey | linear RGB base colour |
 | `roughness` | float 0..1 | 0.6 | 0 is mirror-smooth, 1 is chalk |
 | `metallic` | float 0..1 | 0 | 1 tints the reflection with `color` and kills the diffuse |
-| `texture` | str | `""` | `""`, `"checker"`, `"stripes"`, `"noise"`, `"wood"`, `"dots"` (albedo patterns); `"turned"`, `"milled"`, `"machined"` (machining marks, below) |
+| `texture` | str | `""` | `""`, `"checker"`, `"stripes"`, `"noise"`, `"wood"`, `"dots"` (albedo patterns); `"turned"`, `"milled"`, `"machined"` (machining marks, below); `"stipple"` (a fine grain with relief, as a powder-coated sheet has; docs/beads.md) |
 | `scale` | float | 10 | texture repeat length in mm; for the machining marks the groove pitch, 0.15 when the finish is named without one |
 | `depth` | float mm | 0 | groove depth of the machining marks; 0 = a real tool's cusp (a twentieth of the pitch turned, 3 % milled) |
 | `opacity` | float 0..1 | 1 | below 0.999 the body renders translucent |

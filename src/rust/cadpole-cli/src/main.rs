@@ -40,6 +40,7 @@ macro_rules! print {
     };
 }
 
+mod bead_scene;
 mod input;
 mod op_cli;
 mod ops_host;
@@ -546,6 +547,25 @@ enum Cmd {
         /// answers.
         #[arg(long, value_name = "off|wait", default_value = "off")]
         jobs: String,
+    },
+    /// Path-trace a bead scene to a PNG: a JSON file naming a binary file of
+    /// swept beads (extruded material, wire, tubing), their materials, boxes
+    /// to stand them on, the camera and the render settings (docs/beads.md).
+    /// Timings and sizes go to stderr as one JSON line.
+    RenderBeads {
+        /// The scene's JSON file.
+        scene: PathBuf,
+        #[arg(short, long, value_name = "FILE")]
+        out: PathBuf,
+        /// Paths per pixel, instead of the scene's.
+        #[arg(long)]
+        samples: Option<u32>,
+        /// Worker threads, instead of the scene's (0: every hardware thread).
+        #[arg(long)]
+        threads: Option<u32>,
+        /// Image size WxH, instead of the scene's.
+        #[arg(long, value_name = "WxH")]
+        size: Option<String>,
     },
     /// Render to a PNG with the built-in software rasterizer.
     Render {
@@ -3706,6 +3726,17 @@ fn run() -> anyhow::Result<ExitCode> {
                 print_inspection(&resp);
             }
             Ok(if resp.ok { ExitCode::SUCCESS } else { ExitCode::from(1) })
+        }
+        Cmd::RenderBeads { scene, out, samples, threads, size } => {
+            let size = match size {
+                Some(s) => {
+                    let (w, h) = s.split_once(['x', 'X']).with_context(|| format!("--size {s:?} is not WxH"))?;
+                    Some((w.trim().parse::<u32>()?.max(1), h.trim().parse::<u32>()?.max(1)))
+                }
+                None => None,
+            };
+            bead_scene::run(&scene, &out, bead_scene::Overrides { samples, threads, size })?;
+            Ok(ExitCode::SUCCESS)
         }
         Cmd::Doc { json } => {
             let doc: pb::ApiDocResponse = call("ApiDoc", &pb::ApiDocRequest {}, &cadpole_ops::NoHost)?;
