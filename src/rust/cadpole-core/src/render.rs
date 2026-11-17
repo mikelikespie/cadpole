@@ -528,6 +528,10 @@ pub enum ToneMap {
     /// deep shadows keep their separation, which suits a dark print lit for
     /// its rim.
     Agx,
+    /// AgX with the "punchy" look on its log-encoded output (a power of
+    /// 1.35 and 1.4 times the saturation, as an ASC CDL): the base curve's
+    /// highlight roll-off with the contrast and colour of a product shot.
+    AgxPunchy,
 }
 
 impl ToneMap {
@@ -536,6 +540,7 @@ impl ToneMap {
             "" | "aces" => Some(ToneMap::Aces),
             "neutral" | "pbr-neutral" | "pbr_neutral" => Some(ToneMap::Neutral),
             "agx" => Some(ToneMap::Agx),
+            "agx-punchy" | "agx_punchy" | "punchy" => Some(ToneMap::AgxPunchy),
             "none" | "clamp" | "off" => Some(ToneMap::None),
             _ => None,
         }
@@ -547,12 +552,13 @@ impl ToneMap {
             ToneMap::Aces => "aces",
             ToneMap::Neutral => "neutral",
             ToneMap::Agx => "agx",
+            ToneMap::AgxPunchy => "agx-punchy",
         }
     }
 
     /// The names `parse` accepts, for a diagnostic.
     pub fn names() -> &'static [&'static str] {
-        &["aces", "neutral", "agx", "none"]
+        &["aces", "neutral", "agx", "agx-punchy", "none"]
     }
 
     /// The curve as a small integer, for a shader uniform: 0 none, 1 ACES,
@@ -561,7 +567,7 @@ impl ToneMap {
     pub fn index(self) -> u32 {
         match self {
             ToneMap::None => 0,
-            ToneMap::Aces | ToneMap::Agx => 1,
+            ToneMap::Aces | ToneMap::Agx | ToneMap::AgxPunchy => 1,
             ToneMap::Neutral => 2,
         }
     }

@@ -106,7 +106,7 @@ The scene file:
 - `render.adaptive`: adaptive sampling. A pixel stops once the standard error
   of its mean, on a square-root scale of luminance, is below this (0.004, the
   default, is about one 8-bit step; 0 takes every sample everywhere). It
-  never stops before eight samples or an eighth of `samples`, and the image
+  never stops before sixteen samples or a quarter of `samples`, and the image
   is the same for any thread count.
 
 ## Cost

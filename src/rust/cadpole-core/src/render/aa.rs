@@ -689,12 +689,39 @@ fn agx_curve(x: f64) -> f64 {
     15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232
 }
 
-fn agx(c: [f32; 3]) -> [f32; 3] {
+/// The punchy look's power and saturation.
+const PUNCHY_POWER: f64 = 1.35;
+const PUNCHY_SATURATION: f64 = 1.4;
+const REC709_LUMA: [f64; 3] = [0.2126, 0.7152, 0.0722];
+
+/// The punchy look on the curve's encoded output (an ASC CDL with a slope
+/// of 1 and no offset): luma from the input, the power per channel, the
+/// saturation about that luma.
+#[inline]
+fn punchy(v: [f64; 3]) -> [f64; 3] {
+    let v = v.map(|x| x.max(0.0));
+    let luma = REC709_LUMA[0] * v[0] + REC709_LUMA[1] * v[1] + REC709_LUMA[2] * v[2];
+    v.map(|x| luma + PUNCHY_SATURATION * (x.max(0.0).powf(PUNCHY_POWER) - luma))
+}
+
+/// Inverse of [`punchy`] by fixed-point iteration from the power alone
+/// (the saturation is a small correction on top of it).
+fn inv_punchy(w: [f64; 3]) -> [f64; 3] {
+    let mut v = w.map(|x| x.max(0.0).powf(1.0 / PUNCHY_POWER));
+    for _ in 0..40 {
+        let luma = REC709_LUMA[0] * v[0] + REC709_LUMA[1] * v[1] + REC709_LUMA[2] * v[2];
+        v = w.map(|x| (luma + (x - luma) / PUNCHY_SATURATION).max(0.0).powf(1.0 / PUNCHY_POWER));
+    }
+    v
+}
+
+fn agx(c: [f32; 3], look: bool) -> [f32; 3] {
     let v = c.map(|v| if v.is_finite() { (v as f64).max(0.0) } else { 0.0 });
     let v = mat3(&AGX_IN, v).map(|x| {
         let ev = x.max(1e-10).log2().clamp(AGX_MIN_EV, AGX_MAX_EV);
         agx_curve((ev - AGX_MIN_EV) / (AGX_MAX_EV - AGX_MIN_EV))
     });
+    let v = if look { punchy(v) } else { v };
     // The curve's output is display-encoded; back to display-linear for
     // the shared resolve.
     mat3(&AGX_OUT, v).map(|x| x.clamp(0.0, 1.0).powf(2.2) as f32)
@@ -702,9 +729,10 @@ fn agx(c: [f32; 3]) -> [f32; 3] {
 
 /// Inverse of [`agx`] for a display colour inside the curve's output: each
 /// step is undone in turn, the sigmoid by bisection (it is monotone on 0..1).
-fn inv_agx(d: [f32; 3]) -> [f32; 3] {
+fn inv_agx(d: [f32; 3], look: bool) -> [f32; 3] {
     let enc = d.map(|v| (v as f64).clamp(0.0, 1.0).powf(1.0 / 2.2));
     let y = mat3(&AGX_IN, enc);
+    let y = if look { inv_punchy(y) } else { y };
     let lin = y.map(|y| {
         let (mut lo, mut hi) = (0.0f64, 1.0f64);
         for _ in 0..48 {
@@ -728,7 +756,8 @@ pub fn tonemap_rgb(c: [f32; 3], exposure: f32, tm: ToneMap) -> [f32; 3] {
     match tm {
         ToneMap::Aces => c.map(|v| aces(v * exposure)),
         ToneMap::Neutral => neutral(c.map(|v| v * exposure)),
-        ToneMap::Agx => agx(c.map(|v| v * exposure)),
+        ToneMap::Agx => agx(c.map(|v| v * exposure), false),
+        ToneMap::AgxPunchy => agx(c.map(|v| v * exposure), true),
         ToneMap::None => c.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 }),
     }
 }
@@ -741,7 +770,8 @@ pub fn inverse_tonemap_rgb(d: [f32; 3], exposure: f32, tm: ToneMap) -> [f32; 3] 
     match tm {
         ToneMap::Aces => d.map(|v| (inv_aces(v as f64) / e) as f32),
         ToneMap::Neutral => inv_neutral(d).map(|v| (v as f64 / e) as f32),
-        ToneMap::Agx => inv_agx(d).map(|v| (v as f64 / e) as f32),
+        ToneMap::Agx => inv_agx(d, false).map(|v| (v as f64 / e) as f32),
+        ToneMap::AgxPunchy => inv_agx(d, true).map(|v| (v as f64 / e) as f32),
         ToneMap::None => d,
     }
 }
@@ -1009,24 +1039,34 @@ mod tests {
 
     #[test]
     fn agx_is_monotone_keeps_greys_grey_and_inverts_inside_its_range() {
+        for tm in [ToneMap::Agx, ToneMap::AgxPunchy] {
+            agx_checks(tm);
+        }
+        // The look adds saturation: a red stays redder than the base curve.
+        let base = tonemap_rgb([0.5, 0.05, 0.03], 1.0, ToneMap::Agx);
+        let look = tonemap_rgb([0.5, 0.05, 0.03], 1.0, ToneMap::AgxPunchy);
+        assert!(look[0] / look[1].max(1e-6) > base[0] / base[1].max(1e-6), "{base:?} {look:?}");
+    }
+
+    fn agx_checks(tm: ToneMap) {
         let mut prev = -1.0f32;
         let mut x = 0.0f32;
         while x <= 64.0 {
-            let y = tonemap_rgb([x; 3], 1.0, ToneMap::Agx);
+            let y = tonemap_rgb([x; 3], 1.0, tm);
             assert!(y[0] >= prev, "not monotone at {x}");
             assert!((y[0] - y[1]).abs() < 5e-4 && (y[1] - y[2]).abs() < 5e-4, "{y:?}");
             prev = y[0];
             x += 0.01 + x * 0.01;
         }
-        assert_eq!(tonemap_rgb([0.0; 3], 1.0, ToneMap::Agx), [0.0; 3]);
+        assert_eq!(tonemap_rgb([0.0; 3], 1.0, tm), [0.0; 3]);
         // Mid grey lands near the middle of the display range.
-        let g = tonemap_rgb([0.18; 3], 1.0, ToneMap::Agx)[0];
-        assert!((0.12..0.3).contains(&g), "{g}");
+        let g = tonemap_rgb([0.18; 3], 1.0, tm)[0];
+        assert!((0.06..0.3).contains(&g), "{g}");
         // AgX's output gamut is inset: a display colour it can produce
         // comes back to itself (a fully saturated one it never produces).
         for x in [[0.02f32, 0.3, 0.7], [0.5, 0.5, 0.5], [0.9, 0.1, 0.05], [0.05, 0.05, 0.05], [3.0, 1.0, 0.2]] {
-            let c = tonemap_rgb(x, 1.3, ToneMap::Agx);
-            let back = tonemap_rgb(inverse_tonemap_rgb(c, 1.3, ToneMap::Agx), 1.3, ToneMap::Agx);
+            let c = tonemap_rgb(x, 1.3, tm);
+            let back = tonemap_rgb(inverse_tonemap_rgb(c, 1.3, tm), 1.3, tm);
             for k in 0..3 {
                 assert!((back[k] - c[k]).abs() < 2e-3, "{c:?} -> {back:?}");
             }

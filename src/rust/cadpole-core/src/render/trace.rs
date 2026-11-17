@@ -195,14 +195,17 @@ pub struct PathTraceOptions {
     /// error of its mean, in a perceptual (square-root) scale of luminance,
     /// is below this (default 0, off: every pixel takes every sample).
     /// About 0.004 is one 8-bit step. A pixel never stops before
-    /// [`ADAPTIVE_MIN`] samples or an eighth of the budget, and it is
+    /// [`ADAPTIVE_MIN`] samples or a quarter of the budget, and it is
     /// checked every [`ADAPTIVE_STEP`] samples, so the image is still a pure
     /// function of the pixel and the seed.
     pub adaptive_error: f32,
 }
 
-/// The fewest samples an adaptive pixel takes.
-pub const ADAPTIVE_MIN: u32 = 8;
+/// The fewest samples an adaptive pixel takes. Fewer is a gamble: a pixel
+/// whose samples are bimodal (a subsurface walk that sometimes leaves into
+/// a dark hollow) can draw eight dark ones in a row, measure no spread, and
+/// stop on a black speck.
+pub const ADAPTIVE_MIN: u32 = 16;
 /// How often an adaptive pixel checks whether it is done.
 const ADAPTIVE_STEP: u32 = 4;
 
@@ -3617,7 +3620,7 @@ pub(crate) fn trace_layers(items: &[Item<'_>], beads: Option<&BeadSet>, cam: &Ca
     let halton: Vec<[f32; 16]> = (0..samples).map(halton_row).collect();
     let shown = opts.path.show_environment && !opts.transparent;
     let adaptive = if opts.path.adaptive_error.is_finite() { opts.path.adaptive_error.max(0.0) } else { 0.0 };
-    let min_adaptive = ADAPTIVE_MIN.max(samples / 8);
+    let min_adaptive = ADAPTIVE_MIN.max(samples / 4);
     par_bands2(&mut hdr, &mut aux, wi, rows, threads, |y0, band, aux| {
         // Scratch for `Tracer::radiance`, allocated once per band instead of
         // once per camera ray. `MAX_SPLITS` and `MAX_SHADOW_INTERFACES`
