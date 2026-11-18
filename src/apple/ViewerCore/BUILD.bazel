@@ -1,0 +1,62 @@
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library", "swift_test")
+
+# What every orbiting 3D view shares, in plain Swift (Foundation only, no
+# AppKit, UIKit or SceneKit): the camera's feel and elevation limits, and how
+# a flick eases onto them (CameraFeel, OrbitLimits); the print bed's fade as
+# the camera goes under it (BedFade); the wheel and pinch rule (WheelRule);
+# and switching plates whose models load in the background (PlateLoads,
+# PlateSwitch). The Mac Quick Look preview builds on it.
+#
+# viewer_conformance.json is the reference those behaviours are tested
+# against, by these tests, by each view's camera tests and by the web
+# viewer's unit tests (src/web/test/viewer-conformance.test.mjs), so the
+# implementations cannot drift apart.
+#
+#   bazel test //src/apple/ViewerCore:ViewerCoreTests          # Linux or macOS
+#
+# The directory holds nothing but these sources, the fixture and this file,
+# so it can be built from outside this module as plain source too.
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["viewer_conformance.json"])
+
+# rules_swift 3.6.1 under Bazel 9 gives a plain swift_library built for a
+# macOS host no deployment version (see //src/apple/CadpoleKit).
+COPTS = select({
+    "@platforms//os:macos": [
+        "-target",
+        "arm64-apple-macos26.0",
+    ],
+    "//conditions:default": [],
+})
+
+swift_library(
+    name = "ViewerCore",
+    srcs = glob(["*.swift"]),
+    copts = COPTS,
+    module_name = "ViewerCore",
+)
+
+# The checks against viewer_conformance.json, for any test that holds an
+# implementation to it.
+swift_library(
+    name = "ViewerConformance",
+    testonly = True,
+    srcs = glob(["Conformance/*.swift"]),
+    copts = COPTS,
+    module_name = "ViewerConformance",
+    deps = [":ViewerCore"],
+)
+
+swift_test(
+    name = "ViewerCoreTests",
+    size = "small",
+    srcs = glob(["Tests/*.swift"]),
+    copts = COPTS,
+    data = ["viewer_conformance.json"],
+    deps = [
+        ":ViewerConformance",
+        ":ViewerCore",
+    ],
+)
