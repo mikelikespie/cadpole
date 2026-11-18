@@ -56,7 +56,53 @@ async function gesture(page: Page, type: string, scale: number, rotation: number
   );
 }
 
+const ground = (page: Page): Promise<number> => page.evaluate(() => (window as unknown as { __cadpole: { viewport(): { ground: number } } }).__cadpole.viewport().ground);
+
+/** Elevation above the ground, degrees, from the controller's polar angle. */
+const elevation = (p: Pose): number => 90 - (p.phi * 180) / Math.PI;
+
 test.describe("one gesture model", () => {
+  test("a drag goes under the ground to 85 degrees and no further; the grid fades there and comes back above", async ({ page }) => {
+    await open(page);
+    const c = await centre(page);
+    expect(await ground(page)).toBe(1);
+    // Up the screen, far: the model tips its underside toward the camera.
+    await page.mouse.move(c.x, c.y + 200);
+    await page.mouse.down();
+    for (let i = 1; i <= 40; i++) await page.mouse.move(c.x, c.y + 200 - i * 20);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    const under = await pose(page);
+    expect(elevation(under)).toBeCloseTo(-85, 3);
+    await expect.poll(() => ground(page)).toBe(0);
+    // And back over the top: 89 degrees, the grid whole again.
+    await page.mouse.move(c.x, c.y - 200);
+    await page.mouse.down();
+    for (let i = 1; i <= 60; i++) await page.mouse.move(c.x, c.y - 200 + i * 20);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
+    expect(elevation(await pose(page))).toBeCloseTo(89, 3);
+    await expect.poll(() => ground(page)).toBe(1);
+  });
+
+  test("a flick that coasts toward the limit eases onto it: it never passes it and its last steps are small", async ({ page }) => {
+    await open(page);
+    const c = await centre(page);
+    await page.mouse.move(c.x, c.y + 100);
+    await page.mouse.down();
+    // A quick flick up the screen, released while moving.
+    for (let i = 1; i <= 8; i++) await page.mouse.move(c.x, c.y + 100 - i * 14);
+    await page.mouse.up();
+    const seen: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      seen.push(elevation(await pose(page)));
+      await page.waitForTimeout(16);
+    }
+    for (const e of seen) expect(e).toBeGreaterThanOrEqual(-85 - 1e-6);
+    const steps = seen.slice(1).map((e, i) => Math.abs(e - (seen[i] as number)));
+    expect(Math.max(...steps.slice(-5))).toBeLessThan(0.5);
+  });
+
   test("Chrome on a touch Mac: a finger drag arrives as a pixel wheel stream, which pans smoothly and never zooms or loses the model", async ({ page }) => {
     await open(page);
     const c = await centre(page);

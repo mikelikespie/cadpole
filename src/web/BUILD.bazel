@@ -4,6 +4,7 @@
 load("@aspect_rules_esbuild//esbuild:defs.bzl", "esbuild")
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@bazel_lib//lib:copy_file.bzl", "copy_file")
 load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//src/web:@bufbuild/protoc-gen-es/package_json.bzl", protoc_gen_es_bin = "bin")
@@ -241,8 +242,18 @@ js_test(
         "index.html",
         "manifest.webmanifest",
         "styles.css",
+        # test/viewer-conformance.test.mjs: the reference every 3D view keeps.
+        ":viewer_conformance",
     ],
     entry_point = "test/unit.mjs",
+)
+
+# The reference every orbiting 3D view is tested against (the Swift views
+# read it where it lives), next to the test that reads it.
+copy_file(
+    name = "viewer_conformance",
+    src = "//src/apple/ViewerCore:viewer_conformance.json",
+    out = "test/viewer_conformance.json",
 )
 
 # Every bundled example script (src/examples.ts) evaluates on the real engine,

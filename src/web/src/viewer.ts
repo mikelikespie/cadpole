@@ -57,6 +57,7 @@ import { Picker, type Pickable } from "./picking.js";
 import { bodiesForRef, bodyRef, edgeRef, faceRef, featureRef, refKey } from "./selection.js";
 import type { Attachment, Body, CameraState, EntityKind, EntityRef, LengthUnit, Model, Plate, PlateBody, Transform } from "./types.js";
 import { plateLabel } from "./ui/plates.js";
+import { bedFadeFromHeight, type BedFade } from "./orbit.js";
 import { fmtLen } from "./util.js";
 import { STUDIO, STUDIO_AZIMUTH, STUDIO_SURROUND_SIZE, studioSurround } from "./studio.js";
 import { capTriangles, cutColors, formatSection, joinLoops, lift, NO_SECTION, planesOf, sliceMesh, type CutPlane, type SectionState } from "./section.js";
@@ -391,6 +392,10 @@ export const VIEW_DIRS: Record<Exclude<ViewPreset, "home">, [number, number, num
 
 const TIGHT_EDGE_PX = 6;
 
+/** A plate's bed in the plates view: its faint fill and its outline, at full strength. */
+const BED_FILL = 0.07;
+const BED_LINES = 0.9;
+
 /**
  * The surround as an environment map (`studioSurround`); the renderer
  * prefilters it once for rough and smooth surfaces alike. Rows run from
@@ -628,6 +633,11 @@ export class Viewer {
   private readonly reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   /// How faint the ground grid is drawn: 1 as usual, less for `--grid dim`.
   private gridStrength = 1;
+  /// How much of the ground grid and the beds shows: all of it from above,
+  /// a faint sheet from under the ground plane (orbit.ts `bedFade`), so they
+  /// never hide a part's underside.
+  private fade: BedFade = bedFadeFromHeight(1, 1);
+  private readonly fadeTarget = new Vector3();
 
   constructor(
     private readonly container: HTMLElement,
@@ -1488,7 +1498,7 @@ export class Viewer {
   /** Whether the dim grid / normal grid. */
   setGridStrength(k: number): void {
     this.gridStrength = Math.max(0.05, Math.min(1, k));
-    if (this.grid) (this.grid.material as LineBasicMaterial).opacity = 0.9 * this.gridStrength;
+    if (this.grid) (this.grid.material as LineBasicMaterial).opacity = 0.9 * this.gridStrength * this.fade.lines;
     this.requestRender();
   }
 
@@ -1695,7 +1705,7 @@ export class Viewer {
       pos.push(x0, y0, 0, x1, y0, 0, x1, y0, 0, x1, y1, 0, x1, y1, 0, x0, y1, 0, x0, y1, 0, x0, y0, 0);
       const fill = new Mesh(
         new PlaneGeometry(p.bed.x, p.bed.y),
-        new MeshBasicMaterial({ color: COLORS.bed, transparent: true, opacity: 0.07, depthWrite: false }),
+        new MeshBasicMaterial({ color: COLORS.bed, transparent: true, opacity: BED_FILL * this.fade.fill, depthWrite: false }),
       );
       fill.position.set((x0 + x1) / 2, (y0 + y1) / 2, -0.01);
       fill.renderOrder = -1;
@@ -1704,12 +1714,13 @@ export class Viewer {
       const el = document.createElement("div");
       el.className = "vlabel platelabel";
       el.textContent = plateLabel(p);
+      el.style.opacity = String(this.fade.lines);
       this.labelsEl.appendChild(el);
       this.plateLabels.push({ el, anchor: new Vector3(x0 + p.bed.x / 2, y1, 0), text: el.textContent });
     }
     const geom = new BufferGeometry();
     geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
-    const outline = new LineSegments(geom, new LineBasicMaterial({ color: COLORS.bed, transparent: true, opacity: 0.9 }));
+    const outline = new LineSegments(geom, new LineBasicMaterial({ color: COLORS.bed, transparent: true, opacity: BED_LINES * this.fade.lines }));
     outline.position.z = 0.02;
     outline.frustumCulled = false;
     this.scene.add(outline);
@@ -2578,6 +2589,32 @@ export class Viewer {
     };
   }
 
+  // ------------------------------------------------------------ under it
+
+  /**
+   * The ground grid, the beds and their labels fade as the camera goes under
+   * the ground plane (z = 0) and come back above it, smoothly across the
+   * horizon: from below they would hide the part's first layer.
+   */
+  private applyBedFade(): void {
+    const eye = this.camera.position;
+    const target = this.controls.currentTarget(this.fadeTarget);
+    const f = bedFadeFromHeight(eye.z, eye.distanceTo(target));
+    if (Math.abs(f.above - this.fade.above) < 1e-4 && (f.above === this.fade.above || (f.above > 0 && f.above < 1))) return;
+    this.fade = f;
+    if (this.grid) (this.grid.material as LineBasicMaterial).opacity = 0.9 * this.gridStrength * f.lines;
+    for (const b of this.beds) {
+      const m = (b as Mesh | LineSegments).material as Material;
+      m.opacity = b instanceof LineSegments ? BED_LINES * f.lines : BED_FILL * f.fill;
+    }
+    for (const l of this.plateLabels) l.el.style.opacity = String(f.lines);
+  }
+
+  /** How much of the ground shows now, 1 above it to 0 well under it (tests read it). */
+  get groundFade(): BedFade {
+    return this.fade;
+  }
+
   // -------------------------------------------------------------- render
 
   requestRender(): void {
@@ -2592,6 +2629,7 @@ export class Viewer {
 
   /** Draw the scene as it stands into the drawing buffer, now. */
   private draw(): void {
+    this.applyBedFade();
     this.updateNearFar();
     this.syncOrtho();
     this.aimRig();
@@ -3001,7 +3039,7 @@ export class Viewer {
     const geom = new BufferGeometry();
     geom.setAttribute("position", new Float32BufferAttribute(pos, 3));
     geom.setAttribute("color", new Float32BufferAttribute(col, 3));
-    const mat = new LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 * this.gridStrength, depthWrite: false });
+    const mat = new LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 * this.gridStrength * this.fade.lines, depthWrite: false });
     this.grid = new LineSegments(geom, mat);
     this.grid.position.z = -0.02;
     this.grid.renderOrder = -1;

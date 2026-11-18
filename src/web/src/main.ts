@@ -1390,6 +1390,8 @@ async function main(): Promise<void> {
       buffer: { width: viewer.canvas.width, height: viewer.canvas.height },
       drawn: viewer.drawnSize(),
       backend: viewer.backend,
+      // How much of the ground grid and the beds shows (1 above, 0 under).
+      ground: viewer.groundFade.above,
     };
   }
 

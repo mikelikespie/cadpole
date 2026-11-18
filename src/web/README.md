@@ -170,9 +170,20 @@ Trackpad and mouse follow macOS Preview / Xcode:
 | Double-click on geometry | Set the orbit target to the hit point and re-centre |
 | Right-click | Picker popover (face / edge / body / feature under the cursor) |
 
+Orbiting goes from 89 degrees over the ground to 85 under it, so a part
+can be turned over to see the face it prints on; a flick that coasts into
+either limit eases onto it. Under the ground plane the grid, the plates'
+beds and their labels fade to a faint sheet, smoothly across the horizon,
+so they never hide the part. The named Top and Bottom views stand at the
+poles; a drag from them only moves away. These numbers are shared with the
+Mac Quick Look preview (`src/apple/ViewerCore`): `src/orbit.ts` here, tested
+with the Swift views against one reference,
+`src/apple/ViewerCore/viewer_conformance.json`
+(`test/viewer-conformance.test.mjs`).
+
 The wheel rule, the same in every Cadpole viewer (this one, its 2D
 drawings, the site's models and drawings, and the Mac Quick Look preview,
-`src/apple/CadpoleMac/QuickLook/View/WheelRule.swift`):
+`WheelRule` in `src/apple/ViewerCore`; here `wheelAction` in `src/orbit.ts`):
 
 - Option + the scroll wheel always zooms, toward the pointer, wherever the
   viewer is (a trackpad's two-finger scroll with Option too).

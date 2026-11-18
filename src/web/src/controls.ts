@@ -23,9 +23,16 @@
 // Every channel (azimuth, polar, log-distance, target) is a critically-damped
 // spring toward a goal, and drags carry inertia after release. With
 // prefers-reduced-motion everything snaps.
+//
+// Orbiting keeps the elevation limits every 3D view shares (orbit.ts): down
+// to 85 degrees under the ground, so a print's first layer can be seen from
+// below, and up to 89 over it; a flick that coasts into a limit eases onto it.
+// The named views (top, bottom) and a published camera may stand at the poles;
+// a drag from there only moves away from them.
 
 import { Vector3, type PerspectiveCamera } from "three/webgpu";
 import { InputRouter, type GestureTarget, type WheelMode } from "./input/router.js";
+import { coastElevation, MAX_ELEVATION, MIN_ELEVATION } from "./orbit.js";
 
 export type { WheelMode } from "./input/router.js";
 
@@ -88,9 +95,10 @@ class Channel {
     this.goal = v;
   }
 
-  step(smoothTime: number, dt: number, driftTau: number): boolean {
+  /** `driftMoves` false: the caller has moved the goal by the drift itself (the polar channel's eased coast). */
+  step(smoothTime: number, dt: number, driftTau: number, driftMoves = true): boolean {
     if (this.drift !== 0) {
-      this.goal += this.drift * dt;
+      if (driftMoves) this.goal += this.drift * dt;
       this.drift *= Math.exp(-dt / driftTau);
       if (Math.abs(this.drift) < 1e-4) this.drift = 0;
     }
@@ -107,6 +115,10 @@ class Channel {
 }
 
 const EPS_PHI = 0.0005;
+const DEG = Math.PI / 180;
+/** The polar angle's range while orbiting: 90 degrees minus the shared elevation limits. */
+const PHI_MIN = (90 - MAX_ELEVATION) * DEG;
+const PHI_MAX = (90 - MIN_ELEVATION) * DEG;
 /** The orbit target stays within this many radii of the framed model's centre. */
 const PAN_LIMIT = 1.5;
 /** The camera stays between these multiples of the framed model's radius. */
@@ -379,7 +391,11 @@ export class CameraController {
   private orbitBy(dx: number, dy: number): void {
     const k = ((2 * Math.PI) / Math.max(1, this.element.clientHeight)) * this.rotateSpeed;
     this.theta.goal -= dx * k;
-    this.phi.goal = Math.min(Math.PI - EPS_PHI, Math.max(EPS_PHI, this.phi.goal - dy * k));
+    // Within the shared limits; from a named view past them (top, bottom),
+    // only away from the pole.
+    const lo = Math.min(PHI_MIN, this.phi.goal);
+    const hi = Math.max(PHI_MAX, this.phi.goal);
+    this.phi.goal = Math.min(hi, Math.max(lo, this.phi.goal - dy * k));
     this.smoothTime = 0.09;
     this.callbacks.onChange();
   }
@@ -406,7 +422,15 @@ export class CameraController {
     if (this.tx.drift !== 0 || this.ty.drift !== 0 || this.tz.drift !== 0 || this.logDist.drift !== 0) this.clampGoal();
     let moving = false;
     moving = this.theta.step(st, dt, this.driftTau) || moving;
-    moving = this.phi.step(st, dt, this.driftTau) || moving;
+    // Coasting in elevation eases onto the limits (orbit.ts); from a named
+    // view past them it drifts as before.
+    const eased = this.phi.drift !== 0 && this.phi.goal >= PHI_MIN && this.phi.goal <= PHI_MAX;
+    if (eased) {
+      const [e, v] = coastElevation(90 - this.phi.goal / DEG, -this.phi.drift / DEG, dt);
+      this.phi.goal = (90 - e) * DEG;
+      this.phi.drift = -v * DEG;
+    }
+    moving = this.phi.step(st, dt, this.driftTau, !eased) || moving;
     this.phi.value = Math.min(Math.PI - EPS_PHI, Math.max(EPS_PHI, this.phi.value));
     moving = this.logDist.step(st, dt, this.driftTau) || moving;
     moving = this.tx.step(st, dt, this.driftTau) || moving;

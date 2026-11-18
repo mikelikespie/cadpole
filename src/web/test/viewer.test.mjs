@@ -8,6 +8,7 @@ import { Viewer } from "../src/viewer.js";
 
 const buildGrid = Viewer.prototype["buildGrid"];
 const rebuildBBox = Viewer.prototype["rebuildBBox"];
+const applyBedFade = Viewer.prototype["applyBedFade"];
 
 function gridHost(unit = "mm") {
   return {
@@ -17,6 +18,7 @@ function gridHost(unit = "mm") {
     gridHalf: 0,
     gridStrength: 1,
     gridVisible: true,
+    fade: { above: 1, fill: 1, lines: 1, shadow: 1, underLight: 0 },
   };
 }
 
@@ -94,4 +96,31 @@ test("rebuilding the bounding box disposes the old material as well as the old g
   rebuildBBox.call(host);
   assert.equal(host.bboxLines, null);
   assert.ok(lastMaterial, "material disposed when the box is hidden");
+});
+
+test("under the ground plane the grid and the plate labels fade; back above they return", () => {
+  const host = gridHost();
+  buildGrid.call(host, 1000);
+  const label = { el: { style: { opacity: "" } } };
+  Object.assign(host, { beds: [], plateLabels: [label], fadeTarget: { x: 0, y: 0, z: 0 } });
+  const at = (elevationDeg) => {
+    const e = (elevationDeg * Math.PI) / 180;
+    const eye = { z: 500 * Math.sin(e), distanceTo: () => 500 };
+    Object.assign(host, { camera: { position: eye }, controls: { currentTarget: (out) => out } });
+    applyBedFade.call(host);
+    return host.grid.material.opacity;
+  };
+  const above = at(30);
+  assert.equal(above, 0.9);
+  const under = at(-60);
+  assert.ok(Math.abs(under - 0.9 * 0.2) < 1e-9, `grid at ${under} under the plane`);
+  assert.equal(label.el.style.opacity, "0.2");
+  // Smooth through the horizon: every step of half a degree changes it a little.
+  let last = at(4);
+  for (let d = 3.5; d >= -12; d -= 0.5) {
+    const o = at(d);
+    assert.ok(o <= last + 1e-12 && last - o < 0.08, `a jump at ${d}: ${last} to ${o}`);
+    last = o;
+  }
+  assert.equal(at(45), 0.9);
 });

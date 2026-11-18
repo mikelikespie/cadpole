@@ -34,6 +34,8 @@
 // trackpad stream never turns into a mouse one, so a trackpad delta that
 // happens to land on 40 px does not zoom.
 
+import { wheelAction } from "../orbit.js";
+
 export type WheelMode = "auto" | "orbit" | "zoom";
 
 /** What a view does with each intent. Coordinates are CSS pixels in the element. */
@@ -434,29 +436,25 @@ export class InputRouter {
       this.target.zoomAt(p.x, p.y, Math.exp(Math.max(-40, Math.min(40, e.deltaY)) * 0.01));
       return;
     }
-    if (e.altKey) {
-      // Option + wheel zooms toward the pointer whatever the wheel is, a
-      // notched one or a trackpad's two fingers, as in Preview: the one
-      // zoom that needs no pinch and no wheel detection.
-      const dy = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * 40;
+    // The rule every 3D view shares (orbit.ts `wheelAction`). The view is
+    // its own surface here: a page around it (the site) keeps its plain
+    // wheel before the event gets this far.
+    const action = wheelAction(kind === "mouse" ? "wheel" : "trackpadScroll", e.altKey, e.shiftKey && !!this.target.shiftScroll, false);
+    if (action === "zoom") {
+      // A notched wheel, or Option with either (as in Preview: the one zoom
+      // that needs no pinch and no wheel detection), toward the pointer.
+      // Chrome reports a shift-held vertical scroll as deltaX.
+      const d = e.deltaY !== 0 || !e.shiftKey ? e.deltaY : e.deltaX;
+      const dy = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? d : d * 40;
       this.target.zoomAt(p.x, p.y, Math.exp(Math.max(-60, Math.min(60, dy)) * 0.0022));
-      return;
-    }
-    if (e.shiftKey && this.target.shiftScroll) {
+    } else if (action === "orbit") {
       // Shift + two-finger scroll orbits: the deliberate gesture, kept on the
       // trackpad for anyone without a mouse button to hold.
-      this.target.shiftScroll(-e.deltaX * 0.9, -e.deltaY * 0.9);
-      return;
+      this.target.shiftScroll?.(-e.deltaX * 0.9, -e.deltaY * 0.9);
+    } else if (action === "pan") {
+      // A two-finger scroll pans; the content follows the fingers.
+      this.target.pan(-e.deltaX, -e.deltaY);
     }
-    if (kind === "mouse") {
-      const dy = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * 40;
-      this.target.zoomAt(p.x, p.y, Math.exp(Math.max(-60, Math.min(60, dy)) * 0.0022));
-      return;
-    }
-    // A two-finger scroll pans. Chrome reports a shift-held vertical scroll
-    // as deltaX, so both axes are passed through and the sign is the same
-    // either way: the content follows the fingers.
-    this.target.pan(-e.deltaX, -e.deltaY);
   };
 
   // --------------------------------------------------- Safari's gestures

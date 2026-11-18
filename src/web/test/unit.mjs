@@ -35,3 +35,4 @@ import "./share-hash.test.mjs";
 import "./styles.test.mjs";
 import "./units.test.mjs";
 import "./viewer.test.mjs";
+import "./viewer-conformance.test.mjs";
