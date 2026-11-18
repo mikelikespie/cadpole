@@ -833,16 +833,9 @@ pub fn resolve_plates(specs: &[cadpole_core::context::ExportSpec]) -> (Vec<u32>,
 // cannot show different things.
 // ---------------------------------------------------------------------------
 
-/// The background a plate thumbnail is rendered on, then keyed to alpha 0:
-/// uncovered pixels come back bit-exactly this colour, and light, so the
-/// anti-aliased rim of a part blends towards Bambu Studio's pale panels.
-const THUMBNAIL_BG: [f32; 3] = [0.97, 0.97, 0.97];
-
-/// The key colour behind a transparent plate image. Light, so the
-/// anti-aliased rim blends towards a white page, and *off-neutral* on
-/// purpose: the bed is a neutral grey under a neutral rig, so no pixel of it
-/// can land on this colour and be keyed out by mistake, where the
-/// thumbnail's neutral key could be.
+/// The page a transparent plate image is taken to sit on (a light one): it
+/// decides the contact sheet's label colour. Nothing is keyed against it;
+/// the images are rendered `transparent`.
 const PLATE_KEY: [f32; 3] = [0.965, 0.972, 0.984];
 
 /// The plate image's camera: a three-quarter view from a little above
@@ -904,34 +897,23 @@ pub fn plate_scene(ctx: &mut Context, bodies: &[(BodyId, Option<[f64; 3]>, Vec3)
     Ok(crate::RenderScene { items, bbox })
 }
 
-/// Make every pixel of exactly `key` transparent: the rasterizer writes its
-/// background bit-exactly to uncovered pixels, so this is the whole matte.
-fn key_out(img: &mut cadpole_core::render::Image, key: [f32; 3]) {
-    let key = cadpole_core::render::Image::new(1, 1, key).rgba;
-    for px in img.rgba.chunks_exact_mut(4) {
-        if px[..3] == key[..3] {
-            px[3] = 0;
-        }
-    }
-}
-
 /// A plate's thumbnail as an image: the plate's scene from Bambu's own
 /// three-quarter angle, on a transparent background, at the 512 px square
-/// every sample uses. Edges, grid and the contact shadow are off: the
-/// shadow would darken uncovered pixels, which then would not key.
+/// every sample uses. Edges, grid and the contact shadow are off.
 ///
-/// The rasterizer draws hard edges, so the scene is drawn at
-/// [`THUMBNAIL_SUPERSAMPLE`] times the size, keyed there, and box-filtered
-/// down with alpha weighting: silhouettes come out antialiased against the
-/// transparent background instead of stair-stepped, with no fringe of the
-/// key colour.
+/// Drawn `transparent`: a pixel's alpha is the share of it the model
+/// covers and its colour the model's own, never mixed with a background,
+/// so the antialiased silhouette composites over any colour (a dark app, a
+/// light one) with no fringe. A keyed background could not do that: an
+/// edge pixel blended with the key is not the key, stays opaque, and
+/// carries the key's colour as a rim.
 pub fn plate_thumbnail_of(scene: &crate::RenderScene) -> cadpole_core::render::Image {
     use cadpole_core::render::RenderOptions;
-    let side = cadpole_export_3mf::bambu::THUMBNAIL_PX * THUMBNAIL_SUPERSAMPLE;
     let opts = RenderOptions {
-        width: side,
-        height: side,
-        background: THUMBNAIL_BG,
+        width: cadpole_export_3mf::bambu::THUMBNAIL_PX,
+        height: cadpole_export_3mf::bambu::THUMBNAIL_PX,
+        transparent: true,
+        samples: 8,
         draw_grid: false,
         draw_edges: false,
         draw_silhouettes: false,
@@ -940,14 +922,8 @@ pub fn plate_thumbnail_of(scene: &crate::RenderScene) -> cadpole_core::render::I
     };
     let cam = Some(pb::Camera { preset: "iso".into(), ..Default::default() });
     let camera = crate::camera_for_scene(scene, &cam, None, &opts);
-    let mut img = crate::render_scene(scene, &camera, &opts);
-    key_out(&mut img, THUMBNAIL_BG);
-    downscale_by(&img, THUMBNAIL_SUPERSAMPLE)
+    crate::render_scene(scene, &camera, &opts)
 }
-
-/// How many pixels a side a thumbnail pixel is drawn from (see
-/// [`plate_thumbnail_of`]).
-pub const THUMBNAIL_SUPERSAMPLE: u32 = 4;
 
 /// [`plate_thumbnail_of`] for the bodies `body_ids`, in their own colours,
 /// opaque, whatever layer they are on ([`crate::scene_of_bodies`]).
@@ -1189,6 +1165,9 @@ pub fn plate_image_of(scene: &crate::RenderScene, area: [f64; 4], opts: &PlateIm
         backend: opts.backend,
         ..RenderOptions::default()
     };
+    // Without a backdrop the image is transparent around the bed, its
+    // alpha the coverage (no keyed colour, so no rim at the edges).
+    o.transparent = opts.backdrop.is_none();
     // The bed is the floor: the tracer's own ground plane would cut through it.
     o.path.ground = false;
     if opts.backend == Backend::Path {
@@ -1215,11 +1194,7 @@ pub fn plate_image_of(scene: &crate::RenderScene, area: [f64; 4], opts: &PlateIm
         edge_dihedrals: &slab_creases,
         ..Item::new(&slab, &slab_material, &slab_edges)
     });
-    let mut img = cadpole_core::render::render_with_stats(&items, &camera, &o).0;
-    if opts.backdrop.is_none() {
-        key_out(&mut img, PLATE_KEY);
-    }
-    img
+    cadpole_core::render::render_with_stats(&items, &camera, &o).0
 }
 
 /// The contact sheet: every plate image at half size, side by side,
@@ -1242,11 +1217,11 @@ pub fn plate_sheet_of(images: &[PlateImage], opts: &PlateImageOptions) -> cadpol
     let bg = opts.background();
     let lum = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2];
     let text = if lum > 0.3 { [52, 54, 58, 255] } else { [230, 232, 236, 255] };
-    let mut sheet = cadpole_core::render::contact_sheet_with(&tiles, cols, bg, scale, text);
     if opts.backdrop.is_none() {
-        key_out(&mut sheet, PLATE_KEY);
+        // Transparent tiles on a transparent sheet: gutters clear, labels opaque.
+        return cadpole_core::render::contact_sheet_clear(&tiles, cols, scale, text);
     }
-    sheet
+    cadpole_core::render::contact_sheet_with(&tiles, cols, bg, scale, text)
 }
 
 /// One body on a plate, as [`plate_plan`] places it: what `Model.plates`
