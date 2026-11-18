@@ -919,11 +919,18 @@ fn key_out(img: &mut cadpole_core::render::Image, key: [f32; 3]) {
 /// three-quarter angle, on a transparent background, at the 512 px square
 /// every sample uses. Edges, grid and the contact shadow are off: the
 /// shadow would darken uncovered pixels, which then would not key.
+///
+/// The rasterizer draws hard edges, so the scene is drawn at
+/// [`THUMBNAIL_SUPERSAMPLE`] times the size, keyed there, and box-filtered
+/// down with alpha weighting: silhouettes come out antialiased against the
+/// transparent background instead of stair-stepped, with no fringe of the
+/// key colour.
 pub fn plate_thumbnail_of(scene: &crate::RenderScene) -> cadpole_core::render::Image {
     use cadpole_core::render::RenderOptions;
+    let side = cadpole_export_3mf::bambu::THUMBNAIL_PX * THUMBNAIL_SUPERSAMPLE;
     let opts = RenderOptions {
-        width: cadpole_export_3mf::bambu::THUMBNAIL_PX,
-        height: cadpole_export_3mf::bambu::THUMBNAIL_PX,
+        width: side,
+        height: side,
         background: THUMBNAIL_BG,
         draw_grid: false,
         draw_edges: false,
@@ -935,8 +942,12 @@ pub fn plate_thumbnail_of(scene: &crate::RenderScene) -> cadpole_core::render::I
     let camera = crate::camera_for_scene(scene, &cam, None, &opts);
     let mut img = crate::render_scene(scene, &camera, &opts);
     key_out(&mut img, THUMBNAIL_BG);
-    img
+    downscale_by(&img, THUMBNAIL_SUPERSAMPLE)
 }
+
+/// How many pixels a side a thumbnail pixel is drawn from (see
+/// [`plate_thumbnail_of`]).
+pub const THUMBNAIL_SUPERSAMPLE: u32 = 4;
 
 /// [`plate_thumbnail_of`] for the bodies `body_ids`, in their own colours,
 /// opaque, whatever layer they are on ([`crate::scene_of_bodies`]).
@@ -952,8 +963,9 @@ fn plate_thumbnails(scene: &crate::RenderScene) -> (Vec<u8>, Vec<u8>) {
     (img.to_png(), small.to_png())
 }
 
-/// A box-filtered downscale of the square `img` to `side` px, averaging
-/// every channel, alpha included.
+/// A box-filtered downscale of the square `img` to `side` px. Colour is
+/// averaged weighted by alpha (so transparent pixels lend no colour to an
+/// edge), and alpha is averaged plainly.
 pub fn downscale(img: &cadpole_core::render::Image, side: u32) -> cadpole_core::render::Image {
     downscale_by(img, (img.width / side).max(1))
 }
@@ -967,17 +979,22 @@ pub fn downscale_by(img: &cadpole_core::render::Image, f: u32) -> cadpole_core::
     let mut out = cadpole_core::render::Image::new(w, h, [0.0, 0.0, 0.0]);
     for y in 0..h {
         for x in 0..w {
-            let mut acc = [0u32; 4];
+            // Colour weighted by alpha; alpha plain. An opaque image gives
+            // the plain average.
+            let (mut rgb, mut alpha) = ([0u64; 3], 0u64);
             for dy in 0..f {
                 for dx in 0..f {
                     let i = (((y * f + dy) * img.width + (x * f + dx)) * 4) as usize;
-                    for k in 0..4 {
-                        acc[k] += img.rgba[i + k] as u32;
+                    let a = img.rgba[i + 3] as u64;
+                    for k in 0..3 {
+                        rgb[k] += img.rgba[i + k] as u64 * a;
                     }
+                    alpha += a;
                 }
             }
-            let n = f * f;
-            out.put(x, y, [(acc[0] / n) as u8, (acc[1] / n) as u8, (acc[2] / n) as u8, (acc[3] / n) as u8]);
+            let n = (f * f) as u64;
+            let c = |v: u64| if alpha == 0 { 0 } else { ((v + alpha / 2) / alpha) as u8 };
+            out.put(x, y, [c(rgb[0]), c(rgb[1]), c(rgb[2]), ((alpha + n / 2) / n) as u8]);
         }
     }
     out
