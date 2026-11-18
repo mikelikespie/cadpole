@@ -1,6 +1,7 @@
 import Foundation
 import ViewerConformance
 import ViewerCore
+import ViewerFixtures
 import XCTest
 
 /// ViewerCore against the shared reference (`viewer_conformance.json`): the
@@ -80,4 +81,31 @@ final class ViewerCoreTests: XCTestCase {
 
 private final class Flag: @unchecked Sendable {
     var value = true
+}
+
+/// The invented project is a well-formed archive of closed meshes.
+final class DemoPlatesTests: XCTestCase {
+    func testMeshesAreClosed() {
+        for m in [DemoPlates.gear(), DemoPlates.knob(), DemoPlates.bracket(), DemoPlates.spacer()] {
+            // Every edge is used once each way.
+            var edges: [SIMD2<Int>: Int] = [:]
+            for t in m.triangles {
+                for (a, b) in [(t.x, t.y), (t.y, t.z), (t.z, t.x)] { edges[SIMD2(a, b), default: 0] += 1 }
+            }
+            for (e, n) in edges {
+                XCTAssertEqual(n, 1)
+                XCTAssertEqual(edges[SIMD2(e.y, e.x)], 1)
+            }
+        }
+    }
+
+    func testTheArchiveListsEveryEntry() {
+        let zip = DemoPlates.project(thumbnails: [1: Data([1, 2, 3])])
+        let text = String(decoding: zip, as: UTF8.self)
+        for name in ["3D/3dmodel.model", "3D/Objects/object_1.model", "Metadata/model_settings.config",
+                     "Metadata/project_settings.config", "Metadata/plate_1.png"] {
+            XCTAssertTrue(text.contains(name), name)
+        }
+        XCTAssertEqual(StoredZip.crc32(Data("123456789".utf8)), 0xCBF4_3926)
+    }
 }

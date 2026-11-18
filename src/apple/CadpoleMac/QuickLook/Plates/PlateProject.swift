@@ -82,6 +82,10 @@ public struct PlateProject: Sendable {
     public static let modelSettings = "Metadata/model_settings.config"
     public static let projectSettings = "Metadata/project_settings.config"
 
+    /// The picture the slicer saved of plate `id` (Bambu Studio, Orca and
+    /// Cadpole's export write one per plate), if the archive has it.
+    public static func thumbnailName(plate id: Int) -> String { "Metadata/plate_\(id).png" }
+
     /// The order plates are offered in: plates with objects first, in plate
     /// order, so the first is the lowest-numbered plate that prints
     /// something; empty plates after them.

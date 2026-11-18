@@ -14,6 +14,13 @@ let log = Logger(subsystem: "io.github.mikelikespie.cadpole.mac", category: "pla
 /// ms) and returns; the bed shows at once. The plate's meshes are read,
 /// smoothed and uploaded on a background queue and fade in when ready;
 /// then the neighbouring plates are built, so moving to them is instant.
+///
+/// Switching plates (`PlateLoads`): the old plate's model goes at once. A
+/// plate already built shows straight away; any other shows the picture the
+/// slicer saved of it (`Metadata/plate_N.png`), or the empty bed, with a
+/// small loading mark, and its model fades in when built. A switch cancels
+/// every other build, so a slow plate left behind stops, and a build that
+/// finishes for a plate already left never replaces the one shown.
 public final class PlateBrowserViewController: NSViewController {
     public private(set) var project: PlateProject?
     private var builder: PlateBuilder?
@@ -25,10 +32,19 @@ public final class PlateBrowserViewController: NSViewController {
     private var order: [PlateProject.Plate] = []
     private var footprints: [Int: PlateGeometry.Footprint] = [:]
     private var cache: [Int: (node: SCNNode, geometry: PlateGeometry)] = [:]
-    private var inFlight: Set<Int> = []
+    private let plates = PlateSwitch<Int>()
+    /// The plate whose model is on the bed, or loading.
+    private var shown: Int?
     private let queue = DispatchQueue(label: "io.github.mikelikespie.cadpole.plate-build", qos: .userInitiated)
-    private var selected: Int?
+    /// The plate's own picture while its model loads.
+    private let placeholder = NSImageView()
     private(set) var orbit: OrbitCamera?
+    /// For tests: runs on the build queue after each plate's geometry is
+    /// built, before its upload, with the plate and whether it is still
+    /// wanted (a slow plate stands in this way).
+    var afterBuild: ((_ plate: Int, _ wanted: () -> Bool) -> Void)?
+    /// For tests: each plate whose model is put on the bed.
+    var onPresent: ((Int) -> Void)?
     /// Mouse and trackpad rates, inertia, limits.
     public var feel = CameraFeel() {
         didSet { orbit?.feel = feel }
@@ -75,6 +91,12 @@ public final class PlateBrowserViewController: NSViewController {
         sidebar.addSubview(scroll)
         view.addSubview(sidebar)
 
+        placeholder.imageScaling = .scaleProportionallyUpOrDown
+        placeholder.imageAlignment = .alignCenter
+        placeholder.alphaValue = 0
+        placeholder.isHidden = true
+        view.addSubview(placeholder)
+
         spinner.style = .spinning
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
@@ -104,8 +126,12 @@ public final class PlateBrowserViewController: NSViewController {
         let w = showSidebar ? Self.sidebarWidth : 0
         sidebar.frame = NSRect(x: 0, y: 0, width: w, height: b.height)
         sidebar.subviews.first?.frame = sidebar.bounds
-        scnView.frame = NSRect(x: w, y: 0, width: b.width - w, height: b.height)
-        spinner.frame = NSRect(x: b.width - 28, y: b.height - 28, width: 16, height: 16)
+        let stage = NSRect(x: w, y: 0, width: b.width - w, height: b.height)
+        scnView.frame = stage
+        // The picture, centred over the bed; the loading mark under it.
+        let side = (min(stage.width, stage.height) * 0.62).rounded()
+        placeholder.frame = NSRect(x: (stage.midX - side / 2).rounded(), y: (stage.midY - side / 2).rounded(), width: side, height: side)
+        spinner.frame = NSRect(x: (stage.midX - 8).rounded(), y: max(16, placeholder.frame.minY - 28).rounded(), width: 16, height: 16)
     }
 
     // MARK: - Loading
@@ -131,6 +157,7 @@ public final class PlateBrowserViewController: NSViewController {
         orbit.feel = feel
         self.orbit = orbit
         frames.orbit = orbit
+        frames.plateScene = scene
         scnView.scene = scene.scene
         scnView.pointOfView = scene.camera
         appearanceChanged()
@@ -143,27 +170,42 @@ public final class PlateBrowserViewController: NSViewController {
         }
     }
 
-    /// Shows plate `id`: from the cache at once, else after it is built.
+    /// Shows plate `id`: a plate already built at once, any other after its
+    /// build, with its picture (or the empty bed) and a loading mark until
+    /// then. The old plate's model goes at once either way.
     public func select(_ id: Int, animated: Bool) {
-        guard id != selected || plateScene?.model == nil else { return }
-        selected = id
-        if let cached = cache[id] {
-            present(cached.node, cached.geometry, animated: animated)
-        } else {
-            plateScene?.show(nil, bounds: nil, duration: animated ? 0.25 : 0)
-            frameCamera(animated: animated)
+        guard id != shown else { return }
+        shown = id
+        let (show, start) = plates.select(id)
+        switch show {
+        case .model:
+            guard let cached = cache[id] else { return }
+            present(id, cached.node, cached.geometry, animated: animated)
+        case .loading:
+            plateScene?.show(nil, bounds: nil, duration: 0)
+            showPlaceholder(for: id, animated: animated)
             spinner.startAnimation(nil)
-            build(id)
+            animate(for: 0.1)
+            if let start { build(start) }
         }
     }
 
-    private func build(_ id: Int, then: (() -> Void)? = nil) {
-        guard let builder, cache[id] == nil, !inFlight.contains(id) else { then?(); return }
-        inFlight.insert(id)
+    /// Builds a plate on the build queue; what happens to it then is
+    /// `PlateLoads`' call: present it, keep it for later, or drop it.
+    private func build(_ ticket: PlateLoads<Int>.Ticket) {
+        guard let builder else { return }
         let view = scnView
+        let plates = self.plates
+        let after = afterBuild
         queue.async { [weak self] in
+            let wanted = { plates.wants(ticket) }
             let clock = ContinuousClock()
-            let geometry = builder.build(plateId: id)
+            guard let geometry = builder.build(plateId: ticket.plate, cancelled: { !wanted() }) else {
+                plates.failed(ticket)
+                log.debug("plate \(ticket.plate): build cancelled")
+                return
+            }
+            after?(ticket.plate, wanted)
             let t0 = clock.now
             let node = PlateScene.makeModel(geometry)
             let made = clock.now - t0
@@ -173,7 +215,12 @@ public final class PlateBrowserViewController: NSViewController {
                 let uploaded = clock.now - t0
                 DispatchQueue.main.async {
                     guard let self else { return }
-                    self.inFlight.remove(id)
+                    let id = ticket.plate
+                    let outcome = plates.finished(ticket)
+                    guard outcome != .drop else {
+                        log.debug("plate \(id): built after it was left; dropped")
+                        return
+                    }
                     self.cache[id] = (node, geometry)
                     self.footprints[id] = geometry.footprint
                     if let row = self.order.firstIndex(where: { $0.id == id }) {
@@ -186,30 +233,28 @@ public final class PlateBrowserViewController: NSViewController {
                         assemble \(String(describing: t.assemble), privacy: .public), nodes \(String(describing: made), privacy: .public), \
                         upload \(String(describing: uploaded), privacy: .public)
                         """)
-                    if self.selected == id { self.present(node, geometry, animated: true) }
-                    then?()
+                    if outcome == .present { self.present(id, node, geometry, animated: true) }
                     self.prefetchNeighbours()
                 }
             }
         }
     }
 
-    /// Builds the plates either side of the selected one, nearest first.
+    /// Builds the plates either side of the selected one, nearest first, one
+    /// at a time.
     private func prefetchNeighbours() {
-        guard let selected, let i = order.firstIndex(where: { $0.id == selected }) else { return }
-        for j in [i + 1, i - 1, i + 2] where order.indices.contains(j) && !order[j].isEmpty {
-            if cache[order[j].id] == nil && !inFlight.contains(order[j].id) {
-                build(order[j].id)
-                return
-            }
-        }
+        guard let selected = plates.selected, let i = order.firstIndex(where: { $0.id == selected }) else { return }
+        let near = [i + 1, i - 1, i + 2].filter { order.indices.contains($0) && !order[$0].isEmpty }.map { order[$0].id }
+        if let t = plates.prefetch(near) { build(t) }
     }
 
-    private func present(_ node: SCNNode, _ geometry: PlateGeometry, animated: Bool) {
+    private func present(_ id: Int, _ node: SCNNode, _ geometry: PlateGeometry, animated: Bool) {
         spinner.stopAnimation(nil)
+        hidePlaceholder(animated: animated)
         guard let scene = plateScene else { return }
         scene.show(node, bounds: geometry.bounds, duration: animated ? 0.25 : 0)
         frameCamera(animated: animated)
+        onPresent?(id)
         if let t0 = started {
             started = nil
             frames.onNextFrame = { [weak self] in
@@ -219,6 +264,35 @@ public final class PlateBrowserViewController: NSViewController {
             }
         }
         animate(for: 0.4)
+    }
+
+    /// The picture the slicer saved of plate `id`, over the empty bed; the
+    /// bed alone when there is none.
+    private func showPlaceholder(for id: Int, animated: Bool) {
+        let data = try? builder?.archive.read(PlateProject.thumbnailName(plate: id))
+        guard let data, let image = NSImage(data: data) else {
+            placeholder.image = nil
+            placeholder.isHidden = true
+            return
+        }
+        placeholder.image = image
+        placeholder.isHidden = false
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = animated ? 0.12 : 0
+            placeholder.animator().alphaValue = 1
+        }
+    }
+
+    private func hidePlaceholder(animated: Bool) {
+        guard !placeholder.isHidden else { return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = animated ? 0.25 : 0
+            placeholder.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self, self.placeholder.alphaValue == 0 else { return }
+            self.placeholder.isHidden = true
+            self.placeholder.image = nil
+        }
     }
 
     /// Renders continuously for `seconds`: the view otherwise draws only
@@ -384,7 +458,7 @@ public final class PlateBrowserViewController: NSViewController {
     @objc func reframe() { frameCamera(animated: true) }
 
     public func step(_ delta: Int) {
-        guard let selected, let i = order.firstIndex(where: { $0.id == selected }) else { return }
+        guard let selected = shown, let i = order.firstIndex(where: { $0.id == selected }) else { return }
         let j = i + delta
         guard order.indices.contains(j) else { return }
         table.selectRowIndexes([j], byExtendingSelection: false)
@@ -401,6 +475,10 @@ public final class PlateBrowserViewController: NSViewController {
     public var sceneView: SCNView { scnView }
     public var currentScene: PlateScene? { plateScene }
     public func isCached(_ id: Int) -> Bool { cache[id] != nil }
+    /// The plate shown or loading, and whether its picture stands in for it.
+    public var shownPlate: Int? { shown }
+    public var isShowingPlaceholder: Bool { !placeholder.isHidden && placeholder.image != nil }
+    public var isLoading: Bool { shown != nil && plateScene?.model == nil }
 }
 
 extension PlateBrowserViewController: NSTableViewDataSource, NSTableViewDelegate {
@@ -467,9 +545,13 @@ final class FrameClock: NSObject, SCNSceneRendererDelegate, @unchecked Sendable 
     private var _onNextFrame: (() -> Void)?
     /// The camera, stepped once per frame.
     weak var orbit: OrbitCamera?
+    /// The scene, whose bed fades as the camera goes under it.
+    weak var plateScene: PlateScene?
 
     func renderer(_ renderer: any SCNSceneRenderer, updateAtTime time: TimeInterval) {
-        orbit?.step(time)
+        guard let orbit else { return }
+        orbit.step(time)
+        plateScene?.updateFade(target: orbit.targetPoint)
     }
 
     func renderer(_ renderer: any SCNSceneRenderer, didRenderScene scene: SCNScene, atTime time: TimeInterval) {

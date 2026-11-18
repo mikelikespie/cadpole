@@ -226,6 +226,17 @@ final class PlatesTests: XCTestCase {
         XCTAssertNotEqual(sharp[1], sharp[10], accuracy: 1e-3)
     }
 
+    func testABuildStopsWhenNoLongerWanted() throws {
+        let archive = try ZipReader(data: Self.project())
+        let builder = PlateBuilder(archive: archive, project: try PlateProject(archive: archive))
+        XCTAssertNil(builder.build(plateId: 2, cancelled: { true }), "left before it began")
+        var asked = 0
+        XCTAssertNil(builder.build(plateId: 2, cancelled: { asked += 1; return asked > 2 }), "left part way")
+        XCTAssertGreaterThan(asked, 2)
+        let whole = try XCTUnwrap(builder.build(plateId: 2, cancelled: { false }))
+        XCTAssertEqual(whole.triangleCount, builder.build(plateId: 2).triangleCount)
+    }
+
     func testPaintedFacesTakeTheirFilament() throws {
         let zip = try ZipReader(data: Self.project())
         let project = try PlateProject(archive: zip)

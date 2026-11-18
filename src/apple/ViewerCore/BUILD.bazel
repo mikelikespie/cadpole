@@ -49,6 +49,16 @@ swift_library(
     deps = [":ViewerCore"],
 )
 
+# An invented print project (real-looking parts on three plates, as a 3MF)
+# for the viewers' tests and screenshots.
+swift_library(
+    name = "ViewerFixtures",
+    testonly = True,
+    srcs = glob(["Fixtures/*.swift"]),
+    copts = COPTS,
+    module_name = "ViewerFixtures",
+)
+
 swift_test(
     name = "ViewerCoreTests",
     size = "small",
@@ -58,5 +68,6 @@ swift_test(
     deps = [
         ":ViewerConformance",
         ":ViewerCore",
+        ":ViewerFixtures",
     ],
 )

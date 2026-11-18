@@ -1,38 +1,9 @@
 import AppKit
 import SceneKit
 import simd
-
-/// How the camera answers the mouse and trackpad. One place to tune.
-public struct CameraFeel: Sendable {
-    /// A drag across the whole view turns the model this far...
-    public var fullWidthDragDegrees: Double = 180
-    /// ...but never faster than this per point, in a wide view.
-    public var maxDegreesPerPoint: Double = 0.25
-    /// Shift + two-finger trackpad scroll turns the camera at this fraction
-    /// of the drag rate. (Without shift, two fingers pan.)
-    public var scrollRateFraction: Double = 0.5
-    /// After a flick, the camera keeps this fraction of the release speed...
-    public var inertiaVelocityScale: Double = 0.5
-    /// ...and slows exponentially with this time constant (s): four time
-    /// constants, about 0.6 s, to come to rest.
-    public var inertiaTimeConstant: Double = 0.15
-    /// Below this speed (degrees/s) the camera stops.
-    public var inertiaStopSpeed: Double = 2
-    /// Pinch: the distance shrinks by this much per unit of magnification.
-    public var pinchZoomRate: Double = 1
-    /// A mouse wheel's line zooms by this fraction.
-    public var wheelZoomPerLine: Double = 0.06
-    /// Elevation limits (degrees above the bed), so the camera never goes
-    /// under the plate or over the top.
-    public var minElevationDegrees: Double = 2
-    public var maxElevationDegrees: Double = 89
-    /// Turntable: off.
-    public var autoRotateDegreesPerSecond: Double = 0
-    /// Plate switches and reframing glide for this long (s).
-    public var transitionSeconds: Double = 0.25
-
-    public init() {}
-}
+// CameraFeel, OrbitLimits, BedFade, WheelRule and PlateLoads, for this
+// module's users too.
+@_exported import ViewerCore
 
 /// An orbiting camera around a target: azimuth, elevation and distance,
 /// driven by drags and one finger (orbit), two-finger scrolls and two
@@ -107,6 +78,18 @@ final class OrbitCamera: @unchecked Sendable {
     }
 
     var targetPoint: SIMD3<Float> { lock.withLock { SIMD3<Float>(target) } }
+
+    /// The camera's elevation above the horizon through the target, degrees.
+    var elevationDegrees: Double { lock.withLock { elevation } }
+
+    /// Starts coasting at these rates (degrees/s), as after a flick: for tests.
+    func fling(azimuth: Double = 0, elevation: Double) {
+        lock.withLock {
+            glide = nil
+            velocity = SIMD2(azimuth, elevation)
+            lastTime = nil
+        }
+    }
 
     // MARK: - Input (main thread)
 
@@ -241,7 +224,10 @@ final class OrbitCamera: @unchecked Sendable {
         } else if dt > 0 {
             if simd_length(velocity) > 0 {
                 azimuth += velocity.x * dt
-                pose.elevation = elevation + velocity.y * dt
+                // Into an elevation limit, the camera eases onto it.
+                let (e, v) = OrbitLimits.coast(elevation: elevation, velocity: velocity.y, dt: dt, feel: feel)
+                pose.elevation = e
+                velocity.y = v
                 velocity *= exp(-dt / feel.inertiaTimeConstant)
                 if simd_length(velocity) < feel.inertiaStopSpeed { velocity = .zero }
             }

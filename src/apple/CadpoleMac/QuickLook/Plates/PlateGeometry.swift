@@ -63,6 +63,15 @@ public final class PlateBuilder: @unchecked Sendable {
     }
 
     public func build(plateId: Int) -> PlateGeometry {
+        build(plateId: plateId, cancelled: { false })!
+    }
+
+    /// Builds plate `plateId`, asking `cancelled` before each part: nil once
+    /// it says the plate is no longer wanted (the view moved on), so a slow
+    /// plate left behind stops costing time. Parts already read and their
+    /// normals stay cached for the next build.
+    public func build(plateId: Int, cancelled: () -> Bool) -> PlateGeometry? {
+        if cancelled() { return nil }
         lock.lock()
         defer { lock.unlock() }
         timings = .init()
@@ -101,6 +110,7 @@ public final class PlateBuilder: @unchecked Sendable {
             var placed: [(path: String, objectId: Int, part: Int, transform: simd_double4x4)] = []
             collect(path: project.rootPath, objectId: item.objectId, transform: item.transform, part: nil, depth: 0, into: &placed)
             for piece in placed {
+                if cancelled() { return nil }
                 if settings?.hiddenParts.contains(piece.part) == true { continue }
                 guard let mesh = file(piece.path)?.objects[piece.objectId]?.mesh, mesh.triangleCount > 0 else { continue }
                 let key = "\(piece.path)#\(piece.objectId)"

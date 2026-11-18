@@ -19,7 +19,12 @@ public final class PlateScene {
     private let gridMajor = SCNNode()
     private let outline = SCNNode()
     private let keyLight = SCNNode()
+    private let underLight = SCNNode()
     public private(set) var model: SCNNode?
+    /// How much of the bed shows: all of it from above, a faint sheet from
+    /// under it (`updateFade`).
+    public private(set) var fade = BedFade.shown
+    private var dark = false
     public private(set) var modelBounds: (min: SIMD3<Float>, max: SIMD3<Float>)?
 
     /// The default view's direction: from the front, a little to the left,
@@ -128,12 +133,55 @@ public final class PlateScene {
     /// Light and dark appearance: the bed's fill and the grid's lines stay
     /// low-contrast against the background so the model reads first.
     public func apply(dark: Bool) {
+        self.dark = dark
         let fill = dark ? NSColor(white: 0.19, alpha: 1) : NSColor(white: 0.88, alpha: 1)
         let ink = dark ? NSColor.white : NSColor.black
         bedNode.geometry?.firstMaterial?.diffuse.contents = fill
         gridMinor.geometry?.firstMaterial?.diffuse.contents = ink.withAlphaComponent(dark ? 0.07 : 0.07)
         gridMajor.geometry?.firstMaterial?.diffuse.contents = ink.withAlphaComponent(dark ? 0.16 : 0.16)
         outline.geometry?.firstMaterial?.diffuse.contents = ink.withAlphaComponent(dark ? 0.35 : 0.30)
+    }
+
+    /// Whether the bed, its grid and outline are drawn (a picture of the
+    /// parts alone, as a slicer saves for each plate, has none).
+    public var showsBed = true {
+        didSet { for n in [bedNode, gridMinor, gridMajor, outline] { n.isHidden = !showsBed } }
+    }
+
+    /// For tests: the bed's fill, its lines and the under light as drawn now.
+    var drawnFade: (fill: CGFloat, lines: CGFloat, underLight: CGFloat, shadowAlpha: CGFloat) {
+        let shadow = (keyLight.light?.shadowColor as? NSColor)?.alphaComponent ?? 0
+        return (bedNode.opacity, gridMajor.opacity, underLight.isHidden ? 0 : underLight.light?.intensity ?? 0, shadow)
+    }
+
+    // MARK: - Under the bed
+
+    /// The camera's angle above the bed's plane, seen from `target` (scene
+    /// space): under the bed the bed fades, the shadow goes and the light
+    /// from below comes up (`BedFade`). Call it each frame; cheap when
+    /// nothing changes.
+    public func updateFade(target: SIMD3<Float>) {
+        let eye = camera.simdWorldPosition
+        // The bed's top is the scene's y = 0 (its fill sits just under it).
+        let next = BedFade(cameraHeight: Double(eye.y), distance: Double(simd_distance(eye, target)))
+        if abs(next.above - fade.above) > 1e-4 || (next.above != fade.above && (next.above == 0 || next.above == 1)) {
+            apply(fade: next)
+        }
+    }
+
+    /// Draws the bed, its shadow and the under light at `fade`.
+    public func apply(fade: BedFade) {
+        self.fade = fade
+        SCNTransaction.begin()
+        SCNTransaction.disableActions = true
+        bedNode.opacity = CGFloat(fade.fill)
+        for n in [gridMinor, gridMajor, outline] { n.opacity = CGFloat(fade.lines) }
+        // Faint, the fill must not hide the first layer behind it.
+        bedNode.geometry?.firstMaterial?.writesToDepthBuffer = !fade.isFading
+        keyLight.light?.shadowColor = NSColor(white: 0, alpha: 0.22 * fade.shadow)
+        underLight.light?.intensity = 560 * fade.underLight
+        underLight.isHidden = fade.underLight == 0
+        SCNTransaction.commit()
     }
 
     // MARK: - Lights
@@ -171,6 +219,16 @@ public final class PlateScene {
         fillNode.light = fill
         fillNode.simdLook(at: SIMD3(-0.6, -0.5, 0.6), up: SIMD3(0, 1, 0), localFront: SIMD3(0, 0, -1))
         scene.rootNode.addChildNode(fillNode)
+
+        // From below, front-left, pointing up: lights the underside, and only
+        // while the camera is under the bed (`apply(fade:)`).
+        let under = SCNLight()
+        under.type = .directional
+        under.intensity = 0
+        underLight.light = under
+        underLight.isHidden = true
+        underLight.simdLook(at: SIMD3(0.3, 1, -0.45), up: SIMD3(0, 0, 1), localFront: SIMD3(0, 0, -1))
+        scene.rootNode.addChildNode(underLight)
     }
 
     // MARK: - Model
@@ -212,24 +270,24 @@ public final class PlateScene {
     }
 
     /// Puts `node` (from `makeModel`) on the bed in place of the current
-    /// model, fading between them.
+    /// model: the old one goes at once (two plates are never seen together),
+    /// the new one fades in over `duration`.
     public func show(_ node: SCNNode?, bounds: (min: SIMD3<Float>, max: SIMD3<Float>)?, duration: TimeInterval) {
-        let old = model
+        model?.removeAllAnimations()
+        model?.removeFromParentNode()
         model = node
         modelBounds = bounds
-        // Implicit animations, not actions: they run without the scene
+        guard let node else { return }
+        node.opacity = duration > 0 ? 0 : 1
+        world.addChildNode(node)
+        guard duration > 0 else { return }
+        // An implicit animation, not an action: it runs without the scene
         // playing, so the view renders only while something changes.
-        if let node {
-            node.opacity = duration > 0 ? 0 : 1
-            world.addChildNode(node)
-        }
         SCNTransaction.begin()
         SCNTransaction.animationDuration = duration
-        SCNTransaction.completionBlock = { old?.removeFromParentNode() }
-        old?.opacity = 0
-        node?.opacity = 1
+        SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeOut)
+        node.opacity = 1
         SCNTransaction.commit()
-        if duration == 0 { old?.removeFromParentNode() }
     }
 
     // MARK: - Camera

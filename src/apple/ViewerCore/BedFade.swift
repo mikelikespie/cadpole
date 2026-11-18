@@ -19,7 +19,7 @@ public struct BedFade: Sendable, Equatable {
     public static let endDegrees = -10.0
     /// What is left of each part under the bed.
     public static let fillUnder = 0.12
-    public static let linesUnder = 0.3
+    public static let linesUnder = 0.2
 
     public init(above: Double) {
         self.above = min(max(above, 0), 1)
@@ -45,7 +45,7 @@ public struct BedFade: Sendable, Equatable {
 
     /// The bed's fill and texture (its slab, its sides): opacity, 1 to 0.12.
     public var fill: Double { Self.fillUnder + (1 - Self.fillUnder) * above }
-    /// Its grid, outline and labels: a multiplier on their own alpha, 1 to 0.3.
+    /// Its grid, outline and labels: a multiplier on their own alpha, 1 to 0.2.
     public var lines: Double { Self.linesUnder + (1 - Self.linesUnder) * above }
     /// The shadow the part casts on it: a multiplier on its alpha, 1 to 0.
     public var shadow: Double { above }

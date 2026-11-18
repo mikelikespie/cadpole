@@ -197,16 +197,32 @@ Finder then gives `.3mf` files), in `src/apple/CadpoleMac/QuickLook`:
   more than one; arrow keys move between them. It opens on the first plate
   with objects on it; empty plates come last. Each part is drawn in its
   filament's colour, and painted faces in the colour they were painted.
-  Drag to orbit; on a trackpad, two fingers pan (the model follows them,
+  Drag to orbit, from 89 degrees over the bed to 85 under it; a flick
+  that coasts into a limit eases onto it. Under the bed, the bed, its grid
+  and outline fade to a faint sheet (smoothly across the horizon), the
+  shadow goes and a light from below comes up, so the first layer reads.
+  On a trackpad, two fingers pan (the model follows them,
   with the trackpad's own momentum) and shift + two fingers orbit; pinch, a
-  mouse wheel and Option + either zoom toward the pointer (the wheel rule in
-  `View/WheelRule.swift`, shared with the web viewer: src/web/README.md);
-  double-click reframes. On a touch display, one
+  mouse wheel and Option + either zoom toward the pointer (the wheel rule,
+  shared with the web viewer: src/web/README.md);
+  double-click reframes. Switching plates, the old plate's model goes at
+  once; a plate already built shows straight away, and any other shows the
+  picture the slicer saved of it (`Metadata/plate_N.png`), or the empty bed,
+  with a small loading mark until its model fades in. A switch cancels the
+  build of the plate left behind, which never replaces the one shown. On a
+  touch display, one
   finger orbits; two pan, pinch to zoom and twist to turn, all at once; a
   double-tap reframes. Fingers reach the view only through a gesture
   recognizer (`View/TouchRecognizer.swift`), and the
   extension is `NSIsTouchNative`, so AppKit sends no made-up clicks or
-  scrolls for them. The rates live in `CameraFeel`.
+  scrolls for them. The rates and limits live in `CameraFeel`.
+
+The behaviour every 3D view shares is in `src/apple/ViewerCore`, plain
+Swift with no AppKit or SceneKit: `CameraFeel` and `OrbitLimits`,
+`BedFade`, `WheelRule`, and `PlateLoads` (plate switching), with
+`viewer_conformance.json`, the reference the Quick Look view, ViewerCore and
+the web viewer are all tested against. `bazel test
+//src/apple/ViewerCore:ViewerCoreTests` runs on Linux.
 - **Thumbnail**: a render of that first plate.
 
 `CadpolePlates` reads the package: the ZIP's central directory, the plate
@@ -217,6 +233,7 @@ in the background afterwards.
 
 ```
 bazel test //src/apple/CadpoleMac/QuickLook:PlatesTests
+bazel test --config=apple-remote //src/apple/CadpoleMac/QuickLook:PlateViewTests   # camera, bed, plate switching; writes pictures
 bazel run  //src/apple/CadpoleMac/QuickLook:plate_viewer -- stats file.3mf     # triangles and timings per plate
 bazel run  //src/apple/CadpoleMac/QuickLook:plate_viewer -- window file.3mf    # the preview's view in a window
 ```

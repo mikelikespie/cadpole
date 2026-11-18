@@ -1,60 +1,6 @@
 import AppKit
 
-/// What a scroll or a pinch over a 3D view does. The web viewer and the
-/// site follow the same rule (src/web/README.md, "Viewport controls"):
-///
-/// - Option + the scroll wheel always zooms, toward the pointer (a
-///   trackpad's two-finger scroll with Option too), as in Preview.
-/// - The plain wheel scrolls whatever scrolls: over a view that sits in a
-///   page that scrolls, the page. Where nothing scrolls (a viewer on its
-///   own, as Quick Look is) it zooms toward the pointer.
-/// - A pinch zooms, toward the pointer.
-/// - A two-finger trackpad scroll pans the model (with shift, orbits it)
-///   only where that steals no page's scrolling; in a page it scrolls the
-///   page.
-enum WheelRule {
-    enum Input: Equatable {
-        /// A mouse's notched wheel (no precise deltas).
-        case wheel
-        /// A trackpad's or Magic Mouse's two-finger scroll (precise deltas).
-        case trackpadScroll
-        /// A trackpad pinch.
-        case pinch
-    }
-
-    enum Action: Equatable {
-        case zoom
-        case pan
-        case orbit
-        /// Left to the page the view sits in.
-        case page
-    }
-
-    static func action(_ input: Input, option: Bool, shift: Bool = false, inPage: Bool) -> Action {
-        switch input {
-        case .pinch:
-            return .zoom
-        case _ where option:
-            return .zoom
-        case .wheel:
-            return inPage ? .page : .zoom
-        case .trackpadScroll:
-            return inPage ? .page : shift ? .orbit : .pan
-        }
-    }
-
-    /// Points of a precise scroll to one line of a notched wheel (about
-    /// AppKit's own conversion).
-    static let pointsPerLine = 10.0
-
-    /// The zoom factor (below 1 comes closer) for a scroll of `deltaY`:
-    /// lines for a wheel, points for a precise scroll. AppKit's positive
-    /// `scrollingDeltaY` comes closer, as the wheel always has.
-    static func zoomFactor(deltaY: Double, precise: Bool, perLine: Double) -> Double {
-        let lines = precise ? deltaY / pointsPerLine : deltaY
-        return pow(1 - perLine, max(-20, min(20, lines)))
-    }
-}
+// The rule itself is ViewerCore's `WheelRule`: one rule for every viewer.
 
 extension OrbitCamera {
     /// A scroll over `view`, as `WheelRule` has it. Returns false when the

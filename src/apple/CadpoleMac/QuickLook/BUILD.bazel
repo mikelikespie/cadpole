@@ -47,7 +47,10 @@ swift_library(
     copts = DARWIN_COPTS,
     module_name = "CadpolePlateView",
     target_compatible_with = MACOS,
-    deps = [":CadpolePlates"],
+    deps = [
+        ":CadpolePlates",
+        "//src/apple/ViewerCore",
+    ],
 )
 
 swift_library(
@@ -125,15 +128,26 @@ swift_test(
     deps = [":CadpolePlates"],
 )
 
-# The view's input: the wheel-and-pinch rule (View/WheelRule.swift) and the
-# zoom toward the pointer, with real scroll events.
+# The view: the wheel-and-pinch rule and the zoom toward the pointer with
+# real scroll events, the camera against the shared reference
+# (//src/apple/ViewerCore:viewer_conformance.json: elevation limits under the
+# bed, a flick easing onto them), the bed fading under the horizon, and plate
+# switching with a slow plate left behind. Writes pictures of the invented
+# project from under the bed and of a plate loading to the test's outputs
+# (bazel-testlogs/.../PlateViewTests/test.outputs/).
 #
 #   bazel test --config=apple-remote //src/apple/CadpoleMac/QuickLook:PlateViewTests
 swift_test(
     name = "PlateViewTests",
-    size = "small",
+    size = "medium",
     srcs = glob(["ViewTests/*.swift"]),
     copts = DARWIN_COPTS,
+    data = ["//src/apple/ViewerCore:viewer_conformance.json"],
     target_compatible_with = MACOS,
-    deps = [":CadpolePlateView"],
+    deps = [
+        ":CadpolePlateView",
+        ":CadpolePlates",
+        "//src/apple/ViewerCore:ViewerConformance",
+        "//src/apple/ViewerCore:ViewerFixtures",
+    ],
 )

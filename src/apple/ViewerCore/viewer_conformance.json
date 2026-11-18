@@ -28,14 +28,14 @@
   {"elevation": 60, "above": 1, "fill": 1.0, "lines": 1.0, "shadow": 1, "underLight": 0},
   {"elevation": 10, "above": 1, "fill": 1.0, "lines": 1.0, "shadow": 1, "underLight": 0},
   {"elevation": 2, "above": 1.0, "fill": 1.0, "lines": 1.0, "shadow": 1.0, "underLight": 0.0},
-  {"elevation": 1, "above": 0.980324, "fill": 0.982685, "lines": 0.986227, "shadow": 0.980324, "underLight": 0.019676},
-  {"elevation": 0, "above": 0.925926, "fill": 0.934815, "lines": 0.948148, "shadow": 0.925926, "underLight": 0.074074},
-  {"elevation": -2, "above": 0.740741, "fill": 0.771852, "lines": 0.818519, "shadow": 0.740741, "underLight": 0.259259},
-  {"elevation": -5, "above": 0.376157, "fill": 0.451019, "lines": 0.56331, "shadow": 0.376157, "underLight": 0.623843},
-  {"elevation": -8, "above": 0.074074, "fill": 0.185185, "lines": 0.351852, "shadow": 0.074074, "underLight": 0.925926},
-  {"elevation": -10, "above": 0.0, "fill": 0.12, "lines": 0.3, "shadow": 0.0, "underLight": 1.0},
-  {"elevation": -30, "above": 0, "fill": 0.12, "lines": 0.3, "shadow": 0, "underLight": 1},
-  {"elevation": -80, "above": 0, "fill": 0.12, "lines": 0.3, "shadow": 0, "underLight": 1}
+  {"elevation": 1, "above": 0.980324, "fill": 0.982685, "lines": 0.984259, "shadow": 0.980324, "underLight": 0.019676},
+  {"elevation": 0, "above": 0.925926, "fill": 0.934815, "lines": 0.940741, "shadow": 0.925926, "underLight": 0.074074},
+  {"elevation": -2, "above": 0.740741, "fill": 0.771852, "lines": 0.792593, "shadow": 0.740741, "underLight": 0.259259},
+  {"elevation": -5, "above": 0.376157, "fill": 0.451019, "lines": 0.500926, "shadow": 0.376157, "underLight": 0.623843},
+  {"elevation": -8, "above": 0.074074, "fill": 0.185185, "lines": 0.259259, "shadow": 0.074074, "underLight": 0.925926},
+  {"elevation": -10, "above": 0.0, "fill": 0.12, "lines": 0.2, "shadow": 0.0, "underLight": 1.0},
+  {"elevation": -30, "above": 0, "fill": 0.12, "lines": 0.2, "shadow": 0, "underLight": 1},
+  {"elevation": -80, "above": 0, "fill": 0.12, "lines": 0.2, "shadow": 0, "underLight": 1}
  ],
  "bedFadeFromHeight": [
   {"height": -50, "distance": 100, "elevation": -30.0, "above": 0},
