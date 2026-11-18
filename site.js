@@ -380,13 +380,13 @@ const svgText = (url) => { if (!svgCache.has(url)) svgCache.set(url, fetch(url).
 // One component for every drawing the visitor can zoom: the drawings section's picture-and-lines
 // pair and the lightbox. The SVG is zoomed by its viewBox, so it is drawn again from the lines at
 // every magnification and nothing in the page is laid out again. Gestures, as in map and design
-// apps: a trackpad pinch (a wheel event with ctrl, or Safari's gesture events) or Cmd/Ctrl and the
-// wheel zooms about the pointer; a two-finger scroll or a plain wheel moves the drawing; on touch,
-// one finger moves it and two pinch. Inside the page a plain wheel scrolls the page until the
-// visitor has clicked or tapped the drawing, and again once the pointer has left it, so the frame
-// never traps the page's scrolling.
+// apps and the 3D viewer: a trackpad pinch (a wheel event with ctrl, or Safari's gesture events) or
+// Option, Cmd or Ctrl with the wheel zooms about the pointer, at once and wherever the drawing is; a
+// two-finger scroll or a plain wheel moves the drawing; on touch, one finger moves it and two
+// pinch. Inside the page a plain wheel scrolls the page until the visitor has clicked or tapped the
+// drawing, and again once the pointer has left it, so the frame never traps the page's scrolling.
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-const zoomKey = isMac ? "⌘" : "Ctrl";
+const zoomKey = isMac ? "⌥" : "Ctrl";
 function zoomView(box, svg, o = {}) {
   const MAX = o.max || 40, ac = new AbortController(), on = { signal: ac.signal };
   const out = o.readout, note = o.note, canvas = o.canvas, pen = canvas?.getContext("2d");
@@ -550,7 +550,7 @@ function zoomView(box, svg, o = {}) {
   box.addEventListener("gestureend", (e) => e.preventDefault(), on);
   box.addEventListener("wheel", (e) => {
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? H : 1, dx = e.deltaX * unit, dy = e.deltaY * unit;
-    if (e.ctrlKey || e.metaKey) {
+    if (e.ctrlKey || e.metaKey || e.altKey) {
       // a pinch sends small steps, a wheel turned with the key held large ones
       e.preventDefault(); halt();
       zoomAt(...local(e), Math.exp(-dy * (Math.abs(dy) < 40 ? 0.01 : 0.002)));
