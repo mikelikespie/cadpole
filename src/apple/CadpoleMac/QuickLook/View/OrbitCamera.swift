@@ -152,13 +152,17 @@ final class OrbitCamera: @unchecked Sendable {
             velocity = .zero
             // World units per point at the target's depth.
             let k = 2 * distance * tan(fov / 2) / Double(max(viewHeight, 1))
-            let a = azimuth * .pi / 180
-            let e = elevation * .pi / 180
-            let right = SIMD3(cos(a), 0, -sin(a))
-            let up = SIMD3(-sin(a) * sin(e), cos(e), -cos(a) * sin(e))
+            let (right, up) = screenAxes
             target += (up * Double(delta.height) - right * Double(delta.width)) * k
         }
         apply()
+    }
+
+    /// The view's right and up, in the world (under the lock).
+    private var screenAxes: (right: SIMD3<Double>, up: SIMD3<Double>) {
+        let a = azimuth * .pi / 180
+        let e = elevation * .pi / 180
+        return (SIMD3(cos(a), 0, -sin(a)), SIMD3(-sin(a) * sin(e), cos(e), -cos(a) * sin(e)))
     }
 
     /// Shift + two-finger trackpad scroll: a slower orbit.
@@ -189,6 +193,25 @@ final class OrbitCamera: @unchecked Sendable {
         lock.withLock {
             glide = nil
             pose.distance = distance * factor
+        }
+        apply()
+    }
+
+    /// Zoom by `factor` (< 1 closer) toward a point of the view: what is
+    /// under it, at the target's depth, stays under it. `offset` is the
+    /// point's distance from the view's centre in points, x right and y up.
+    func zoom(_ factor: Double, toward offset: CGPoint, viewHeight: CGFloat) {
+        let fov = Double(node.camera?.fieldOfView ?? 30) * .pi / 180
+        lock.withLock {
+            glide = nil
+            let before = distance
+            pose.distance = distance * factor
+            // The distance may have stopped at a limit: the target moves by
+            // as much as the camera really came.
+            let s = distance / before
+            let k = 2 * before * tan(fov / 2) / Double(max(viewHeight, 1))
+            let (right, up) = screenAxes
+            target += (right * Double(offset.x) + up * Double(offset.y)) * k * (1 - s)
         }
         apply()
     }

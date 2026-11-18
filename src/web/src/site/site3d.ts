@@ -59,6 +59,8 @@ export interface View {
 }
 
 const RAD = Math.PI / 180;
+/** The zoom key as the visitor's keyboard names it. */
+const zoomKey = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "⌥" : "Ctrl";
 
 /** The full viewer's surround (`studioSurround`), for this renderer. */
 function studioEnvironment(): DataTexture {
@@ -151,10 +153,12 @@ class Stage {
     //    a wheel over it scrolls the page and shows a one-line hint.
     //  - A pinch (ctrl + wheel in Chromium and Firefox, gesture events in
     //    Safari) is always the model's: the page itself never zooms.
+    //  - Option (alt) + wheel is always the model's too, and zooms toward the
+    //    pointer (input/router.ts), with no click first.
     c.addEventListener(
       "wheel",
       (e) => {
-        if (!this.grabbed && !this.armed && !e.ctrlKey) {
+        if (!this.grabbed && !this.armed && !e.ctrlKey && !e.altKey) {
           e.stopImmediatePropagation();
           this.hint();
         }
@@ -200,7 +204,7 @@ class Stage {
       this.hintEl = document.createElement("div");
       this.hintEl.className = "cp3d-hint";
       this.hintEl.setAttribute("aria-hidden", "true");
-      this.hintEl.textContent = "Click the model to give it the wheel";
+      this.hintEl.textContent = `Click the model to give it the wheel · ${zoomKey} + scroll zooms`;
     }
     if (this.hintEl.parentElement !== h) h.appendChild(this.hintEl);
     this.hintEl.classList.add("on");

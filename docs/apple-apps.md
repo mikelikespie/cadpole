@@ -198,8 +198,10 @@ Finder then gives `.3mf` files), in `src/apple/CadpoleMac/QuickLook`:
   with objects on it; empty plates come last. Each part is drawn in its
   filament's colour, and painted faces in the colour they were painted.
   Drag to orbit; on a trackpad, two fingers pan (the model follows them,
-  with the trackpad's own momentum) and shift + two fingers orbit; pinch or
-  a mouse wheel zooms; double-click reframes. On a touch display, one
+  with the trackpad's own momentum) and shift + two fingers orbit; pinch, a
+  mouse wheel and Option + either zoom toward the pointer (the wheel rule in
+  `View/WheelRule.swift`, shared with the web viewer: src/web/README.md);
+  double-click reframes. On a touch display, one
   finger orbits; two pan, pinch to zoom and twist to turn, all at once; a
   double-tap reframes. Fingers reach the view only through a gesture
   recognizer (`View/TouchRecognizer.swift`), and the

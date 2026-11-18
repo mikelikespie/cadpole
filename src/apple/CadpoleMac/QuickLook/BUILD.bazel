@@ -124,3 +124,16 @@ swift_test(
     target_compatible_with = MACOS,
     deps = [":CadpolePlates"],
 )
+
+# The view's input: the wheel-and-pinch rule (View/WheelRule.swift) and the
+# zoom toward the pointer, with real scroll events.
+#
+#   bazel test --config=apple-remote //src/apple/CadpoleMac/QuickLook:PlateViewTests
+swift_test(
+    name = "PlateViewTests",
+    size = "small",
+    srcs = glob(["ViewTests/*.swift"]),
+    copts = DARWIN_COPTS,
+    target_compatible_with = MACOS,
+    deps = [":CadpolePlateView"],
+)

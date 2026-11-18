@@ -160,14 +160,32 @@ Trackpad and mouse follow macOS Preview / Xcode:
 
 | Input | Action |
 | --- | --- |
-| Two-finger scroll | Orbit (tumble) around the target |
+| Two-finger scroll | Pan (the model follows the fingers) |
+| Shift + two-finger scroll | Orbit (tumble) around the target |
 | Pinch | Zoom toward the cursor |
-| Shift + two-finger scroll | Pan |
+| Option + wheel (a notched wheel or two fingers) | Zoom toward the cursor, always |
 | Mouse wheel | Zoom toward the cursor (auto-detected; force with the "Scroll:" menu) |
 | Left drag | Orbit |
 | Middle / right drag, Shift + left drag | Pan |
 | Double-click on geometry | Set the orbit target to the hit point and re-centre |
 | Right-click | Picker popover (face / edge / body / feature under the cursor) |
+
+The wheel rule, the same in every Cadpole viewer (this one, its 2D
+drawings, the site's models and drawings, and the Mac Quick Look preview,
+`src/apple/CadpoleMac/QuickLook/View/WheelRule.swift`):
+
+- Option + the scroll wheel always zooms, toward the pointer, wherever the
+  viewer is (a trackpad's two-finger scroll with Option too).
+- The plain wheel scrolls whatever scrolls: over a viewer that is part of a
+  scrolling page (the site's playground before it is clicked), the page.
+  Where nothing scrolls (this app, an opened model, Quick Look) it zooms
+  toward the pointer.
+- A pinch zooms, toward the pointer.
+- A two-finger trackpad scroll pans the model only where it steals no
+  page's scrolling.
+
+The tests: `e2e/input.spec.ts` here, `site/checks/wheel.spec.ts` and
+`zoom.spec.ts` for the site, and `//src/apple/CadpoleMac/QuickLook:PlateViewTests`.
 
 Touch: one finger orbits, two fingers pinch-zoom and pan at once, double-tap
 focuses, long-press opens the picker popover with context for the hovered

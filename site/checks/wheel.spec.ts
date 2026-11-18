@@ -5,7 +5,8 @@
 // page stays put either way. Over the page outside any model the wheel
 // scrolls the page; over the playground's model, which is part of the
 // scrolling page, it scrolls the page until a click on the model hands the
-// wheel over.
+// wheel over. Option + wheel zooms a model toward the pointer anywhere, the
+// page's model included, with no click first.
 import { context, expect, test } from "./site.js";
 
 type Cam = { x: number; y: number; z: number; d: number } | null;
@@ -53,6 +54,24 @@ test("a notched wheel zooms the opened model and scrolls the page elsewhere", as
   await expect.poll(() => p.evaluate(() => scrollY), { timeout: 5_000 }).toBeGreaterThan(py0 + 100);
   expect((await cam(p))!.d).toBeCloseTo(pd0, 3);
   await expect(p.locator(".play-view .cp3d-hint.on")).toHaveCount(1);
+
+  // Option + wheel over it, still not taken: the model zooms and the page stays.
+  await p.evaluate(() => document.querySelector("#play .play-view")!.scrollIntoView({ block: "center", behavior: "instant" }));
+  await p.waitForTimeout(200);
+  const pv1 = (await p.locator(".play-view .live canvas").boundingBox())!;
+  await p.mouse.move(pv1.x + pv1.width / 2, pv1.y + pv1.height / 2);
+  const oy = await p.evaluate(() => scrollY);
+  const od = (await cam(p))!.d;
+  await p.keyboard.down("Alt");
+  for (let i = 0; i < 4; i++) { await p.mouse.wheel(0, -120); await p.waitForTimeout(60); }
+  await p.keyboard.up("Alt");
+  await expect.poll(async () => (await cam(p))!.d, { timeout: 5_000 }).toBeLessThan(od * 0.8);
+  expect(await p.evaluate(() => scrollY)).toBe(oy);
+  // Out again, so the click below starts from where it did.
+  await p.keyboard.down("Alt");
+  for (let i = 0; i < 4; i++) { await p.mouse.wheel(0, 120); await p.waitForTimeout(60); }
+  await p.keyboard.up("Alt");
+  await p.mouse.move(pv1.x - 30, pv1.y + pv1.height / 2);
 
   // A click on the model hands it the wheel.
   await p.evaluate(() => document.querySelector("#play .play-view")!.scrollIntoView({ block: "center", behavior: "instant" }));

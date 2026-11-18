@@ -102,6 +102,35 @@ test.describe("one gesture model", () => {
     expect((await pose(page)).distance / d1).toBeCloseTo(1, 3);
   });
 
+  test("Option + wheel zooms toward the pointer, a trackpad's two fingers as well as a notched wheel; without Option the fingers pan", async ({ page }) => {
+    await open(page);
+    const c = await centre(page);
+    // Off the centre: a zoom toward the pointer moves the target, a plain zoom would not.
+    await page.mouse.move(c.x + 140, c.y - 70);
+    const p0 = await pose(page);
+    await page.keyboard.down("Alt");
+    // A trackpad's stream (small pixel steps) with Option.
+    for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -6);
+    await expect.poll(async () => (await pose(page)).distance, { timeout: 3_000 }).toBeLessThan(p0.distance * 0.93);
+    const p1 = await pose(page);
+    expect(moved(p0, p1)).toBeGreaterThan(0);
+    await page.waitForTimeout(400);
+    // A notched wheel with Option.
+    await page.mouse.wheel(0, -120);
+    await expect.poll(async () => (await pose(page)).distance, { timeout: 3_000 }).toBeLessThan(p1.distance * 0.95);
+    // Out again with Option.
+    const p2 = await pose(page);
+    await page.mouse.wheel(0, 120);
+    await expect.poll(async () => (await pose(page)).distance, { timeout: 3_000 }).toBeGreaterThan(p2.distance * 1.05);
+    await page.keyboard.up("Alt");
+    await page.waitForTimeout(400);
+    // The same small steps without Option pan: the distance stays.
+    const p3 = await pose(page);
+    for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -6);
+    await page.waitForTimeout(200);
+    expect((await pose(page)).distance / p3.distance).toBeCloseTo(1, 3);
+  });
+
   test("ctrl + wheel (a pinch in Chrome) zooms; a two-finger touch's jitter of them does not", async ({ page }) => {
     await open(page);
     const c = await centre(page);

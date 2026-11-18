@@ -1,6 +1,6 @@
 // The drawings section's zoomable pair, on a phone and a desk window, and the
 // lightbox's drawings, which share its gestures. The pair opens zoomed in; a
-// pinch, a Ctrl/Cmd wheel and a double tap change the magnification; a drag
+// pinch, an Option/Ctrl/Cmd wheel and a double tap change the magnification; a drag
 // and a two-finger scroll move the drawing without changing it; a plain wheel
 // scrolls the page until the drawing has been clicked; the line between the
 // picture and the lines moves only by its grip. Throughout, the page keeps its
@@ -215,6 +215,12 @@ test("lightbox drawing, desk-1440: the same gestures", async ({ browser, site })
   const v2 = await vb();
   expect(v2[2], "a scroll does not zoom").toBeCloseTo(v1[2]!, 3);
   expect(v2[0], "it moves the drawing").not.toBeCloseTo(v1[0]!, 1);
+  // Option and the wheel zoom too, as in Preview and the 3D viewer.
+  await p.keyboard.down("Alt");
+  for (let i = 0; i < 5; i++) await p.mouse.wheel(0, -20);
+  await p.keyboard.up("Alt");
+  const v3 = await vb();
+  expect(v3[2], "Option and the wheel zoom").toBeLessThan(v2[2]! / 1.5);
   expect(await p.evaluate(() => visualViewport!.scale)).toBe(1);
   expect(errs, "page errors").toEqual([]);
   await ctx.close();

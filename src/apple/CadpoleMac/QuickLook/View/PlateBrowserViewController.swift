@@ -258,20 +258,20 @@ public final class PlateBrowserViewController: NSViewController {
         if !stale { animate(for: feel.inertiaTimeConstant * 5) }
     }
 
+    /// The wheel and the trackpad, as `WheelRule` has them: on its own (a
+    /// preview, a window) the wheel zooms toward the pointer, two fingers
+    /// pan (shift: orbit), Option + either zooms; inside a scrolling page
+    /// the page keeps the plain wheel and two fingers.
     func orbitScroll(_ event: NSEvent) {
-        // Trackpad: two fingers pan, as on the web viewer; with shift, orbit.
-        // A mouse wheel zooms.
-        if event.hasPreciseScrollingDeltas, event.modifierFlags.contains(.shift) {
-            orbit?.scroll(CGSize(width: -event.scrollingDeltaX, height: event.scrollingDeltaY), viewWidth: scnView.bounds.width)
-        } else if event.hasPreciseScrollingDeltas {
-            orbit?.pan(CGSize(width: event.scrollingDeltaX, height: event.scrollingDeltaY), viewHeight: scnView.bounds.height)
-        } else {
-            orbit?.zoom(pow(1 - feel.wheelZoomPerLine, Double(event.scrollingDeltaY)))
+        let page = scnView.enclosingScrollView
+        guard let orbit, orbit.scrolled(event, in: scnView, inPage: page != nil) else {
+            page?.scrollWheel(with: event)
+            return
         }
     }
 
     func orbitMagnify(_ event: NSEvent) {
-        orbit?.pinch(event.magnification)
+        orbit?.magnified(event, in: scnView)
     }
 
     // MARK: - Touch display

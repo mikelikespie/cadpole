@@ -10,7 +10,8 @@
 //   secondary drag    shift + drag, right or middle drag:       pan
 //   pan               two-finger trackpad scroll, two fingers:  pan
 //   zoom              pinch (ctrl + wheel, gesture scale, two touch points),
-//                     a notched mouse wheel:                    zoom about the point
+//                     a notched mouse wheel, and Option (alt) with any
+//                     wheel, a trackpad's two fingers included:  zoom about the point
 //   twist             two fingers turning (gesture rotation, two touch points)
 //   tap, double-tap, context (right click or a long press)
 //
@@ -431,6 +432,14 @@ export class InputRouter {
       if (this.gesture) return;
       if (this.pinchJitter(e.deltaY)) return;
       this.target.zoomAt(p.x, p.y, Math.exp(Math.max(-40, Math.min(40, e.deltaY)) * 0.01));
+      return;
+    }
+    if (e.altKey) {
+      // Option + wheel zooms toward the pointer whatever the wheel is, a
+      // notched one or a trackpad's two fingers, as in Preview: the one
+      // zoom that needs no pinch and no wheel detection.
+      const dy = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? e.deltaY : e.deltaY * 40;
+      this.target.zoomAt(p.x, p.y, Math.exp(Math.max(-60, Math.min(60, dy)) * 0.0022));
       return;
     }
     if (e.shiftKey && this.target.shiftScroll) {
