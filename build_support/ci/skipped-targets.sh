@@ -30,6 +30,9 @@ SWEEP="${SWEEP:-//... -//src/apple/CadpoleiOS:CadpoleiOS -//src/apple/CadpoleMac
 
 # Tests the sweep will not run, with the reason each one is exempt.
 #
+#   //src/apple/CadpoleiOS:install_mac_test
+#       manual and macOS-only: the iOS app's real device build, inspected and
+#       signed ad hoc by the installer's own commands, on a Mac.
 #   //src/apple/CadpoleKitTests:SimulatorTests
 #       needs the iOS Simulator on the Mac worker (--config=apple-remote).
 #   //src/apple/CadpoleLocalEngine:LocalEngineTests
@@ -40,7 +43,8 @@ SWEEP="${SWEEP:-//... -//src/apple/CadpoleiOS:CadpoleiOS -//src/apple/CadpoleMac
 #   //src/web:ts_transitive_typecheck_test
 #       typechecks every transitive .d.ts; minutes, and //src/web:ts_typecheck_test
 #       covers our own sources on every run.
-EXPECTED="//src/apple/CadpoleKitTests:SimulatorTests
+EXPECTED="//src/apple/CadpoleiOS:install_mac_test
+//src/apple/CadpoleKitTests:SimulatorTests
 //src/apple/CadpoleLocalEngine:LocalEngineTests
 //src/rust/cadpole-script:cadpole_script_test_bin
 //src/web:ts_transitive_typecheck_test"

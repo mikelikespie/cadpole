@@ -1,6 +1,5 @@
 """ios_install: `bazel run //<pkg>:install` puts an iOS app on the owner's own
-iPhones and iPads, signed on the Mac with its development identity
-(../install/README.md).
+iPhones and iPads, signed on the Mac with its development identity.
 
     ios_install(
         name = "install",                       # also :doctor and :install_test
@@ -10,6 +9,7 @@ iPhones and iPads, signed on the Mac with its development identity
         entitlements = "//path/to/app:App.entitlements",
         extensions = {"com.example.App.Widgets": None},  # bundle id -> its entitlements file
         families = ["iphone", "ipad"],
+        default_team = "ABCDE12345",            # optional: the team to prefer when --team is not given
     )
 
 makes:
@@ -72,7 +72,8 @@ def ios_install(
         the app embeds. Each is signed with a profile for its own bundle id.
       families: "iphone", "ipad": the devices it may go on.
       min_os: its minimum_os_version.
-      default_team: the developer team when the Mac does not say which.
+      default_team: the developer team to prefer when --team is not given;
+        none by default (the Mac's own profiles and Xcode's settings decide).
       doctor_name: the checks-only target; "<name>_doctor" if not given.
       device_app_name: the device build; "<name>_device_app" if not given.
       note: something the owner must know before installing this app, shown

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Puts an iOS app from this repo on the owner's own iPhones and iPads, from a
-# Mac (README.md next to this file; each app's docs/install.md):
+# Mac:
 #
 #   bazel run //path/to/app:install
 #   bazel run //path/to/app:install -- --device NAME_OR_UDID --team TEAMID
@@ -29,12 +29,11 @@
 # FILE and --now TIME stand in for devicectl, Xcode's profile folders, the
 # keychain, Xcode's settings, the devices' lock state, the facts about this
 # Mac and the clock. --answer TEXT stands in for the person's answer when
-# several devices are in reach. --self-test runs provision.py's checks;
-# --check-mint-project builds the throwaway Xcode project without signing;
-# --check-tools checks that this Xcode's tools still take the options this
-# script passes. --sign-adhoc (with the test inputs) goes on through the
-# signing step with no identity ("-"), to check the codesign commands on a
-# Mac that has no development identity.
+# several devices are in reach. --check-mint-project builds the throwaway
+# Xcode project without signing; --check-tools checks that this Xcode's tools
+# still take the options this script passes. --sign-adhoc (with the test
+# inputs) goes on through the signing step with no identity ("-"), to check
+# the codesign commands on a Mac that has no development identity.
 set -euo pipefail
 
 say() { printf '%s\n' "$*"; }
@@ -73,7 +72,6 @@ ALL=0
 TEAM=""
 DRY_RUN=0
 KEEP=0
-SELF_TEST=0
 CHECK_MINT=0
 CHECK_TOOLS=0
 SIGN_ADHOC=0
@@ -98,7 +96,6 @@ while [ $# -gt 0 ]; do
     --keep) KEEP=1; shift ;;
     --ipa) IPA_ARG="${2:?--ipa needs a file}"; shift 2 ;;
     --ipa=*) IPA_ARG="${1#*=}"; shift ;;
-    --self-test) SELF_TEST=1; shift ;;
     --check-mint-project) CHECK_MINT=1; shift ;;
     --check-tools) CHECK_TOOLS=1; shift ;;
     --sign-adhoc) SIGN_ADHOC=1; shift ;;
@@ -150,11 +147,6 @@ else
 fi
 py() { "$PYTHON" -I "$PROVISION_PY" "$@"; }
 
-if [ "$SELF_TEST" = 1 ]; then
-  testdata="$(resolve "${APPLE_INSTALL_TESTDATA:-}" "$here/testdata")" || die "the test fixtures are missing."
-  py self-test --testdata "$testdata"
-  exit $?
-fi
 
 # The app, as ios_install describes it.
 BUNDLE_ID="${APPLE_INSTALL_BUNDLE_ID:?APPLE_INSTALL_BUNDLE_ID is not set: run this through its ios_install target}"

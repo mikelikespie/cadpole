@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""The choosing behind install.sh (ios_install's installer): which devices, which provisioning profiles, which team, what
-entitlements for the app and each of its extensions; the checks before an
-install (`preflight`, the "doctor"); and what a tool's failure most likely
-means (`explain`). Plain data in, plain lines out, so it can be tested with
-made-up files on any machine (`self-test`).
+"""The choosing behind install.sh (ios_install's installer): which devices,
+which provisioning profiles, which team, what entitlements for the app and
+each of its extensions; the checks before an install (`preflight`, the
+"doctor"); and what a tool's failure most likely means (`explain`). Plain
+data in, plain lines out, so it can be tested with made-up files on any
+machine.
 
 One app is described by the common options (--name, --bundle-id,
 --entitlements, --extension, --family, --min-os, --install-cmd), which
 ios_install passes through install.sh.
 
-Standard library only, and nothing newer than Python 3.9: on the laptop this
+Standard library only, and nothing newer than Python 3.9: on the Mac this
 runs under the python3 that comes with Xcode.
 
 install.sh decodes each .mobileprovision with `security cms -D -i` first; this
@@ -28,8 +29,8 @@ import sys
 # ---- devices -----------------------------------------------------------------
 
 # The JSON `xcrun devicectl list devices --json-output FILE` writes. Checked
-# against Xcode 27.2 (devicectl 651.32, "jsonVersion" 5) on 2026-11-14, with a
-# Simulator in the list and no real device. What that showed:
+# against Xcode 27.2 (devicectl 651.32, "jsonVersion" 5), with a Simulator in
+# the list and no real device. What that showed:
 #
 #   - every device has BOTH the old keys (hardwareProperties, deviceProperties,
 #     connectionProperties: "deprecated", to be removed) and a new "properties"
@@ -513,7 +514,7 @@ def parse_bundles(bundle_id, entitlements, extensions):
 
 # ---- profiles ----------------------------------------------------------------
 
-# Why a profile cannot be used; the self-test names these.
+# Why a profile cannot be used.
 OK = "ok"
 UNREADABLE = "unreadable"
 PLATFORM = "platform"
@@ -1022,9 +1023,9 @@ def xcode_account_info(path):
 #
 # Where the substrings come from. "27.2": the sentence is in Xcode 27.2's own
 # files (devicectl, CoreDevice, IDEFoundation, DVTPortal, iPhoneRemoteDevice
-# .strings), read on the build farm's Mac on 2026-11-14. "older": remembered
-# from earlier Xcode versions, not confirmed on 27. None was seen coming out
-# of a real failure, so the raw output is always printed too.
+# .strings). "older": the wording of earlier Xcode versions, not confirmed on
+# 27. None was seen coming out of a real failure, so the raw output is always
+# printed too.
 _CAUSES = [
     (
         "keychain-locked",
@@ -2056,6 +2057,7 @@ def main(argv):
     s.add_argument("--name", default="")
     s.add_argument("--install-cmd", default="")
 
+
     a = ap.parse_args(argv)
     if hasattr(a, "family") and not a.family:
         a.family = ["iphone", "ipad"]
@@ -2065,6 +2067,7 @@ def main(argv):
         except (AttributeError, ValueError):
             pass
     try:
+
         if a.cmd == "choose":
             dl = load_device_list(a.json)
             try:

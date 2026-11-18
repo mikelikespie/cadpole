@@ -1,14 +1,14 @@
-"""device_app: an iOS app built for a real device, unsigned, for the laptop to sign.
+"""device_app: an iOS app built for a real device, unsigned, for the Mac to sign.
 
-`bazel run //<app package>:install` (ios_install, ../install/README.md) needs
+`bazel run //<app package>:install` (ios_install) needs
 the app as a device build whatever flags the build was started with, so
 this rule depends on the app through a transition:
 
   --ios_multi_cpus=arm64               one device slice. The transition REPLACES
-                                       the list, so the sim_arm64 that
-                                       test:apple-remote adds (--ios_multi_cpus
-                                       accumulates on the command line;
-                                       and in rc files) cannot join it.
+                                       the list, so a sim_arm64 that a test
+                                       config adds (--ios_multi_cpus
+                                       accumulates across the rc files and the
+                                       command line) cannot join it.
   --compilation_mode=opt               an optimised build, as a person uses it.
   --features=disable_legacy_signing    rules_apple 4.5.3 refuses a device build
                                        of an ios_application with no
@@ -17,7 +17,7 @@ this rule depends on the app through a transition:
                                        feature, which makes it sign nothing
                                        (apple/internal/codesigning_support.bzl,
                                        _should_sign_bundles). The profiles and
-                                       the identity are the laptop's, known only
+                                       the identity are the Mac's, known only
                                        when the installer runs; it signs there.
 
   //build_support/apple_install:for_install
@@ -27,8 +27,9 @@ this rule depends on the app through a transition:
                                        extension) with no profile of its own
                                        takes ios_install_profile() in its
                                        provisioning_profile, which is the
-                                       stand-in install/placeholder.mobileprovision
-                                       with this flag. The installer replaces it.
+                                       installer's stand-in
+                                       placeholder.mobileprovision with this
+                                       flag. The installer replaces it.
                                        Apps with a checked-in App Store profile
                                        keep theirs: it is replaced the same way.
 

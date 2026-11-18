@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
 # `bazel run //src/apple/CadpoleiOS:install`: the iOS app onto your own iPhone
-# or iPad, signed on the Mac with your development identity.
+# or iPad, signed on the Mac with your development identity (defs.bzl).
 
 package(default_visibility = ["//visibility:public"])
 
